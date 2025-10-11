@@ -1,0 +1,28 @@
+From 6d8b811afaefcfdc7e7c70f451060486425343e1 Mon Sep 17 00:00:00 2001
+From: Valentin Raevsky <valentin@compulab.co.il>
+Date: Sat, 4 Oct 2025 18:32:37 +0300
+Subject: [PATCH] compulab: Disable DecreaseRootfsRetryCount()
+
+Signed-off-by: Valentin Raevsky <valentin@compulab.co.il>
+---
+ Silicon/NVIDIA/Application/L4TLauncher/L4TRootfsValidation.c | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/Silicon/NVIDIA/Application/L4TLauncher/L4TRootfsValidation.c b/Silicon/NVIDIA/Application/L4TLauncher/L4TRootfsValidation.c
+index aee2d832..9aa18d37 100644
+--- a/Silicon/NVIDIA/Application/L4TLauncher/L4TRootfsValidation.c
++++ b/Silicon/NVIDIA/Application/L4TLauncher/L4TRootfsValidation.c
+@@ -595,7 +595,9 @@ DecreaseRootfsRetryCount (
+ 
+   // The rootfs slot is bootable.
+   if (RetryCount != 0) {
+-    RetryCount--;
++    // Don't decrease the rootfs retry counter 
++    // for production purpouse only
++    // RetryCount--;
+     Status = SetRetryCountTomRootfsInfo (RootfsSlot, RetryCount);
+     if (EFI_ERROR (Status)) {
+       DEBUG ((
+-- 
+2.34.1
+
