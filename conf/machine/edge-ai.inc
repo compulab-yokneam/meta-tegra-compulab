@@ -1,0 +1,9 @@
+MACHINEOVERRIDES =. "edge-ai:"
+TEGRA_FLASHVAR_MB2BCT_CFG = "tegra234-edge-ai-mb2-bct-misc-p3767-0000.dts"
+TEGRA_FLASHVAR_PINMUX_CONFIG = "tegra234-edge-ai-pinmux.dtsi"
+TEGRA_FLASHVAR_PMC_CONFIG = "tegra234-edge-ai-padvoltage-default.dtsi"
+
+TNSPEC_BOOTDEV = "nvme0n1p1"
+PARTITION_LAYOUT_TEMPLATE_DEFAULT = "flash_t234_qspi.xml"
+PARTITION_LAYOUT_EXTERNAL_DEFAULT = "flash_l4t_t234_nvme.xml"
+TEGRAFLASH_NO_INTERNAL_STORAGE = "0"
