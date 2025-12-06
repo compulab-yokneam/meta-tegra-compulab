@@ -1,0 +1,26 @@
+From 461567e4fa427daf2b1fd5ff3465a2e35f961d56 Mon Sep 17 00:00:00 2001
+From: Valentin Raevsky <valentin@compulab.co.il>
+Date: Thu, 4 Dec 2025 17:42:53 +0200
+Subject: [PATCH] Make recovery port work as a device
+
+Signed-off-by: Valentin Raevsky <valentin@compulab.co.il>
+---
+ hardware/nvidia/t23x/nv-public/tegra234-p3768-0000.dtsi | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/hardware/nvidia/t23x/nv-public/tegra234-p3768-0000.dtsi b/hardware/nvidia/t23x/nv-public/tegra234-p3768-0000.dtsi
+index 5ed9f69..cb35e07 100644
+--- a/hardware/nvidia/t23x/nv-public/tegra234-p3768-0000.dtsi
++++ b/hardware/nvidia/t23x/nv-public/tegra234-p3768-0000.dtsi
+@@ -80,7 +80,7 @@
+ 			ports {
+ 				/* recovery port */
+ 				usb_recovery: usb2-0 {
+-					mode = "otg";
++					mode = "device";
+ 					vbus-supply = <&vdd_5v0_sys>;
+ 					status = "okay";
+ 					usb-role-switch;
+-- 
+2.34.1
+
