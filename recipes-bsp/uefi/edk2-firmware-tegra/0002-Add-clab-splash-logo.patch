@@ -1,9 +1,10 @@
-From 46bf073244c33b84bca651ec02709a755218b783 Mon Sep 17 00:00:00 2001
+From 9f26b83ea7ed6bf8100a27a37a33ac57ce3d4ad5 Mon Sep 17 00:00:00 2001
 From: Valentin Raevsky <valentin@compulab.co.il>
-Date: Thu, 23 Oct 2025 23:04:04 +0300
-Subject: [PATCH] Add clab splash logo
+Date: Sat, 6 Dec 2025 19:38:25 +0200
+Subject: [PATCH] add clab splash logo
 
 Signed-off-by: Valentin Raevsky <valentin@compulab.co.il>
+Upstream-Status: Pending
 ---
  Platform/NVIDIA/NVIDIA.fvmain.fdf.inc | 6 +++---
  Silicon/NVIDIA/Assets/clab/clab.file  | 0
