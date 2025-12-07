@@ -1,11 +1,12 @@
-From 55c25b459e87da56c614a14a820671e1d85b90dd Mon Sep 17 00:00:00 2001
+From 63d91050a02481946a7acbd0abecb4b2000f480c Mon Sep 17 00:00:00 2001
 From: Valentin Raevsky <valentin@compulab.co.il>
-Date: Mon, 1 Dec 2025 12:42:38 +0200
-Subject: [PATCH] compulab: Add edge-ai support
+Date: Sat, 6 Dec 2025 21:29:03 +0000
+Subject: [PATCH] Add compulab device tree files
 
 Signed-off-by: Valentin Raevsky <valentin@compulab.co.il>
+Upstream-Status: Pending
 ---
- .../t23x/nv-public/nv-platform/Makefile       | 12 +++
+ nv-platform/Makefile                          | 12 +++
  ...-p3768-0000+p3767-0000-nv-super-device.dts | 11 +++
  ...34-p3768-0000+p3767-0000-nv-super-host.dts | 12 +++
  ...-p3768-0000+p3767-0001-nv-super-device.dts | 15 ++++
@@ -16,26 +17,26 @@ Signed-off-by: Valentin Raevsky <valentin@compulab.co.il>
  ...34-p3768-0000+p3767-0004-nv-super-host.dts | 20 +++++
  ...-p3768-0000+p3767-0005-nv-super-device.dts | 19 +++++
  ...34-p3768-0000+p3767-0005-nv-super-host.dts | 20 +++++
- ...ra234-p3768-0000+p3767-xxxx-nv-common.dtsi | 84 +++++++------------
- .../nv-soc/tegra234-soc-overlay.dtsi          |  2 +-
- .../t23x/nv-public/tegra234-p3768-0000.dtsi   |  9 +-
- hardware/nvidia/t23x/nv-public/tegra234.dtsi  |  6 +-
- 15 files changed, 224 insertions(+), 60 deletions(-)
- create mode 100644 hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0000-nv-super-device.dts
- create mode 100644 hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0000-nv-super-host.dts
- create mode 100644 hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0001-nv-super-device.dts
- create mode 100644 hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0001-nv-super-host.dts
- create mode 100644 hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0003-nv-super-device.dts
- create mode 100644 hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0003-nv-super-host.dts
- create mode 100644 hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0004-nv-super-device.dts
- create mode 100644 hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0004-nv-super-host.dts
- create mode 100644 hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0005-nv-super-device.dts
- create mode 100644 hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0005-nv-super-host.dts
+ ...ra234-p3768-0000+p3767-xxxx-nv-common.dtsi | 79 +++++++------------
+ nv-soc/tegra234-soc-overlay.dtsi              |  2 +-
+ tegra234-p3768-0000.dtsi                      | 11 ++-
+ tegra234.dtsi                                 |  6 +-
+ 15 files changed, 223 insertions(+), 58 deletions(-)
+ create mode 100644 nv-platform/tegra234-p3768-0000+p3767-0000-nv-super-device.dts
+ create mode 100644 nv-platform/tegra234-p3768-0000+p3767-0000-nv-super-host.dts
+ create mode 100644 nv-platform/tegra234-p3768-0000+p3767-0001-nv-super-device.dts
+ create mode 100644 nv-platform/tegra234-p3768-0000+p3767-0001-nv-super-host.dts
+ create mode 100644 nv-platform/tegra234-p3768-0000+p3767-0003-nv-super-device.dts
+ create mode 100644 nv-platform/tegra234-p3768-0000+p3767-0003-nv-super-host.dts
+ create mode 100644 nv-platform/tegra234-p3768-0000+p3767-0004-nv-super-device.dts
+ create mode 100644 nv-platform/tegra234-p3768-0000+p3767-0004-nv-super-host.dts
+ create mode 100644 nv-platform/tegra234-p3768-0000+p3767-0005-nv-super-device.dts
+ create mode 100644 nv-platform/tegra234-p3768-0000+p3767-0005-nv-super-host.dts
 
-diff --git a/hardware/nvidia/t23x/nv-public/nv-platform/Makefile b/hardware/nvidia/t23x/nv-public/nv-platform/Makefile
+diff --git a/nv-platform/Makefile b/nv-platform/Makefile
 index b1f47dc..36461b0 100644
---- a/hardware/nvidia/t23x/nv-public/nv-platform/Makefile
-+++ b/hardware/nvidia/t23x/nv-public/nv-platform/Makefile
+--- a/nv-platform/Makefile
++++ b/nv-platform/Makefile
 @@ -29,6 +29,18 @@ dtb-y += tegra234-p3768-0000+p3767-0004-nv-super.dtb
  dtb-y += tegra234-p3768-0000+p3767-0005-nv.dtb
  dtb-y += tegra234-p3768-0000+p3767-0005-nv-super.dtb
@@ -55,11 +56,11 @@ index b1f47dc..36461b0 100644
  ifneq ($(dtb-y),)
  dtb-y := $(addprefix $(makefile-path)/,$(dtb-y))
  endif
-diff --git a/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0000-nv-super-device.dts b/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0000-nv-super-device.dts
+diff --git a/nv-platform/tegra234-p3768-0000+p3767-0000-nv-super-device.dts b/nv-platform/tegra234-p3768-0000+p3767-0000-nv-super-device.dts
 new file mode 100644
 index 0000000..8f3159b
 --- /dev/null
-+++ b/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0000-nv-super-device.dts
++++ b/nv-platform/tegra234-p3768-0000+p3767-0000-nv-super-device.dts
 @@ -0,0 +1,11 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +// SPDX-FileCopyrightText: Copyright (c) 2023, NVIDIA CORPORATION & AFFILIATES.  All rights reserved.
@@ -72,11 +73,11 @@ index 0000000..8f3159b
 +&usb_recovery {
 +    mode = "device";
 +};
-diff --git a/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0000-nv-super-host.dts b/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0000-nv-super-host.dts
+diff --git a/nv-platform/tegra234-p3768-0000+p3767-0000-nv-super-host.dts b/nv-platform/tegra234-p3768-0000+p3767-0000-nv-super-host.dts
 new file mode 100644
 index 0000000..326cf50
 --- /dev/null
-+++ b/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0000-nv-super-host.dts
++++ b/nv-platform/tegra234-p3768-0000+p3767-0000-nv-super-host.dts
 @@ -0,0 +1,12 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +// SPDX-FileCopyrightText: Copyright (c) 2023, NVIDIA CORPORATION & AFFILIATES.  All rights reserved.
@@ -90,11 +91,11 @@ index 0000000..326cf50
 +    mode = "host";
 +    /delete-property/ usb-role-switch;
 +};
-diff --git a/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0001-nv-super-device.dts b/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0001-nv-super-device.dts
+diff --git a/nv-platform/tegra234-p3768-0000+p3767-0001-nv-super-device.dts b/nv-platform/tegra234-p3768-0000+p3767-0001-nv-super-device.dts
 new file mode 100644
 index 0000000..7d34cad
 --- /dev/null
-+++ b/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0001-nv-super-device.dts
++++ b/nv-platform/tegra234-p3768-0000+p3767-0001-nv-super-device.dts
 @@ -0,0 +1,15 @@
 +// SPDX-License-Identifier: GPL-2.0
 +// SPDX-FileCopyrightText: Copyright (c) 2024, NVIDIA CORPORATION & AFFILIATES.  All rights reserved.
@@ -111,11 +112,11 @@ index 0000000..7d34cad
 +&usb_recovery {
 +    mode = "device";
 +};
-diff --git a/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0001-nv-super-host.dts b/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0001-nv-super-host.dts
+diff --git a/nv-platform/tegra234-p3768-0000+p3767-0001-nv-super-host.dts b/nv-platform/tegra234-p3768-0000+p3767-0001-nv-super-host.dts
 new file mode 100644
 index 0000000..a7d1601
 --- /dev/null
-+++ b/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0001-nv-super-host.dts
++++ b/nv-platform/tegra234-p3768-0000+p3767-0001-nv-super-host.dts
 @@ -0,0 +1,16 @@
 +// SPDX-License-Identifier: GPL-2.0
 +// SPDX-FileCopyrightText: Copyright (c) 2024, NVIDIA CORPORATION & AFFILIATES.  All rights reserved.
@@ -133,11 +134,11 @@ index 0000000..a7d1601
 +    mode = "host";
 +    /delete-property/ usb-role-switch;
 +};
-diff --git a/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0003-nv-super-device.dts b/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0003-nv-super-device.dts
+diff --git a/nv-platform/tegra234-p3768-0000+p3767-0003-nv-super-device.dts b/nv-platform/tegra234-p3768-0000+p3767-0003-nv-super-device.dts
 new file mode 100644
 index 0000000..1762d8a
 --- /dev/null
-+++ b/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0003-nv-super-device.dts
++++ b/nv-platform/tegra234-p3768-0000+p3767-0003-nv-super-device.dts
 @@ -0,0 +1,19 @@
 +// SPDX-License-Identifier: GPL-2.0
 +// SPDX-FileCopyrightText: Copyright (c) 2024, NVIDIA CORPORATION & AFFILIATES.  All rights reserved.
@@ -158,11 +159,11 @@ index 0000000..1762d8a
 +&usb_recovery {
 +    mode = "device";
 +};
-diff --git a/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0003-nv-super-host.dts b/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0003-nv-super-host.dts
+diff --git a/nv-platform/tegra234-p3768-0000+p3767-0003-nv-super-host.dts b/nv-platform/tegra234-p3768-0000+p3767-0003-nv-super-host.dts
 new file mode 100644
 index 0000000..383efb4
 --- /dev/null
-+++ b/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0003-nv-super-host.dts
++++ b/nv-platform/tegra234-p3768-0000+p3767-0003-nv-super-host.dts
 @@ -0,0 +1,20 @@
 +// SPDX-License-Identifier: GPL-2.0
 +// SPDX-FileCopyrightText: Copyright (c) 2024, NVIDIA CORPORATION & AFFILIATES.  All rights reserved.
@@ -184,11 +185,11 @@ index 0000000..383efb4
 +    mode = "host";
 +    /delete-property/ usb-role-switch;
 +};
-diff --git a/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0004-nv-super-device.dts b/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0004-nv-super-device.dts
+diff --git a/nv-platform/tegra234-p3768-0000+p3767-0004-nv-super-device.dts b/nv-platform/tegra234-p3768-0000+p3767-0004-nv-super-device.dts
 new file mode 100644
 index 0000000..b91fdfa
 --- /dev/null
-+++ b/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0004-nv-super-device.dts
++++ b/nv-platform/tegra234-p3768-0000+p3767-0004-nv-super-device.dts
 @@ -0,0 +1,19 @@
 +// SPDX-License-Identifier: GPL-2.0
 +// SPDX-FileCopyrightText: Copyright (c) 2024, NVIDIA CORPORATION & AFFILIATES.  All rights reserved.
@@ -209,11 +210,11 @@ index 0000000..b91fdfa
 +&usb_recovery {
 +    mode = "device";
 +};
-diff --git a/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0004-nv-super-host.dts b/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0004-nv-super-host.dts
+diff --git a/nv-platform/tegra234-p3768-0000+p3767-0004-nv-super-host.dts b/nv-platform/tegra234-p3768-0000+p3767-0004-nv-super-host.dts
 new file mode 100644
 index 0000000..5287e42
 --- /dev/null
-+++ b/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0004-nv-super-host.dts
++++ b/nv-platform/tegra234-p3768-0000+p3767-0004-nv-super-host.dts
 @@ -0,0 +1,20 @@
 +// SPDX-License-Identifier: GPL-2.0
 +// SPDX-FileCopyrightText: Copyright (c) 2024, NVIDIA CORPORATION & AFFILIATES.  All rights reserved.
@@ -235,11 +236,11 @@ index 0000000..5287e42
 +    mode = "host";
 +    /delete-property/ usb-role-switch;
 +};
-diff --git a/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0005-nv-super-device.dts b/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0005-nv-super-device.dts
+diff --git a/nv-platform/tegra234-p3768-0000+p3767-0005-nv-super-device.dts b/nv-platform/tegra234-p3768-0000+p3767-0005-nv-super-device.dts
 new file mode 100644
 index 0000000..06a599b
 --- /dev/null
-+++ b/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0005-nv-super-device.dts
++++ b/nv-platform/tegra234-p3768-0000+p3767-0005-nv-super-device.dts
 @@ -0,0 +1,19 @@
 +// SPDX-License-Identifier: GPL-2.0
 +// SPDX-FileCopyrightText: Copyright (c) 2024, NVIDIA CORPORATION & AFFILIATES.  All rights reserved.
@@ -260,11 +261,11 @@ index 0000000..06a599b
 +&usb_recovery {
 +    mode = "device";
 +};
-diff --git a/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0005-nv-super-host.dts b/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0005-nv-super-host.dts
+diff --git a/nv-platform/tegra234-p3768-0000+p3767-0005-nv-super-host.dts b/nv-platform/tegra234-p3768-0000+p3767-0005-nv-super-host.dts
 new file mode 100644
 index 0000000..021d2a5
 --- /dev/null
-+++ b/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0005-nv-super-host.dts
++++ b/nv-platform/tegra234-p3768-0000+p3767-0005-nv-super-host.dts
 @@ -0,0 +1,20 @@
 +// SPDX-License-Identifier: GPL-2.0
 +// SPDX-FileCopyrightText: Copyright (c) 2024, NVIDIA CORPORATION & AFFILIATES.  All rights reserved.
@@ -286,16 +287,17 @@ index 0000000..021d2a5
 +    mode = "host";
 +    /delete-property/ usb-role-switch;
 +};
-diff --git a/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-xxxx-nv-common.dtsi b/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-xxxx-nv-common.dtsi
-index 3f68f82..74228fd 100644
---- a/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-xxxx-nv-common.dtsi
-+++ b/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-xxxx-nv-common.dtsi
-@@ -127,31 +127,35 @@
+diff --git a/nv-platform/tegra234-p3768-0000+p3767-xxxx-nv-common.dtsi b/nv-platform/tegra234-p3768-0000+p3767-xxxx-nv-common.dtsi
+index 3f68f82..bca7ac4 100644
+--- a/nv-platform/tegra234-p3768-0000+p3767-xxxx-nv-common.dtsi
++++ b/nv-platform/tegra234-p3768-0000+p3767-xxxx-nv-common.dtsi
+@@ -127,30 +127,35 @@
  			status = "okay";
  		};
  
--		/* SPI1, 40pin header, Pin 19(MOSI), Pin 21(MISO), Pin 23(CLK), Pin 24(CS) */
--		spi@3210000{
++		/* SPI1, 40pin header, Pin 19(MOSI), Pin 21(MISO), Pin 23(CLK), Pin 24(CS) */
+ 		/* SPI1, 40pin header, Pin 19(MOSI), Pin 21(MISO), Pin 23(CLK), Pin 24(CS) */
+ 		spi@3210000{
 -			status = "okay";
 -			spi@0 {
 -				compatible = "tegra-spidev";
@@ -318,40 +320,36 @@ index 3f68f82..74228fd 100644
 -				};
 -			};
 -
--		};
-+        /* SPI1, 40pin header, Pin 19(MOSI), Pin 21(MISO), Pin 23(CLK), Pin 24(CS) */
-+        spi@3210000{
-+            status = "okay";
-+            cs-gpios = <&gpio TEGRA234_MAIN_GPIO(Z, 6) GPIO_ACTIVE_LOW>;  /* SPI1_CS0 */
-+            slb9670: spi@0 {
-+                 compatible = "infineon,slb9670";
-+                 reg = <0x0>;
-+                 spi-max-frequency = <5000000>;
-+                 status = "okay";
-+                 reset-gpios = <&gpio
-+                     TEGRA234_AON_GPIO(CC, 0)
-+                     GPIO_ACTIVE_LOW>;
-+                 controller-data {
-+                     nvidia,enable-hw-based-cs;
-+                     nvidia,rx-clk-tap-delay = <0x10>;
-+                     nvidia,tx-clk-tap-delay = <0x0>;
-+                 };
-+             };
-+             spi@1 {
-+                 compatible = "tegra-spidev";
-+                 reg = <0x1>;
-+                 spi-max-frequency = <50000000>;
-+                 controller-data {
-+                     nvidia,enable-hw-based-cs;
-+                     nvidia,rx-clk-tap-delay = <0x10>;
-+                     nvidia,tx-clk-tap-delay = <0x0>;
-+                 };
-+             };
-+        };
++		    status = "okay";
++		    cs-gpios = <&gpio TEGRA234_MAIN_GPIO(Z, 6) GPIO_ACTIVE_LOW>;  /* SPI1_CS0 */
++		    slb9670: spi@0 {
++			 compatible = "infineon,slb9670";
++			 reg = <0x0>;
++			 spi-max-frequency = <5000000>;
++			 status = "okay";
++			 reset-gpios = <&gpio
++			     TEGRA234_AON_GPIO(CC, 0)
++			     GPIO_ACTIVE_LOW>;
++			 controller-data {
++			     nvidia,enable-hw-based-cs;
++			     nvidia,rx-clk-tap-delay = <0x10>;
++			     nvidia,tx-clk-tap-delay = <0x0>;
++			 };
++		     };
++		     spi@1 {
++			 compatible = "tegra-spidev";
++			 reg = <0x1>;
++			 spi-max-frequency = <50000000>;
++			 controller-data {
++			     nvidia,enable-hw-based-cs;
++			     nvidia,rx-clk-tap-delay = <0x10>;
++			     nvidia,tx-clk-tap-delay = <0x0>;
++			 };
++		     };
+ 		};
  
  		/* SPI3, 40pin header, Pin 37(MOSI), Pin 22(MISO), Pin 13(CLK), Pin 18(CS) */
- 		spi@3230000{
-@@ -178,18 +182,6 @@
+@@ -178,18 +183,6 @@
  			};
  		};
  
@@ -370,7 +368,7 @@ index 3f68f82..74228fd 100644
  		i2c@c240000 {
  			status = "okay";
  			ina32211_1_40: ina3221@40 {
-@@ -213,22 +205,6 @@
+@@ -213,22 +206,6 @@
  					shunt-resistor-micro-ohms = <5000>;
  				};
  			};
@@ -393,7 +391,7 @@ index 3f68f82..74228fd 100644
  		};
  
  		pcie-ep@14160000 {/* C4 - End Point */
-@@ -421,7 +397,7 @@
+@@ -421,7 +398,7 @@
  
  	display@13800000 {
  		/* os_gpio_hotplug_a is used for hotplug */
@@ -402,10 +400,10 @@ index 3f68f82..74228fd 100644
  		status = "okay";
  	};
  
-diff --git a/hardware/nvidia/t23x/nv-public/nv-soc/tegra234-soc-overlay.dtsi b/hardware/nvidia/t23x/nv-public/nv-soc/tegra234-soc-overlay.dtsi
+diff --git a/nv-soc/tegra234-soc-overlay.dtsi b/nv-soc/tegra234-soc-overlay.dtsi
 index a40d9b6..41a6379 100644
---- a/hardware/nvidia/t23x/nv-public/nv-soc/tegra234-soc-overlay.dtsi
-+++ b/hardware/nvidia/t23x/nv-public/nv-soc/tegra234-soc-overlay.dtsi
+--- a/nv-soc/tegra234-soc-overlay.dtsi
++++ b/nv-soc/tegra234-soc-overlay.dtsi
 @@ -291,7 +291,7 @@
  			interrupts = <GIC_SPI TEGRA234_IRQ_UARTB IRQ_TYPE_LEVEL_HIGH>;
  			clocks = <&bpmp TEGRA234_CLK_UARTB>;
@@ -415,19 +413,21 @@ index a40d9b6..41a6379 100644
  		};
  
  		tachometer@39c0000 {
-diff --git a/hardware/nvidia/t23x/nv-public/tegra234-p3768-0000.dtsi b/hardware/nvidia/t23x/nv-public/tegra234-p3768-0000.dtsi
-index 5d0298b..5ed9f69 100644
---- a/hardware/nvidia/t23x/nv-public/tegra234-p3768-0000.dtsi
-+++ b/hardware/nvidia/t23x/nv-public/tegra234-p3768-0000.dtsi
-@@ -79,7 +79,7 @@
+diff --git a/tegra234-p3768-0000.dtsi b/tegra234-p3768-0000.dtsi
+index 5d0298b..cb35e07 100644
+--- a/tegra234-p3768-0000.dtsi
++++ b/tegra234-p3768-0000.dtsi
+@@ -79,8 +79,8 @@
  
  			ports {
  				/* recovery port */
 -				usb2-0 {
+-					mode = "otg";
 +				usb_recovery: usb2-0 {
- 					mode = "otg";
++					mode = "device";
  					vbus-supply = <&vdd_5v0_sys>;
  					status = "okay";
+ 					usb-role-switch;
 @@ -108,7 +108,12 @@
  
  				/* J5 */
@@ -442,10 +442,10 @@ index 5d0298b..5ed9f69 100644
  					status = "okay";
  				};
  			};
-diff --git a/hardware/nvidia/t23x/nv-public/tegra234.dtsi b/hardware/nvidia/t23x/nv-public/tegra234.dtsi
+diff --git a/tegra234.dtsi b/tegra234.dtsi
 index 91474c5..4195973 100644
---- a/hardware/nvidia/t23x/nv-public/tegra234.dtsi
-+++ b/hardware/nvidia/t23x/nv-public/tegra234.dtsi
+--- a/tegra234.dtsi
++++ b/tegra234.dtsi
 @@ -3174,7 +3174,7 @@
  
  						usb3-2 {
@@ -473,3 +473,6 @@ index 91474c5..4195973 100644
  		};
  
  		pcie-ep@140e0000 {
+-- 
+2.51.2
+
