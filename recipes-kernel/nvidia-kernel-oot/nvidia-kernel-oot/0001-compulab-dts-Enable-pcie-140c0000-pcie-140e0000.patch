@@ -1,0 +1,36 @@
+From c83ceba2c8d0581c02211808e35b41c1c3114629 Mon Sep 17 00:00:00 2001
+From: Valentin Raevsky <valentin@compulab.co.il>
+Date: Fri, 12 Dec 2025 12:37:19 +0200
+Subject: [PATCH] compulab: dts: Enable pcie@140c0000, pcie@140e0000
+
+Signed-off-by: Valentin Raevsky <valentin@compulab.co.il>
+Upstream-Status: Pending
+---
+ tegra234.dtsi | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/tegra234.dtsi b/tegra234.dtsi
+index 91474c5..e836a9f 100644
+--- a/tegra234.dtsi
++++ b/tegra234.dtsi
+@@ -4544,7 +4544,7 @@
+ 			iommu-map-mask = <0x0>;
+ 			dma-coherent;
+ 
+-			status = "disabled";
++			status = "okay";
+ 		};
+ 
+ 		pcie@140e0000 {
+@@ -4598,7 +4598,7 @@
+ 			iommu-map-mask = <0x0>;
+ 			dma-coherent;
+ 
+-			status = "disabled";
++			status = "okay";
+ 		};
+ 
+ 		pcie-ep@140e0000 {
+-- 
+2.34.1
+

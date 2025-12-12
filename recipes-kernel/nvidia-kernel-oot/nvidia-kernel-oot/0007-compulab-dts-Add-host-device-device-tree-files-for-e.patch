@@ -1,0 +1,243 @@
+From fcc1b3947ea03f6872751cb805ede8f2af7300bb Mon Sep 17 00:00:00 2001
+From: Valentin Raevsky <valentin@compulab.co.il>
+Date: Fri, 12 Dec 2025 12:53:56 +0200
+Subject: [PATCH] compulab: dts: Add host/device device tree files for each
+ platform
+
+Signed-off-by: Valentin Raevsky <valentin@compulab.co.il>
+Upstream-Status: Pending
+---
+ nv-platform/Makefile                                | 12 ++++++++++++
+ ...gra234-p3768-0000+p3767-0000-nv-super-device.dts | 12 ++++++++++++
+ ...tegra234-p3768-0000+p3767-0000-nv-super-host.dts | 13 +++++++++++++
+ ...gra234-p3768-0000+p3767-0001-nv-super-device.dts | 12 ++++++++++++
+ ...tegra234-p3768-0000+p3767-0001-nv-super-host.dts | 13 +++++++++++++
+ ...gra234-p3768-0000+p3767-0003-nv-super-device.dts | 12 ++++++++++++
+ ...tegra234-p3768-0000+p3767-0003-nv-super-host.dts | 13 +++++++++++++
+ ...gra234-p3768-0000+p3767-0004-nv-super-device.dts | 12 ++++++++++++
+ ...tegra234-p3768-0000+p3767-0004-nv-super-host.dts | 13 +++++++++++++
+ ...gra234-p3768-0000+p3767-0005-nv-super-device.dts | 12 ++++++++++++
+ ...tegra234-p3768-0000+p3767-0005-nv-super-host.dts | 13 +++++++++++++
+ 11 files changed, 137 insertions(+)
+ create mode 100644 nv-platform/tegra234-p3768-0000+p3767-0000-nv-super-device.dts
+ create mode 100644 nv-platform/tegra234-p3768-0000+p3767-0000-nv-super-host.dts
+ create mode 100644 nv-platform/tegra234-p3768-0000+p3767-0001-nv-super-device.dts
+ create mode 100644 nv-platform/tegra234-p3768-0000+p3767-0001-nv-super-host.dts
+ create mode 100644 nv-platform/tegra234-p3768-0000+p3767-0003-nv-super-device.dts
+ create mode 100644 nv-platform/tegra234-p3768-0000+p3767-0003-nv-super-host.dts
+ create mode 100644 nv-platform/tegra234-p3768-0000+p3767-0004-nv-super-device.dts
+ create mode 100644 nv-platform/tegra234-p3768-0000+p3767-0004-nv-super-host.dts
+ create mode 100644 nv-platform/tegra234-p3768-0000+p3767-0005-nv-super-device.dts
+ create mode 100644 nv-platform/tegra234-p3768-0000+p3767-0005-nv-super-host.dts
+
+diff --git a/nv-platform/Makefile b/nv-platform/Makefile
+index b1f47dc..36461b0 100644
+--- a/nv-platform/Makefile
++++ b/nv-platform/Makefile
+@@ -29,6 +29,18 @@ dtb-y += tegra234-p3768-0000+p3767-0004-nv-super.dtb
+ dtb-y += tegra234-p3768-0000+p3767-0005-nv.dtb
+ dtb-y += tegra234-p3768-0000+p3767-0005-nv-super.dtb
+ 
++dtb-y += tegra234-p3768-0000+p3767-0000-nv-super-host.dtb
++dtb-y += tegra234-p3768-0000+p3767-0001-nv-super-host.dtb
++dtb-y += tegra234-p3768-0000+p3767-0003-nv-super-host.dtb
++dtb-y += tegra234-p3768-0000+p3767-0004-nv-super-host.dtb
++dtb-y += tegra234-p3768-0000+p3767-0005-nv-super-host.dtb
++
++dtb-y += tegra234-p3768-0000+p3767-0000-nv-super-device.dtb
++dtb-y += tegra234-p3768-0000+p3767-0001-nv-super-device.dtb
++dtb-y += tegra234-p3768-0000+p3767-0003-nv-super-device.dtb
++dtb-y += tegra234-p3768-0000+p3767-0004-nv-super-device.dtb
++dtb-y += tegra234-p3768-0000+p3767-0005-nv-super-device.dtb
++
+ ifneq ($(dtb-y),)
+ dtb-y := $(addprefix $(makefile-path)/,$(dtb-y))
+ endif
+diff --git a/nv-platform/tegra234-p3768-0000+p3767-0000-nv-super-device.dts b/nv-platform/tegra234-p3768-0000+p3767-0000-nv-super-device.dts
+new file mode 100644
+index 0000000..a4aac6d
+--- /dev/null
++++ b/nv-platform/tegra234-p3768-0000+p3767-0000-nv-super-device.dts
+@@ -0,0 +1,12 @@
++// SPDX-License-Identifier: GPL-2.0-only
++// SPDX-FileCopyrightText: Copyright (c) 2024, NVIDIA CORPORATION & AFFILIATES.  All rights reserved.
++
++#include "tegra234-p3768-0000+p3767-0000-nv-super.dts"
++
++&{/} {
++	model = "NVIDIA Jetson Orin NX Engineering Reference Developer Kit Super (usb-device)";
++};
++
++&usb_recovery {
++    mode = "device";
++};
+diff --git a/nv-platform/tegra234-p3768-0000+p3767-0000-nv-super-host.dts b/nv-platform/tegra234-p3768-0000+p3767-0000-nv-super-host.dts
+new file mode 100644
+index 0000000..90f7b03
+--- /dev/null
++++ b/nv-platform/tegra234-p3768-0000+p3767-0000-nv-super-host.dts
+@@ -0,0 +1,13 @@
++// SPDX-License-Identifier: GPL-2.0-only
++// SPDX-FileCopyrightText: Copyright (c) 2024, NVIDIA CORPORATION & AFFILIATES.  All rights reserved.
++
++#include "tegra234-p3768-0000+p3767-0000-nv-super.dts"
++
++&{/} {
++	model = "NVIDIA Jetson Orin NX Engineering Reference Developer Kit Super (usb-host)";
++};
++
++&usb_recovery {
++    mode = "host";
++    /delete-property/ usb-role-switch;
++};
+diff --git a/nv-platform/tegra234-p3768-0000+p3767-0001-nv-super-device.dts b/nv-platform/tegra234-p3768-0000+p3767-0001-nv-super-device.dts
+new file mode 100644
+index 0000000..8ba68bd
+--- /dev/null
++++ b/nv-platform/tegra234-p3768-0000+p3767-0001-nv-super-device.dts
+@@ -0,0 +1,12 @@
++// SPDX-License-Identifier: GPL-2.0
++// SPDX-FileCopyrightText: Copyright (c) 2024, NVIDIA CORPORATION & AFFILIATES.  All rights reserved.
++
++#include "tegra234-p3768-0000+p3767-0001-nv-super.dts"
++
++&{/} {
++	model = "NVIDIA Jetson Orin NX Engineering Reference Developer Kit Super (usb-device)";
++};
++
++&usb_recovery {
++    mode = "device";
++};
+diff --git a/nv-platform/tegra234-p3768-0000+p3767-0001-nv-super-host.dts b/nv-platform/tegra234-p3768-0000+p3767-0001-nv-super-host.dts
+new file mode 100644
+index 0000000..9e86dd7
+--- /dev/null
++++ b/nv-platform/tegra234-p3768-0000+p3767-0001-nv-super-host.dts
+@@ -0,0 +1,13 @@
++// SPDX-License-Identifier: GPL-2.0
++// SPDX-FileCopyrightText: Copyright (c) 2024, NVIDIA CORPORATION & AFFILIATES.  All rights reserved.
++
++#include "tegra234-p3768-0000+p3767-0001-nv-super.dts"
++
++&{/} {
++	model = "NVIDIA Jetson Orin NX Engineering Reference Developer Kit Super (usb-host)";
++};
++
++&usb_recovery {
++    mode = "host";
++    /delete-property/ usb-role-switch;
++};
+diff --git a/nv-platform/tegra234-p3768-0000+p3767-0003-nv-super-device.dts b/nv-platform/tegra234-p3768-0000+p3767-0003-nv-super-device.dts
+new file mode 100644
+index 0000000..1cfad49
+--- /dev/null
++++ b/nv-platform/tegra234-p3768-0000+p3767-0003-nv-super-device.dts
+@@ -0,0 +1,12 @@
++// SPDX-License-Identifier: GPL-2.0
++// SPDX-FileCopyrightText: Copyright (c) 2024, NVIDIA CORPORATION & AFFILIATES.  All rights reserved.
++
++#include "tegra234-p3768-0000+p3767-0003-nv-super.dts"
++
++&{/} {
++	model = "NVIDIA Jetson Orin Nano Engineering Reference Developer Kit Super (usb-device)";
++};
++
++&usb_recovery {
++    mode = "device";
++};
+diff --git a/nv-platform/tegra234-p3768-0000+p3767-0003-nv-super-host.dts b/nv-platform/tegra234-p3768-0000+p3767-0003-nv-super-host.dts
+new file mode 100644
+index 0000000..ed1e423
+--- /dev/null
++++ b/nv-platform/tegra234-p3768-0000+p3767-0003-nv-super-host.dts
+@@ -0,0 +1,13 @@
++// SPDX-License-Identifier: GPL-2.0
++// SPDX-FileCopyrightText: Copyright (c) 2024, NVIDIA CORPORATION & AFFILIATES.  All rights reserved.
++
++#include "tegra234-p3768-0000+p3767-0003-nv-super.dts"
++
++&{/} {
++	model = "NVIDIA Jetson Orin Nano Engineering Reference Developer Kit Super (usb-host)";
++};
++
++&usb_recovery {
++    mode = "host";
++    /delete-property/ usb-role-switch;
++};
+diff --git a/nv-platform/tegra234-p3768-0000+p3767-0004-nv-super-device.dts b/nv-platform/tegra234-p3768-0000+p3767-0004-nv-super-device.dts
+new file mode 100644
+index 0000000..9ff12d4
+--- /dev/null
++++ b/nv-platform/tegra234-p3768-0000+p3767-0004-nv-super-device.dts
+@@ -0,0 +1,12 @@
++// SPDX-License-Identifier: GPL-2.0
++// SPDX-FileCopyrightText: Copyright (c) 2024, NVIDIA CORPORATION & AFFILIATES.  All rights reserved.
++
++#include "tegra234-p3768-0000+p3767-0004-nv-super.dts"
++
++&{/} {
++	model = "CompuLab NVIDIA Jetson Orin Nano (usb-device)";
++};
++
++&usb_recovery {
++    mode = "device";
++};
+diff --git a/nv-platform/tegra234-p3768-0000+p3767-0004-nv-super-host.dts b/nv-platform/tegra234-p3768-0000+p3767-0004-nv-super-host.dts
+new file mode 100644
+index 0000000..1aedafc
+--- /dev/null
++++ b/nv-platform/tegra234-p3768-0000+p3767-0004-nv-super-host.dts
+@@ -0,0 +1,13 @@
++// SPDX-License-Identifier: GPL-2.0
++// SPDX-FileCopyrightText: Copyright (c) 2024, NVIDIA CORPORATION & AFFILIATES.  All rights reserved.
++
++#include "tegra234-p3768-0000+p3767-0004-nv-super.dts"
++
++&{/} {
++	model = "CompuLab NVIDIA Jetson Orin Nano (usb-host)";
++};
++
++&usb_recovery {
++    mode = "host";
++    /delete-property/ usb-role-switch;
++};
+diff --git a/nv-platform/tegra234-p3768-0000+p3767-0005-nv-super-device.dts b/nv-platform/tegra234-p3768-0000+p3767-0005-nv-super-device.dts
+new file mode 100644
+index 0000000..515ab17
+--- /dev/null
++++ b/nv-platform/tegra234-p3768-0000+p3767-0005-nv-super-device.dts
+@@ -0,0 +1,12 @@
++// SPDX-License-Identifier: GPL-2.0
++// SPDX-FileCopyrightText: Copyright (c) 2024, NVIDIA CORPORATION & AFFILIATES.  All rights reserved.
++
++#include "tegra234-p3768-0000+p3767-0005-nv-super.dts"
++
++/ {
++	model = "CompuLab NVIDIA Jetson Orin Nano (usb-device)";
++};
++
++&usb_recovery {
++    mode = "device";
++};
+diff --git a/nv-platform/tegra234-p3768-0000+p3767-0005-nv-super-host.dts b/nv-platform/tegra234-p3768-0000+p3767-0005-nv-super-host.dts
+new file mode 100644
+index 0000000..fbbdff8
+--- /dev/null
++++ b/nv-platform/tegra234-p3768-0000+p3767-0005-nv-super-host.dts
+@@ -0,0 +1,13 @@
++// SPDX-License-Identifier: GPL-2.0
++// SPDX-FileCopyrightText: Copyright (c) 2024, NVIDIA CORPORATION & AFFILIATES.  All rights reserved.
++
++#include "tegra234-p3768-0000+p3767-0005-nv-super.dts"
++
++&{/} {
++	model = "CompuLab NVIDIA Jetson Orin Nano (usb-host)";
++};
++
++&usb_recovery {
++    mode = "host";
++    /delete-property/ usb-role-switch;
++};
+-- 
+2.34.1
+

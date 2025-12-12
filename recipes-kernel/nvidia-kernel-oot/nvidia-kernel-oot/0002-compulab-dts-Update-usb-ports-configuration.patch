@@ -1,0 +1,55 @@
+From 5eb3600df93c802db48defe56a2f867d4c24c1f5 Mon Sep 17 00:00:00 2001
+From: Valentin Raevsky <valentin@compulab.co.il>
+Date: Fri, 12 Dec 2025 12:38:42 +0200
+Subject: [PATCH] compulab: dts: Update usb ports configuration
+
+Signed-off-by: Valentin Raevsky <valentin@compulab.co.il>
+Upstream-Status: Pending
+---
+ tegra234-p3768-0000.dtsi | 9 +++++++--
+ tegra234.dtsi            | 2 +-
+ 2 files changed, 8 insertions(+), 3 deletions(-)
+
+diff --git a/tegra234-p3768-0000.dtsi b/tegra234-p3768-0000.dtsi
+index 5d0298b..5ed9f69 100644
+--- a/tegra234-p3768-0000.dtsi
++++ b/tegra234-p3768-0000.dtsi
+@@ -79,7 +79,7 @@
+ 
+ 			ports {
+ 				/* recovery port */
+-				usb2-0 {
++				usb_recovery: usb2-0 {
+ 					mode = "otg";
+ 					vbus-supply = <&vdd_5v0_sys>;
+ 					status = "okay";
+@@ -108,7 +108,12 @@
+ 
+ 				/* J5 */
+ 				usb3-1 {
+-					nvidia,usb2-companion = <0>;
++					nvidia,usb2-companion = <1>;
++					status = "okay";
++				};
++
++				usb3-2 {
++					nvidia,usb2-companion = <2>;
+ 					status = "okay";
+ 				};
+ 			};
+diff --git a/tegra234.dtsi b/tegra234.dtsi
+index e836a9f..4195973 100644
+--- a/tegra234.dtsi
++++ b/tegra234.dtsi
+@@ -3174,7 +3174,7 @@
+ 
+ 						usb3-2 {
+ 							nvidia,function = "xusb";
+-							status = "disabled";
++							status = "okay";
+ 							#phy-cells = <0>;
+ 						};
+ 
+-- 
+2.34.1
+

@@ -1,0 +1,27 @@
+From 5ff2268ed046e09d513918432defaa6350c9c5ed Mon Sep 17 00:00:00 2001
+From: Valentin Raevsky <valentin@compulab.co.il>
+Date: Fri, 12 Dec 2025 12:43:59 +0200
+Subject: [PATCH] compulab: dts: Change the display@13800000 hotplug polarity
+
+Signed-off-by: Valentin Raevsky <valentin@compulab.co.il>
+Upstream-Status: Pending
+---
+ nv-platform/tegra234-p3768-0000+p3767-xxxx-nv-common.dtsi | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/nv-platform/tegra234-p3768-0000+p3767-xxxx-nv-common.dtsi b/nv-platform/tegra234-p3768-0000+p3767-xxxx-nv-common.dtsi
+index 3f68f82..c70b517 100644
+--- a/nv-platform/tegra234-p3768-0000+p3767-xxxx-nv-common.dtsi
++++ b/nv-platform/tegra234-p3768-0000+p3767-xxxx-nv-common.dtsi
+@@ -421,7 +421,7 @@
+ 
+ 	display@13800000 {
+ 		/* os_gpio_hotplug_a is used for hotplug */
+-		os_gpio_hotplug_a = <&gpio TEGRA234_MAIN_GPIO(M, 0) GPIO_ACTIVE_HIGH>;
++		os_gpio_hotplug_a = <&gpio TEGRA234_MAIN_GPIO(M, 0) GPIO_ACTIVE_LOW>;
+ 		status = "okay";
+ 	};
+ 
+-- 
+2.34.1
+

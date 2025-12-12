@@ -1,0 +1,35 @@
+From f85f9836323798cdc7701304686afaa937d9d5ab Mon Sep 17 00:00:00 2001
+From: Valentin Raevsky <valentin@compulab.co.il>
+Date: Fri, 12 Dec 2025 12:52:43 +0200
+Subject: [PATCH] compulab: dts: Define tpm on spi@3210000
+
+Signed-off-by: Valentin Raevsky <valentin@compulab.co.il>
+Upstream-Status: Pending
+---
+ .../tegra234-p3768-0000+p3767-xxxx-nv-common.dtsi        | 9 ++++++---
+ 1 file changed, 6 insertions(+), 3 deletions(-)
+
+diff --git a/nv-platform/tegra234-p3768-0000+p3767-xxxx-nv-common.dtsi b/nv-platform/tegra234-p3768-0000+p3767-xxxx-nv-common.dtsi
+index 8b27e64..85698da 100644
+--- a/nv-platform/tegra234-p3768-0000+p3767-xxxx-nv-common.dtsi
++++ b/nv-platform/tegra234-p3768-0000+p3767-xxxx-nv-common.dtsi
+@@ -130,10 +130,13 @@
+ 		/* SPI1, 40pin header, Pin 19(MOSI), Pin 21(MISO), Pin 23(CLK), Pin 24(CS) */
+ 		spi@3210000{
+ 			status = "okay";
+-			spi@0 {
+-				compatible = "tegra-spidev";
++			cs-gpios = <&gpio TEGRA234_MAIN_GPIO(Z, 6) GPIO_ACTIVE_LOW>;  /* SPI1_CS0 */
++			slb9670: spi@0 {
++				compatible = "infineon,slb9670";
+ 				reg = <0x0>;
+-				spi-max-frequency = <50000000>;
++				spi-max-frequency = <5000000>;
++				status = "okay";
++				reset-gpios = <&gpio TEGRA234_AON_GPIO(CC, 0) GPIO_ACTIVE_LOW>;
+ 				controller-data {
+ 					nvidia,enable-hw-based-cs;
+ 					nvidia,rx-clk-tap-delay = <0x10>;
+-- 
+2.34.1
+
