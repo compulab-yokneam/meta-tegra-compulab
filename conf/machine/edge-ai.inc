@@ -25,3 +25,21 @@ KERNEL_DEVICETREE:edge-ai:append = " \
     tegra234-p3768-0000+p3767-0005-nv-super-device.dtb \
     tegra234-p3768-0000+p3767-0005-nv-super-host.dtb \
 "
+
+PREFERRED_PROVIDER_virtual/kernel = "linux-yocto"
+TEGRA_DEFAULT_KERNEL = "linux-yocto"
+
+CORE_IMAGE_EXTRA_INSTALL:append = " \
+    nvidia-kernel-oot \
+    nvidia-kernel-oot-extra \
+    nvidia-kernel-oot-base \
+    nvidia-kernel-oot-cameras \
+    nvidia-kernel-oot-display \
+    nvidia-kernel-oot-alsa \
+    nvidia-kernel-oot-devicetrees \
+    kernel-modules \
+"
+
+CORE_IMAGE_EXTRA_INSTALL:append = " \
+    i2c-tools \
+"
