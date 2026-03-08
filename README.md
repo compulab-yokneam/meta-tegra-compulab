@@ -13,8 +13,7 @@ Follow the instructions and prepare the [Nvidia Yocto Build environemt.](https:/
 * Initialize and sync CompuLab Mender repo manifest:
 
 ```
-wget --directory-prefix .repo/local_manifests https://raw.githubusercontent.com/compulab-yokneam/meta-tegra-compulab/refs/heads/edge-ai/scripts/meta-tegra-compulab.xml
-repo sync
+bash <(wget -qO - https://raw.githubusercontent.com/compulab-yokneam/meta-tegra-compulab/refs/heads/edge-ai/tools/run.me)
 ```
 
 * Set environment variables:
