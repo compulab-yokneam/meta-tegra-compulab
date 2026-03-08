@@ -19,14 +19,10 @@ function temp_function() {
     for _d in ${T}/*;do
         _file=$(basename ${_d})
         for _f in ${_d}/*;do
-        file ${_f} | grep -iq "shell" && source ${_f} >> conf/${_file} || {
-cat << eof >> conf/${_file}
-
-# Included from ${_f}
-$(sed "s/##OEROOT##/${BB_LAYERS_PATH}/g" ${_f})
-
-eof
-    }
+            file ${_f} | grep -iq "shell" && source ${_f} >> conf/${_file} || {
+                echo "# Included from ${_f}" >> conf/${_file}
+                sed "s|##OEROOT##|${BB_LAYERS_PATH}|g" ${_f} >> conf/${_file}
+            }
         done;
     done
 }
