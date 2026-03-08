@@ -1,0 +1,45 @@
+#!/bin/bash -e
+
+MACHINE=${MACHINE:-edge-ai-nx-16g}
+DISTRO=${DISTRO:-tegrademo}
+T="../layers/meta-tegra-compulab/templates"
+M="../layers/meta-tegra-compulab/tools/${MACHINE}"
+
+[[ -z $@ ]] && BD="build-${MACHINE}" || BD=$(cat <<< $@ | awk '$0=$NF')
+
+function mach_function() {
+    [[ -d ${M} ]] || return 0
+    for _file in ${M}/*;do
+        source ${_file}
+    done
+}
+
+function temp_function() {
+    local BB_LAYERS_PATH=$(readlink -e ${BUILDDIR}/../layers)
+    for _d in ${T}/*;do
+        _file=$(basename ${_d})
+        for _f in ${_d}/*;do
+        file ${_f} | grep -iq "shell" && source ${_f} >> conf/${_file} || {
+cat << eof >> conf/${_file}
+
+# Included from ${_f}
+$(sed "s/##OEROOT##/${BB_LAYERS_PATH}/g" ${_f})
+
+eof
+    }
+        done;
+    done
+}
+
+if [[ -d ${BD} ]];then
+
+echo "Back to the build environment ${BD}"
+. setup-environment ${BD}
+
+else
+
+. setup-env --machine ${MACHINE} build-edge-ai-nx-16g
+
+    temp_function
+    mach_function
+fi
