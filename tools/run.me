@@ -1,0 +1,45 @@
+#!/bin/bash -x
+
+META="https://github.com/compulab-yokneam/meta-tegra-compulab.git"
+work_dir=$(pwd)
+layers_dir=${work_dir}/layers
+meta_layer_dir=${work_dir}/layers/meta-tegra-compulab
+
+[[ -d ${layers_dir} ]] || exit 22
+
+sync_layer() {
+    if [[ -d ${meta_layer_dir} ]];then
+        git -C ${meta_layer_dir} remote update
+        git -C ${meta_layer_dir} pull
+    fi
+}
+
+clone_layer() {
+    if [[ ! -d ${meta_layer_dir} ]];then
+        pushd ${layers_dir}
+        git clone ${META}
+        popd
+    fi
+}
+
+show_help() {
+cat << eof
+--
+Available CompuLab configurations:
+eof
+for MACH in edge-ai-nx-16g edge-ai-nx-8g edge-ai-nano-8g edge-ai-nano-4g;do
+cat << eof
+    export MACHINE=${MACH}; source compulab-setup-env build-${MACH}
+eof
+done
+cat << eof
+--
+    bitbake -k demo-image-weston
+--
+eof
+}
+
+clone_layer
+sync_layer
+ln -fs layers/meta-tegra-compulab/tools/compulab-setup-env
+show_help
