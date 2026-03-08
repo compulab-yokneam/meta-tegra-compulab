@@ -9,9 +9,7 @@ mkdir tegra-compulab && cd tegra-compulab
 * NVidia Yocto build environment</br>
 Follow the instructions and prepare the [Nvidia Yocto Build environemt.](https://github.com/OE4T/tegra-demo-distro?tab=readme-ov-file#tegra-demo-distro)
 
-
-* Initialize and sync CompuLab Mender repo manifest:
-
+* Add CompuLab NVidia meta-layer:
 ```
 bash <(wget -qO - https://raw.githubusercontent.com/compulab-yokneam/meta-tegra-compulab/refs/heads/edge-ai/tools/run.me)
 ```
