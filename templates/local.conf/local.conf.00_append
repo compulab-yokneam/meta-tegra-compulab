@@ -1,2 +1,1 @@
 IMAGE_INSTALL:append = " firefox "
-DISTRO_FEATURES:append = " polkit "
