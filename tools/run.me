@@ -1,25 +1,33 @@
 #!/bin/bash -x
 
-META="https://github.com/compulab-yokneam/meta-tegra-compulab.git"
+META_LAYERS=" https://github.com/OSSystems/meta-browser.git "
+META_LAYERS+=" https://github.com/compulab-yokneam/meta-tegra-compulab.git "
+
 work_dir=$(pwd)
 layers_dir=${work_dir}/layers
-meta_layer_dir=${work_dir}/layers/meta-tegra-compulab
 
 [[ -d ${layers_dir} ]] || exit 22
 
-sync_layer() {
+_sync_layer() {
     if [[ -d ${meta_layer_dir} ]];then
         git -C ${meta_layer_dir} remote update
         git -C ${meta_layer_dir} pull
     fi
 }
 
-clone_layer() {
+_clone_layer() {
     if [[ ! -d ${meta_layer_dir} ]];then
         pushd ${layers_dir}
-        git clone ${META}
+        git clone ${meta_layer}
         popd
     fi
+}
+
+prepare_layer() {
+    local meta_layer_dir=$(basename ${meta_layer})
+    meta_layer_dir=${layers_dir}/${meta_layer_dir/.git/}
+    meta_layer_dir=${meta_layer_dir} meta_layer=${meta_layer} _clone_layer
+    meta_layer_dir=${meta_layer_dir} meta_layer=${meta_layer} _sync_layer
 }
 
 show_help() {
@@ -39,7 +47,9 @@ cat << eof
 eof
 }
 
-clone_layer
-sync_layer
+for _meta_layer in ${META_LAYERS};do
+    meta_layer=${_meta_layer} prepare_layer
+done
+
 ln -fs layers/meta-tegra-compulab/tools/compulab-setup-env
 show_help
