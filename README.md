@@ -12,7 +12,9 @@ mkdir tegra-compulab && cd tegra-compulab
 
 * Download Tegra CompuLab repo:
 ```
-bash <(wget -qO - https://raw.githubusercontent.com/compulab-yokneam/meta-tegra-compulab/refs/heads/edge-ai/tools/run.me)
+SRC_REV_NVIDIA="HEAD" \
+SRC_REV_CLAB="master" \
+bash <(wget -qO - https://raw.githubusercontent.com/compulab-yokneam/meta-tegra-compulab/refs/heads/master/tools/run.me)
 ```
 
 * Set environment variables:
