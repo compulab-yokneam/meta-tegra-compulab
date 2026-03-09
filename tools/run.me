@@ -1,5 +1,19 @@
 #!/bin/bash -x
 
+SRC_URI="https://github.com/OE4T/tegra-demo-distro.git"
+SRC_REV=${SRC_REV:-"068529e2b78153332a84045e2ea6c9d555024d23"}
+tegra_bsp_dir=$(basename ${SRC_URI})
+tegra_bsp_dir=${tegra_bsp_dir/.git/}
+
+init_tegra() {
+    [[ ! -d {tegra_bsp_dir=} ]] || return 0
+    git clone ${SRC_URI}
+    cd tegra-demo-distro
+    git checkout -b tegra-compulab ${SRC_REV}
+    git submodule update --init
+}
+init_tegra
+
 META_LAYERS=" https://github.com/OSSystems/meta-browser.git "
 META_LAYERS+=" https://github.com/compulab-yokneam/meta-tegra-compulab.git "
 
@@ -32,6 +46,9 @@ prepare_layer() {
 
 show_help() {
 cat << eof
+--
+BSP: ${tegra_bsp_dir} is ready;
+    Issue: cd ${tegra_bsp_dir}
 --
 Available CompuLab configurations:
 eof
