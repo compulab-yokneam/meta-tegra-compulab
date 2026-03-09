@@ -6,7 +6,7 @@ tegra_bsp_dir=$(basename ${SRC_URI})
 tegra_bsp_dir=${tegra_bsp_dir/.git/}
 
 init_tegra() {
-    [[ ! -d {tegra_bsp_dir} ]] || return 0
+    [[ ! -d ${tegra_bsp_dir} ]] || return 0
     git clone ${SRC_URI}
     cd tegra-demo-distro
     git checkout -b tegra-compulab ${SRC_REV}
