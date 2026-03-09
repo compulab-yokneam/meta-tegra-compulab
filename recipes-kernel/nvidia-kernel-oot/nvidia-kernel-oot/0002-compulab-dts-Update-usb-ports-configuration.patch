@@ -1,20 +1,19 @@
-From 5eb3600df93c802db48defe56a2f867d4c24c1f5 Mon Sep 17 00:00:00 2001
+From 8473685c2a2fd1a08fdbb2433abd111c0f6c0fe3 Mon Sep 17 00:00:00 2001
 From: Valentin Raevsky <valentin@compulab.co.il>
-Date: Fri, 12 Dec 2025 12:38:42 +0200
-Subject: [PATCH] compulab: dts: Update usb ports configuration
+Date: Mon, 9 Mar 2026 09:36:12 +0200
+Subject: [PATCH 2/6] compulab: dts: Update usb ports configuration
 
 Signed-off-by: Valentin Raevsky <valentin@compulab.co.il>
-Upstream-Status: Pending
 ---
- tegra234-p3768-0000.dtsi | 9 +++++++--
- tegra234.dtsi            | 2 +-
+ .../nvidia/t23x/nv-public/tegra234-p3768-0000+p3767.dtsi | 9 +++++++--
+ hardware/nvidia/t23x/nv-public/tegra234.dtsi             | 2 +-
  2 files changed, 8 insertions(+), 3 deletions(-)
 
-diff --git a/tegra234-p3768-0000.dtsi b/tegra234-p3768-0000.dtsi
-index 5d0298b..5ed9f69 100644
---- a/tegra234-p3768-0000.dtsi
-+++ b/tegra234-p3768-0000.dtsi
-@@ -79,7 +79,7 @@
+diff --git a/hardware/nvidia/t23x/nv-public/tegra234-p3768-0000+p3767.dtsi b/hardware/nvidia/t23x/nv-public/tegra234-p3768-0000+p3767.dtsi
+index 4182135..70431c0 100644
+--- a/hardware/nvidia/t23x/nv-public/tegra234-p3768-0000+p3767.dtsi
++++ b/hardware/nvidia/t23x/nv-public/tegra234-p3768-0000+p3767.dtsi
+@@ -97,7 +97,7 @@
  
  			ports {
  				/* recovery port */
@@ -23,7 +22,7 @@ index 5d0298b..5ed9f69 100644
  					mode = "otg";
  					vbus-supply = <&vdd_5v0_sys>;
  					status = "okay";
-@@ -108,7 +108,12 @@
+@@ -126,7 +126,12 @@
  
  				/* J5 */
  				usb3-1 {
@@ -37,11 +36,11 @@ index 5d0298b..5ed9f69 100644
  					status = "okay";
  				};
  			};
-diff --git a/tegra234.dtsi b/tegra234.dtsi
-index e836a9f..4195973 100644
---- a/tegra234.dtsi
-+++ b/tegra234.dtsi
-@@ -3174,7 +3174,7 @@
+diff --git a/hardware/nvidia/t23x/nv-public/tegra234.dtsi b/hardware/nvidia/t23x/nv-public/tegra234.dtsi
+index 99bf4d8..174c03d 100644
+--- a/hardware/nvidia/t23x/nv-public/tegra234.dtsi
++++ b/hardware/nvidia/t23x/nv-public/tegra234.dtsi
+@@ -3176,7 +3176,7 @@
  
  						usb3-2 {
  							nvidia,function = "xusb";

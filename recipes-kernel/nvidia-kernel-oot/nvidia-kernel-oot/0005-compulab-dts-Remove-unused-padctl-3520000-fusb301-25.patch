@@ -1,19 +1,18 @@
-From ea20aa54fa5e0e2e1798673897899df7ba489531 Mon Sep 17 00:00:00 2001
+From 042d1c6641b15d4dcc298fe63e47a9f90d8ea518 Mon Sep 17 00:00:00 2001
 From: Valentin Raevsky <valentin@compulab.co.il>
-Date: Fri, 12 Dec 2025 12:44:53 +0200
-Subject: [PATCH] compulab: dts: Remove unused padctl@3520000 fusb301@25
+Date: Mon, 9 Mar 2026 09:44:36 +0200
+Subject: [PATCH 5/6] compulab: dts: Remove unused padctl@3520000 fusb301@25
 
 Signed-off-by: Valentin Raevsky <valentin@compulab.co.il>
-Upstream-Status: Pending
 ---
  ...ra234-p3768-0000+p3767-xxxx-nv-common.dtsi | 28 -------------------
  1 file changed, 28 deletions(-)
 
-diff --git a/nv-platform/tegra234-p3768-0000+p3767-xxxx-nv-common.dtsi b/nv-platform/tegra234-p3768-0000+p3767-xxxx-nv-common.dtsi
-index c70b517..8b27e64 100644
---- a/nv-platform/tegra234-p3768-0000+p3767-xxxx-nv-common.dtsi
-+++ b/nv-platform/tegra234-p3768-0000+p3767-xxxx-nv-common.dtsi
-@@ -178,18 +178,6 @@
+diff --git a/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-xxxx-nv-common.dtsi b/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-xxxx-nv-common.dtsi
+index 2ed3600..f842be2 100644
+--- a/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-xxxx-nv-common.dtsi
++++ b/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-xxxx-nv-common.dtsi
+@@ -162,36 +162,8 @@
  			};
  		};
  
@@ -31,11 +30,6 @@ index c70b517..8b27e64 100644
 -
  		i2c@c240000 {
  			status = "okay";
- 			ina32211_1_40: ina3221@40 {
-@@ -213,22 +201,6 @@
- 					shunt-resistor-micro-ohms = <5000>;
- 				};
- 			};
 -			fusb301@25 {
 -				compatible = "onsemi,fusb301";
 -				reg = <0x25>;
@@ -54,7 +48,7 @@ index c70b517..8b27e64 100644
 -			};
  		};
  
- 		pcie-ep@14160000 {/* C4 - End Point */
+ 		/* PWM1, 40pin header, pin 15 */
 -- 
 2.34.1
 

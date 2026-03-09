@@ -1,19 +1,18 @@
-From f85f9836323798cdc7701304686afaa937d9d5ab Mon Sep 17 00:00:00 2001
+From 1991b87a607da44d7832837a9cd58b5ed6e29f70 Mon Sep 17 00:00:00 2001
 From: Valentin Raevsky <valentin@compulab.co.il>
-Date: Fri, 12 Dec 2025 12:52:43 +0200
-Subject: [PATCH] compulab: dts: Define tpm on spi@3210000
+Date: Mon, 9 Mar 2026 09:48:03 +0200
+Subject: [PATCH 6/6] compulab: dts: Define tpm on spi@3210000
 
 Signed-off-by: Valentin Raevsky <valentin@compulab.co.il>
-Upstream-Status: Pending
 ---
  .../tegra234-p3768-0000+p3767-xxxx-nv-common.dtsi        | 9 ++++++---
  1 file changed, 6 insertions(+), 3 deletions(-)
 
-diff --git a/nv-platform/tegra234-p3768-0000+p3767-xxxx-nv-common.dtsi b/nv-platform/tegra234-p3768-0000+p3767-xxxx-nv-common.dtsi
-index 8b27e64..85698da 100644
---- a/nv-platform/tegra234-p3768-0000+p3767-xxxx-nv-common.dtsi
-+++ b/nv-platform/tegra234-p3768-0000+p3767-xxxx-nv-common.dtsi
-@@ -130,10 +130,13 @@
+diff --git a/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-xxxx-nv-common.dtsi b/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-xxxx-nv-common.dtsi
+index f842be2..0cdcad3 100644
+--- a/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-xxxx-nv-common.dtsi
++++ b/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-xxxx-nv-common.dtsi
+@@ -114,10 +114,13 @@
  		/* SPI1, 40pin header, Pin 19(MOSI), Pin 21(MISO), Pin 23(CLK), Pin 24(CS) */
  		spi@3210000{
  			status = "okay";

@@ -1,18 +1,17 @@
-From f41968b82babe9b7c6c1327bbe7613017fb657f3 Mon Sep 17 00:00:00 2001
+From 199a8420a92929b7f6458f701d18fc966709b28a Mon Sep 17 00:00:00 2001
 From: Valentin Raevsky <valentin@compulab.co.il>
-Date: Fri, 12 Dec 2025 12:40:00 +0200
-Subject: [PATCH] compulab: dts: Enable serial@3110000
+Date: Mon, 9 Mar 2026 09:37:41 +0200
+Subject: [PATCH 3/6] compulab: dts: Enable serial@3110000
 
 Signed-off-by: Valentin Raevsky <valentin@compulab.co.il>
-Upstream-Status: Pending
 ---
- nv-soc/tegra234-soc-overlay.dtsi | 2 +-
+ hardware/nvidia/t23x/nv-public/nv-soc/tegra234-soc-overlay.dtsi | 2 +-
  1 file changed, 1 insertion(+), 1 deletion(-)
 
-diff --git a/nv-soc/tegra234-soc-overlay.dtsi b/nv-soc/tegra234-soc-overlay.dtsi
-index a40d9b6..41a6379 100644
---- a/nv-soc/tegra234-soc-overlay.dtsi
-+++ b/nv-soc/tegra234-soc-overlay.dtsi
+diff --git a/hardware/nvidia/t23x/nv-public/nv-soc/tegra234-soc-overlay.dtsi b/hardware/nvidia/t23x/nv-public/nv-soc/tegra234-soc-overlay.dtsi
+index adbcca2..24a8347 100644
+--- a/hardware/nvidia/t23x/nv-public/nv-soc/tegra234-soc-overlay.dtsi
++++ b/hardware/nvidia/t23x/nv-public/nv-soc/tegra234-soc-overlay.dtsi
 @@ -291,7 +291,7 @@
  			interrupts = <GIC_SPI TEGRA234_IRQ_UARTB IRQ_TYPE_LEVEL_HIGH>;
  			clocks = <&bpmp TEGRA234_CLK_UARTB>;
