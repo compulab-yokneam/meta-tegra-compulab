@@ -1,21 +1,23 @@
 #!/bin/bash -x
 
-SRC_URI="https://github.com/OE4T/tegra-demo-distro.git"
-SRC_REV=${SRC_REV:-"068529e2b78153332a84045e2ea6c9d555024d23"}
-tegra_bsp_dir=$(basename ${SRC_URI})
+SRC_URI_NVIDIA="https://github.com/OE4T/tegra-demo-distro.git"
+SRC_REV_NVIDIA=${SRC_REV_NVIDIA:-HEAD}
+tegra_bsp_dir=$(basename ${SRC_URI_NVIDIA})
 tegra_bsp_dir=${tegra_bsp_dir/.git/}
 
 init_tegra() {
-    [[ ! -d {tegra_bsp_dir=} ]] || return 0
-    git clone ${SRC_URI}
+    if [[ ! -d ${tegra_bsp_dir} ]];then
+        git clone ${SRC_URI_NVIDIA}
+    fi
     cd tegra-demo-distro
-    git checkout -b tegra-compulab ${SRC_REV}
+    git checkout ${SRC_REV_NVIDIA}
     git submodule update --init
 }
 init_tegra
 
+SRC_URI_CLAB=" https://github.com/compulab-yokneam/meta-tegra-compulab.git "
 META_LAYERS=" https://github.com/OSSystems/meta-browser.git "
-META_LAYERS+=" https://github.com/compulab-yokneam/meta-tegra-compulab.git "
+META_LAYERS+=" ${SRC_URI_CLAB} "
 
 work_dir=$(pwd)
 layers_dir=${work_dir}/layers
@@ -44,6 +46,14 @@ prepare_layer() {
     meta_layer_dir=${meta_layer_dir} meta_layer=${meta_layer} _sync_layer
 }
 
+SRC_REV_CLAB=${SRC_REV_CLAB:-"master"}
+clab_layer_dir=$(basename ${SRC_URI_CLAB})
+clab_layer_dir=${layers_dir}/${clab_layer_dir/.git/}
+clab_checkout() {
+    git -C ${clab_layer_dir} checkout remotes/origin/${SRC_REV_CLAB}
+}
+
+
 show_help() {
 cat << eof
 --
@@ -67,6 +77,7 @@ eof
 for _meta_layer in ${META_LAYERS};do
     meta_layer=${_meta_layer} prepare_layer
 done
+clab_checkout
 
 ln -fs layers/meta-tegra-compulab/tools/compulab-setup-env
 show_help
