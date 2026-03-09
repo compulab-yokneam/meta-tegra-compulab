@@ -4,6 +4,7 @@ Date: Mon, 9 Mar 2026 09:44:36 +0200
 Subject: [PATCH 5/6] compulab: dts: Remove unused padctl@3520000 fusb301@25
 
 Signed-off-by: Valentin Raevsky <valentin@compulab.co.il>
+Upstream-Status: Pending
 ---
  ...ra234-p3768-0000+p3767-xxxx-nv-common.dtsi | 28 -------------------
  1 file changed, 28 deletions(-)

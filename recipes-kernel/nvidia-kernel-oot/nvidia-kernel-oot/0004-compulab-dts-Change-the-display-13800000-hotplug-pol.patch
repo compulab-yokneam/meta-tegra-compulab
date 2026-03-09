@@ -5,6 +5,7 @@ Subject: [PATCH 4/6] compulab: dts: Change the display@13800000 hotplug
  polarity
 
 Signed-off-by: Valentin Raevsky <valentin@compulab.co.il>
+Upstream-Status: Pending
 ---
  .../nv-platform/tegra234-p3768-0000+p3767-xxxx-nv-common.dtsi   | 2 +-
  1 file changed, 1 insertion(+), 1 deletion(-)
