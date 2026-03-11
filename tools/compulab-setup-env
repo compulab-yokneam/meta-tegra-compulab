@@ -34,7 +34,7 @@ echo "Back to the build environment ${BD}"
 
 else
 
-. setup-env --machine ${MACHINE} build-edge-ai-nx-16g
+. setup-env --machine ${MACHINE} build-${MACHINE}
 
     temp_function
     mach_function
