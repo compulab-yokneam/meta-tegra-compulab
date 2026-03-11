@@ -20,7 +20,7 @@ KERNEL_DEVICETREE:edge-ai:append = " \
 PREFERRED_PROVIDER_virtual/kernel = "linux-yocto"
 TEGRA_DEFAULT_KERNEL = "linux-yocto"
 
-CORE_IMAGE_EXTRA_INSTALL:append = " \
+CORE_IMAGE_BASE_INSTALL:append = " \
     nvidia-kernel-oot \
     nvidia-kernel-oot-extra \
     nvidia-kernel-oot-base \
@@ -29,8 +29,28 @@ CORE_IMAGE_EXTRA_INSTALL:append = " \
     nvidia-kernel-oot-alsa \
     nvidia-kernel-oot-devicetrees \
     kernel-modules \
+    linux-firmware-iwlwifi-misc	\
+    linux-firmware-ibt-misc \
 "
 
 CORE_IMAGE_EXTRA_INSTALL:append = " \
+    bluez5 \
+    can-utils \
+    nfs-utils \
+    usbutils \
+    net-tools \
     i2c-tools \
+    libgpiod-tools \
+    memtester \
+    minicom \
+    tmux \
+    iotop \
+    htop \
+    iperf3 \
+    firefox \
+"
+
+CORE_IMAGE_EXTRA_INSTALL:append:conflict = " \
+    networkmanager \
+    modemmanager \
 "
