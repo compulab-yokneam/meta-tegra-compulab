@@ -43,3 +43,8 @@ bitbake -k demo-image-weston
 ```
 bitbake -k demo-image-full
 ```
+
+## Precompiled Images
+* edge-ai-nx-16g
+  * [demo-image-weston](https://drive.google.com/drive/folders/1Kj6_xZBRThOyjulUS2X3prKE2pX6xgyA)
+  * [demo-image-full](https://drive.google.com/drive/folders/1dG4C0DaF26InvtGSQA88-71Qc9tyARQX)
