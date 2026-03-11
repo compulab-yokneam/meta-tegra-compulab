@@ -1,1 +1,2 @@
-IMAGE_INSTALL:append = " firefox "
+PACKAGE_CLASSES = " package_deb "
+EXTRA_IMAGE_FEATURES += " package-management " 
