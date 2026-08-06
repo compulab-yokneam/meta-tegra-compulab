@@ -18,7 +18,7 @@ new_str="exclusion-info = <0>;"
 pushd /build_dir/Linux_for_Tegra/
 
 case "${DEVICE_TYPE}" in
-	"edge-ai-nx-16g")
+	"edge-ai-nx-16g" | "edge-ai-nx-8g")
 		install -m 0644 /build_dir/edge-ai/tegra234-edge-ai-gpio-default.dtsi bootloader/
 		install -m 0644 /build_dir/edge-ai/tegra234-edge-ai-padvoltage-default.dtsi bootloader/
 		install -m 0644 /build_dir/edge-ai/tegra234-edge-ai-pinmux.dtsi bootloader/
