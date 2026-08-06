@@ -1,4 +1,4 @@
-MACHINEOVERRIDES =. "edge-ai:"
+MACHINEOVERRIDES .= ":edge-ai"
 TEGRA_FLASHVAR_MB2BCT_CFG = "tegra234-edge-ai-mb2-bct-misc-p3767-0000.dts"
 TEGRA_FLASHVAR_PINMUX_CONFIG = "tegra234-edge-ai-pinmux.dtsi"
 TEGRA_FLASHVAR_PMC_CONFIG = "tegra234-edge-ai-padvoltage-default.dtsi"
