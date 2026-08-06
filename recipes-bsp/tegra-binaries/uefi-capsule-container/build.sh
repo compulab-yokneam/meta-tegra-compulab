@@ -1,0 +1,119 @@
+#!/bin/bash
+
+set -e
+
+fw_config_dtsi_path="/build_dir/Linux_for_Tegra/bootloader/tegra234-firewall-config-base.dtsi"
+mb2_bct_paths=(
+	"/build_dir/Linux_for_Tegra/bootloader/tegra234-mb2-bct-common.dtsi"
+	"/build_dir/Linux_for_Tegra/bootloader/generic/BCT/tegra234-mb2-bct-misc-p3701-0002-p3740-0002.dts"
+	"/build_dir/Linux_for_Tegra/bootloader/generic/BCT/tegra234-mb2-bct-misc-p3767-0000.dts"
+	"/build_dir/Linux_for_Tegra/bootloader/generic/BCT/tegra234-mb2-bct-misc-p3701-0002-p3711-0000.dts"
+	)
+
+bl_spec="t23x_3767_bl_spec"
+lines=(2766 2771 2776 2781 2786 2791 2796 2801 2806 2811 2816 2821 2826 2831 25712 25717 25722 25727 25732 25737 25742 25747 25752 25757 25762 25767)
+old_str="exclusion-info = <2>;"
+new_str="exclusion-info = <0>;"
+
+pushd /build_dir/Linux_for_Tegra/
+
+case "${DEVICE_TYPE}" in
+	"edge-ai-nx-16g")
+		install -m 0644 /build_dir/edge-ai/tegra234-edge-ai-gpio-default.dtsi bootloader/
+		install -m 0644 /build_dir/edge-ai/tegra234-edge-ai-padvoltage-default.dtsi bootloader/
+		install -m 0644 /build_dir/edge-ai/tegra234-edge-ai-pinmux.dtsi bootloader/
+		install -m 0644 /build_dir/edge-ai/tegra234-edge-ai-mb2-bct-misc-p3767-0000.dts bootloader/
+
+		# Both jetson-orin-nano-devkit board aliases used by the board spec source
+		# this file, so one override covers the normal and Super BUP entries.
+		cat >> p3768-0000-p3767-0000-a0.conf <<'EOF'
+
+# CompuLab Edge-AI carrier flash configuration
+PINMUX_CONFIG="tegra234-edge-ai-pinmux.dtsi";
+PMC_CONFIG="tegra234-edge-ai-padvoltage-default.dtsi";
+MB2_BCT="tegra234-edge-ai-mb2-bct-misc-p3767-0000.dts";
+ODMDATA="gbe-uphy-config-9,hsstp-lane-map-3,hsio-uphy-config-0";
+EOF
+		sed -i 's/\(enable_wdt =\).*;/\1 <1>;/g' bootloader/tegra234-mb1-bct-misc-common.dtsi
+		;;
+	"jetson-agx-orin-devkit-64gb" | "jetson-agx-orin-devkit")
+		bl_spec="t23x_agx_bl_spec"
+		;;
+	"jetson-orin-nano-seeed-j3010" | "jetson-orin-nx-seeed-j4012")
+		mkdir -p /build_dir/Seeed_36_5_0
+		pushd /build_dir/Seeed_36_5_0
+		git clone https://github.com/Seeed-Studio/Linux_for_Tegra.git -b r36.5.0 --single-branch
+		pushd Linux_for_Tegra
+		# Latest revision as of May 22 2026
+		git checkout d51ebf5ff7f21673418bb66bb40c29f9b6040453
+		popd
+		popd
+		cp -r /build_dir/Seeed_36_5_0/Linux_for_Tegra/* /build_dir/Linux_for_Tegra/
+		cp p3768-0000-p3767-0000-a0.conf p3768-0000-p3767-0000-a0_original.conf
+
+		if [[ "${DEVICE_TYPE}" = "jetson-orin-nx-seeed-j4012" ]]; then
+			# J4012 Classic does not support the Super mode
+			cat recomputer-orin-j401.conf > p3768-0000-p3767-0000-a0.conf
+		elif [[ "${DEVICE_TYPE}" = "jetson-orin-nano-seeed-j3010" ]]; then
+			cat recomputer-orin-super-j401.conf > p3768-0000-p3767-0000-a0.conf
+		fi
+
+		# These dtbos are referenced in recomputer-orin-j401.conf but are not
+		# present in the BSP archive or built when creating the UEFI capsule.
+		sed -i "s/tegra234-p3767-camera-p3768-imx219-dual-seeed.dtbo//g" p3768-0000-p3767-0000-a0.conf
+		sed -i "s/tegra234-p3767-camera-p3768-imx219-quad-seeed.dtbo//g" p3768-0000-p3767-0000-a0.conf
+		sed -i "s#p3768-0000-p3767-0000-a0.conf#p3768-0000-p3767-0000-a0_original.conf#g" p3768-0000-p3767-0000-a0.conf
+		;;
+	"forecr-dsb-ornx-orin-nano-8gb")
+		wget https://github.com/forecr/dsboard_ornx_lan_orin_bsp/raw/164c5c81e244d8e83cfb03ae771bdc7fa27c087c/dsboard_ornx_lan_orin_nano_JP6_2_2_bsp.tar.xz -O /build_dir/dsboard_ornx_lan_orin_nano_JP6_2_2_bsp.tar.xz
+		pushd /build_dir/
+		tar xf dsboard_ornx_lan_orin_nano_JP6_2_2_bsp.tar.xz
+		cp -r ./dsboard_ornx_lan_orin_nano_JP6_2_2_bsp/* .
+		sudo ./replace_bsp_files.sh
+		popd
+		;;
+	*)
+		:
+		;;
+esac
+
+# Allow the QSPI to be accessible for OTA re-writing/recovery if necessary.
+for line_number in "${lines[@]}"; do
+	sed -i "${line_number}s#${old_str}#${new_str}#g" "${fw_config_dtsi_path}"
+	echo "Replaced exclusion info on line $line_number"
+done
+
+# Allow modules in carrier boards without an EEPROM to boot. The Edge-AI MB2
+# file is intentionally not in this list because the carrier provides EEPROM.
+for mb2_bct_path in "${mb2_bct_paths[@]}"; do
+	sed -i "s#cvb_eeprom_read_size = <0x100>#cvb_eeprom_read_size = <0x0>#g" "${mb2_bct_path}"
+done
+
+# These binaries are built using the Yocto recipes.
+cp /build_dir/yocto_standalone_mm_optee.bin /build_dir/Linux_for_Tegra/bootloader/standalonemm_optee_t234.bin
+cp /build_dir/Linux_for_Tegra/bootloader/yocto_uefi_jetson.bin /build_dir/Linux_for_Tegra/bootloader/uefi_jetson.bin
+cp /build_dir/Linux_for_Tegra/yocto_jetson_board_spec.cfg /build_dir/Linux_for_Tegra/jetson_board_spec.cfg
+
+# OP-TEE, ATF and TOS build steps are taken from the README in the OP-TEE sources.
+dtc -I dts -O dtb -o /build_dir/optee/tegra234-optee.dtb /build_dir/optee/tegra234-optee.dts
+
+pushd /build_dir/atf_build
+./nvbuild.sh
+popd
+pushd /build_dir/
+
+./optee_src_build.sh -p t234 -t
+
+Linux_for_Tegra/nv_tegra/tos-scripts/gen_tos_part_img.py --monitor /build_dir/atf_build/arm-trusted-firmware/generic-t234/tegra/t234/release/bl31.bin --os /build_dir/optee/build/t234/core/tee-raw.bin --dtb /build_dir/optee/tegra234-optee.dtb --tostype optee /build_dir/tos.img
+
+cp /build_dir/tos.img /build_dir/Linux_for_Tegra/bootloader/tos-optee_t234.img
+
+popd
+
+pushd /build_dir/Linux_for_Tegra/
+sudo ./l4t_generate_soc_bup.sh -e ${bl_spec} t23x
+sudo ./generate_capsule/l4t_generate_soc_capsule.sh -i bootloader/payloads_t23x/bl_only_payload -o ./TEGRA_BL.Cap t234
+
+gzip TEGRA_BL.Cap
+
+exit 0
