@@ -1,7 +1,7 @@
 FILESEXTRAPATHS:prepend := "${THISDIR}/${PN}:"
 
-SRC_URI += "file://0001-compulab-Disable-DecreaseRootfsRetryCount.patch;patchdir=../edk2-nvidia"
-SRC_URI += " \
+SRC_URI:append:edge-ai = " file://0001-compulab-Disable-DecreaseRootfsRetryCount.patch;patchdir=../edk2-nvidia"
+SRC_URI:append:edge-ai = " \
     file://EdgeAI-ORN480.bmp \
     file://EdgeAI-ORN720.bmp \
     file://EdgeAI-ORN1080.bmp \
@@ -13,6 +13,6 @@ do_deploy_clab_logo() {
     cp ${WORKDIR}/EdgeAI-ORN1080.bmp ${S}/../edk2-nvidia/Silicon/NVIDIA/Drivers/Logo/nvidiagray1080.bmp
 }
 
-do_compile:prepend() {
+do_compile:prepend:edge-ai() {
     do_deploy_clab_logo
 }

@@ -1,6 +1,6 @@
 FILESEXTRAPATHS:prepend := "${THISDIR}/${PN}:"
 
-SRC_URI += " \
+SRC_URI:append:edge-ai = " \
 	file://0001-compulab-dts-Enable-pcie-140c0000-pcie-140e0000.patch \
 	file://0002-compulab-dts-Update-usb-ports-configuration.patch \
 	file://0003-compulab-dts-Enable-serial-3110000.patch \
