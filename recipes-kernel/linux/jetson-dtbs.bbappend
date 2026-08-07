@@ -23,6 +23,10 @@ do_install:append:edge-ai-nano-8g() {
 	install_edge_ai_dtbs
 }
 
+do_install:append:edge-ai-nano-4g() {
+	install_edge_ai_dtbs
+}
+
 EDGE_AI_DTB_FILES = " \
 	/boot/tegra234-p3768-0000+p3767-0005-nv.dtb \
 	/boot/tegra234-p3768-0000+p3767-0005-nv-super.dtb \
@@ -39,3 +43,4 @@ EDGE_AI_DTB_FILES = " \
 FILES:${PN}:edge-ai-nx-16g += "${EDGE_AI_DTB_FILES}"
 FILES:${PN}:edge-ai-nx-8g += "${EDGE_AI_DTB_FILES}"
 FILES:${PN}:edge-ai-nano-8g += "${EDGE_AI_DTB_FILES}"
+FILES:${PN}:edge-ai-nano-4g += "${EDGE_AI_DTB_FILES}"

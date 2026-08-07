@@ -9,3 +9,7 @@ HOSTAPP_HOOKS:append:edge-ai-nx-8g = " \
 HOSTAPP_HOOKS:append:edge-ai-nano-8g = " \
      99-resin-bootfiles-orin-nano-devkit-nvme \
 "
+
+HOSTAPP_HOOKS:append:edge-ai-nano-4g = " \
+     99-resin-bootfiles-orin-nano-devkit-nvme \
+"

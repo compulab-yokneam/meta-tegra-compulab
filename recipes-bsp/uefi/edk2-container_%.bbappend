@@ -2,6 +2,7 @@ DEFAULT_DTB:edge-ai-nx-16g = "tegra234-p3768-0000+p3767-0000-nv-super.dtb"
 DEFAULT_DTB:edge-ai-nx-8g = "tegra234-p3768-0000+p3767-0001-nv-super.dtb"
 EDGE_AI_NX_16G_PATCH = "0001-Orin-NX-16GB-Integrate-with-balenaOS-on-L4T-36.5.patch"
 DEFAULT_DTB:edge-ai-nano-8g = "tegra234-p3768-0000+p3767-0003-nv-super.dtb"
+DEFAULT_DTB:edge-ai-nano-4g = "tegra234-p3768-0000+p3767-0004-nv-super.dtb"
 EDGE_AI_NANO_PATCH = "0001-Orin-Nano-Integrate-with-balenaOS-on-L4T-36.5.patch"
 
 do_compile:prepend:edge-ai-nx-16g() {
@@ -14,4 +15,8 @@ do_compile:prepend:edge-ai-nx-8g() {
 
 do_compile:prepend:edge-ai-nano-8g() {
     sed -i "/edge-ai-nano-8g/d;/declare -A device_specific_patches/a device_specific_patches[\"edge-ai-nano-8g\"]=\"${EDGE_AI_NANO_PATCH}\"" ${WORKDIR}/build.sh
+}
+
+do_compile:prepend:edge-ai-nano-4g() {
+    sed -i "/edge-ai-nano-4g/d;/declare -A device_specific_patches/a device_specific_patches[\"edge-ai-nano-4g\"]=\"${EDGE_AI_NANO_PATCH}\"" ${WORKDIR}/build.sh
 }

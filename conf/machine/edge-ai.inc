@@ -19,6 +19,7 @@ KERNEL_DEVICETREE:edge-ai:append = " \
     tegra234-p3768-0000+p3767-0001-nv-super.dtb \
     tegra234-p3768-0000+p3767-0003-nv.dtb \
     tegra234-p3768-0000+p3767-0003-nv-super.dtb \
+    tegra234-p3768-0000+p3767-0004-nv.dtb \
     tegra234-p3768-0000+p3767-0004-nv-super.dtb \
     tegra234-p3768-0000+p3767-0005-nv-super.dtb \
 "
