@@ -11,11 +11,7 @@ install_edge_ai_dtbs() {
 	install -m 0644 "${DEPLOY_DIR_IMAGE}/devicetree/tegra234-p3768-0000+p3767-0000-nv-super.dtb" "${D}/boot/tegra234-p3768-0000+p3767-0000-nv-super.dtb"
 }
 
-do_install:append:edge-ai-nx-16g() {
-	install_edge_ai_dtbs
-}
-
-do_install:append:edge-ai-nx-8g() {
+do_install:append:edge-ai-nx() {
 	install_edge_ai_dtbs
 }
 
@@ -36,6 +32,5 @@ EDGE_AI_DTB_FILES = " \
 	/boot/tegra234-p3768-0000+p3767-0000-nv-super.dtb \
 "
 
-FILES:${PN}:edge-ai-nx-16g += "${EDGE_AI_DTB_FILES}"
-FILES:${PN}:edge-ai-nx-8g += "${EDGE_AI_DTB_FILES}"
+FILES:${PN}:edge-ai-nx += "${EDGE_AI_DTB_FILES}"
 FILES:${PN}:edge-ai-nano += "${EDGE_AI_DTB_FILES}"
