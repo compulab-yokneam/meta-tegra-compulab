@@ -19,11 +19,7 @@ do_install:append:edge-ai-nx-8g() {
 	install_edge_ai_dtbs
 }
 
-do_install:append:edge-ai-nano-8g() {
-	install_edge_ai_dtbs
-}
-
-do_install:append:edge-ai-nano-4g() {
+do_install:append:edge-ai-nano() {
 	install_edge_ai_dtbs
 }
 
@@ -42,5 +38,4 @@ EDGE_AI_DTB_FILES = " \
 
 FILES:${PN}:edge-ai-nx-16g += "${EDGE_AI_DTB_FILES}"
 FILES:${PN}:edge-ai-nx-8g += "${EDGE_AI_DTB_FILES}"
-FILES:${PN}:edge-ai-nano-8g += "${EDGE_AI_DTB_FILES}"
-FILES:${PN}:edge-ai-nano-4g += "${EDGE_AI_DTB_FILES}"
+FILES:${PN}:edge-ai-nano += "${EDGE_AI_DTB_FILES}"

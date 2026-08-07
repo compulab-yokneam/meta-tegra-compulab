@@ -13,10 +13,6 @@ do_compile:prepend:edge-ai-nx-8g() {
     sed -i "/edge-ai-nx-8g/d;/declare -A device_specific_patches/a device_specific_patches[\"edge-ai-nx-8g\"]=\"${EDGE_AI_NX_16G_PATCH}\"" ${WORKDIR}/build.sh
 }
 
-do_compile:prepend:edge-ai-nano-8g() {
-    sed -i "/edge-ai-nano-8g/d;/declare -A device_specific_patches/a device_specific_patches[\"edge-ai-nano-8g\"]=\"${EDGE_AI_NANO_PATCH}\"" ${WORKDIR}/build.sh
-}
-
-do_compile:prepend:edge-ai-nano-4g() {
-    sed -i "/edge-ai-nano-4g/d;/declare -A device_specific_patches/a device_specific_patches[\"edge-ai-nano-4g\"]=\"${EDGE_AI_NANO_PATCH}\"" ${WORKDIR}/build.sh
+do_compile:prepend:edge-ai-nano() {
+    sed -i "/${MACHINE}/d;/declare -A device_specific_patches/a device_specific_patches[\"${MACHINE}\"]=\"${EDGE_AI_NANO_PATCH}\"" ${WORKDIR}/build.sh
 }
