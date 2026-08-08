@@ -33,10 +33,8 @@ COPY ./0001-TegraPlatformBootManager-TegraPlatformBootManagerDxe_patch.txt build
 # See https://forums.developer.nvidia.com/t/jetson-orin-nano-ota-35-5-0-36-3-failed-to-boot-after-ota-upgrade-from-35-5-0-to-36-3/296205/16
 COPY ./0001-StandaloneMmOptee-Don-t-assert-if-var-store-integrit_patch.txt /build/nvidia-uefi/edk2-nvidia/0001-StandaloneMmOptee-Don-t-assert-if-var-store-integrit.patch
 
-# Keep the CompuLab branding in the UEFI binary installed by OTA capsules.
-COPY ./EdgeAI-ORN480.bmp /build/nvidia-uefi/edk2-nvidia/Silicon/NVIDIA/Drivers/Logo/nvidiagray480.bmp
-COPY ./EdgeAI-ORN720.bmp /build/nvidia-uefi/edk2-nvidia/Silicon/NVIDIA/Drivers/Logo/nvidiagray720.bmp
-COPY ./EdgeAI-ORN1080.bmp /build/nvidia-uefi/edk2-nvidia/Silicon/NVIDIA/Drivers/Logo/nvidiagray1080.bmp
+# Apply this binary mail patch after build.sh resets the edk2-nvidia checkout.
+COPY ./0001-Logo-Add-CompuLab-Edge-AI-splash-screens_patch.txt /build/edge-ai-patches/
 
 COPY ./build.sh /build/build.sh
 
