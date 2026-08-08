@@ -7,4 +7,5 @@ SRC_URI:append:edge-ai = " \
 	file://0004-compulab-dts-Change-the-display-13800000-hotplug-pol.patch \
 	file://0005-compulab-dts-Remove-unused-padctl-3520000-fusb301-25.patch \
 	file://0006-compulab-dts-Define-tpm-on-spi-3210000.patch \
+	file://0007-compulab-dts-Set-Edge-AI-platform-identity.patch \
 	"
