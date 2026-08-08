@@ -19,10 +19,17 @@ pushd /build_dir/Linux_for_Tegra/
 
 case "${DEVICE_TYPE}" in
 	"edge-ai-nx-16g" | "edge-ai-nx-8g" | "edge-ai-nano-8g" | "edge-ai-nano-4g")
-		install -m 0644 /build_dir/edge-ai/tegra234-edge-ai-gpio-default.dtsi bootloader/
-		install -m 0644 /build_dir/edge-ai/tegra234-edge-ai-padvoltage-default.dtsi bootloader/
-		install -m 0644 /build_dir/edge-ai/tegra234-edge-ai-pinmux.dtsi bootloader/
-		install -m 0644 /build_dir/edge-ai/tegra234-edge-ai-mb2-bct-misc-p3767-0000.dts bootloader/
+		bct_dir="bootloader/generic/BCT"
+		# L4T resolves PINMUX_CONFIG, PMC_CONFIG, and MB2_BCT relative to
+		# bootloader/generic/BCT. The GPIO file must be colocated with the
+		# pinmux because the latter includes it using a relative path.
+		install -m 0644 /build_dir/edge-ai/tegra234-edge-ai-gpio-default.dtsi "${bct_dir}/"
+		install -m 0644 /build_dir/edge-ai/tegra234-edge-ai-padvoltage-default.dtsi "${bct_dir}/"
+		install -m 0644 /build_dir/edge-ai/tegra234-edge-ai-pinmux.dtsi "${bct_dir}/"
+		install -m 0644 /build_dir/edge-ai/tegra234-edge-ai-mb2-bct-misc-p3767-0000.dts "${bct_dir}/"
+		# The BUP generator otherwise takes NVIDIA's stock kernel DTBs from the
+		# BSP archive and overwrites the Edge-AI DTB during a capsule update.
+		install -m 0644 /build_dir/edge-ai/dtbs/*.dtb kernel/dtb/
 
 		# Both jetson-orin-nano-devkit board aliases used by the board spec source
 		# this file, so one override covers the normal and Super BUP entries.
@@ -111,8 +118,23 @@ cp /build_dir/tos.img /build_dir/Linux_for_Tegra/bootloader/tos-optee_t234.img
 popd
 
 pushd /build_dir/Linux_for_Tegra/
-sudo ./l4t_generate_soc_bup.sh -e ${bl_spec} t23x
-sudo ./generate_capsule/l4t_generate_soc_capsule.sh -i bootloader/payloads_t23x/bl_only_payload -o ./TEGRA_BL.Cap t234
+payload_path="bootloader/payloads_t23x/bl_only_payload"
+
+# NVIDIA's BUP wrapper can return success even when every board configuration
+# failed. Remove previous outputs and validate each newly generated artifact so
+# an old capsule can never be packaged as the result of a failed build.
+rm -f "${payload_path}" TEGRA_BL.Cap TEGRA_BL.Cap.gz
+sudo ./l4t_generate_soc_bup.sh -e "${bl_spec}" t23x
+if [ ! -s "${payload_path}" ]; then
+	echo "ERROR: L4T did not generate ${payload_path}" >&2
+	exit 1
+fi
+
+sudo ./generate_capsule/l4t_generate_soc_capsule.sh -i "${payload_path}" -o ./TEGRA_BL.Cap t234
+if [ ! -s TEGRA_BL.Cap ]; then
+	echo "ERROR: L4T did not generate TEGRA_BL.Cap" >&2
+	exit 1
+fi
 
 gzip TEGRA_BL.Cap
 

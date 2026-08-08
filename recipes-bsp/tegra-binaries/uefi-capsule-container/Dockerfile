@@ -33,6 +33,7 @@ COPY ./tegra234-edge-ai-gpio-default.dtsi /build_dir/edge-ai/
 COPY ./tegra234-edge-ai-padvoltage-default.dtsi /build_dir/edge-ai/
 COPY ./tegra234-edge-ai-pinmux.dtsi /build_dir/edge-ai/
 COPY ./tegra234-edge-ai-mb2-bct-misc-p3767-0000.dts /build_dir/edge-ai/
+COPY ./edge-ai-dtbs/ /build_dir/edge-ai/dtbs/
 
 ENV CROSS_COMPILE_AARCH64_PATH=/build_dir/aarch64--glibc--stable-2022.08-1
 ENV CROSS_COMPILE_AARCH64=/build_dir/aarch64--glibc--stable-2022.08-1/bin/aarch64-buildroot-linux-gnu-
