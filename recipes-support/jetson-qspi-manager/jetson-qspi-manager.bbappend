@@ -1,3 +1,10 @@
+FILESEXTRAPATHS:prepend := "${THISDIR}/${PN}:"
+
+SRC_URI:append:edge-ai = " \
+    file://0001-jetson-qspi-helpers-Fix-prepared-capsule-path.patch \
+    file://0002-jetson-qspi-helpers-Wait-for-QSPI-device.patch \
+"
+
 # Edge-AI BUPs contain the NVIDIA Orin Nano compatibility aliases for both
 # normal and Super modes. Use Super to match the UEFI platform configuration
 # selected by the Edge-AI EDK2 build.
