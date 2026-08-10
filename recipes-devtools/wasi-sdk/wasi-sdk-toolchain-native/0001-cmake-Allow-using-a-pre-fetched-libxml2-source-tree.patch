@@ -1,0 +1,44 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: CompuLab <support@compulab.co.il>
+Date: Mon, 10 Aug 2026 00:00:00 +0000
+Subject: [PATCH] cmake: allow using a pre-fetched libxml2 source tree
+
+Build systems such as OpenEmbedded prohibit network access outside the fetch
+task. Allow callers to provide an already fetched and unpacked libxml2 source
+tree instead of downloading the archive from ExternalProject during the build.
+
+Upstream-Status: Inappropriate [OpenEmbedded-specific]
+Signed-off-by: CompuLab <support@compulab.co.il>
+---
+ cmake/wasi-sdk-toolchain.cmake | 18 ++++++++++++++----
+ 1 file changed, 14 insertions(+), 4 deletions(-)
+
+diff --git a/cmake/wasi-sdk-toolchain.cmake b/cmake/wasi-sdk-toolchain.cmake
+index 9dd1df4..12574a8 100644
+--- a/cmake/wasi-sdk-toolchain.cmake
++++ b/cmake/wasi-sdk-toolchain.cmake
+@@ -22,3 +22,5 @@
+ option(WASI_SDK_LIBXML2 "Whether or not to build libxml2 for LLDB" ON)
+-
++
++set(WASI_SDK_LIBXML2_SOURCE_DIR "" CACHE PATH "Use a pre-fetched libxml2 source tree")
++
+ string(REGEX REPLACE "[ ]+" ";" llvm_cmake_flags_list "${LLVM_CMAKE_FLAGS}")
+@@ -183,6 +185,14 @@
+-  if (WASI_SDK_LIBXML2)
+-    ExternalProject_Add(libxml2
++  set(libxml2_source_args
+       URL https://download.gnome.org/sources/libxml2/2.15/libxml2-2.15.2.tar.xz
+       URL_HASH SHA256=c8b9bc81f8b590c33af8cc6c336dbff2f53409973588a351c95f1c621b13d09d
+-
++  )
++  if(WASI_SDK_LIBXML2_SOURCE_DIR)
++    set(libxml2_source_args
++      SOURCE_DIR "${WASI_SDK_LIBXML2_SOURCE_DIR}"
++    )
++  endif()
++
++  if (WASI_SDK_LIBXML2)
++    ExternalProject_Add(libxml2
++      ${libxml2_source_args}
+       CMAKE_ARGS
