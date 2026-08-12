@@ -30,7 +30,7 @@ function temp_function() {
 if [[ -d ${BD} ]];then
 
 echo "Back to the build environment ${BD}"
-. setup-environment ${BD}
+. setup-env ${BD}
 
 else
 
