@@ -1,7 +1,7 @@
-From 042d1c6641b15d4dcc298fe63e47a9f90d8ea518 Mon Sep 17 00:00:00 2001
+From 4d0fe8a6be9eb02fdb8130de43da18b8a14859a5 Mon Sep 17 00:00:00 2001
 From: Valentin Raevsky <valentin@compulab.co.il>
 Date: Mon, 9 Mar 2026 09:44:36 +0200
-Subject: [PATCH 5/6] compulab: dts: Remove unused padctl@3520000 fusb301@25
+Subject: [PATCH] compulab: dts: Remove unused padctl@3520000 fusb301@25
 
 Signed-off-by: Valentin Raevsky <valentin@compulab.co.il>
 Upstream-Status: Pending
@@ -10,10 +10,10 @@ Upstream-Status: Pending
  1 file changed, 28 deletions(-)
 
 diff --git a/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-xxxx-nv-common.dtsi b/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-xxxx-nv-common.dtsi
-index 2ed3600..f842be2 100644
+index e62c22d..4971c1a 100644
 --- a/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-xxxx-nv-common.dtsi
 +++ b/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-xxxx-nv-common.dtsi
-@@ -162,36 +162,8 @@
+@@ -116,36 +116,8 @@
  			};
  		};
  
@@ -51,5 +51,5 @@ index 2ed3600..f842be2 100644
  
  		/* PWM1, 40pin header, pin 15 */
 -- 
-2.34.1
+2.43.0
 

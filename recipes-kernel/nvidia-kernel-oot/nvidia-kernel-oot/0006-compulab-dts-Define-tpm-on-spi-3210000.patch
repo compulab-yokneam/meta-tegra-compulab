@@ -1,7 +1,7 @@
-From 1991b87a607da44d7832837a9cd58b5ed6e29f70 Mon Sep 17 00:00:00 2001
+From 9783c9498d0ee92c2b7191e5306610946440d1bd Mon Sep 17 00:00:00 2001
 From: Valentin Raevsky <valentin@compulab.co.il>
 Date: Mon, 9 Mar 2026 09:48:03 +0200
-Subject: [PATCH 6/6] compulab: dts: Define tpm on spi@3210000
+Subject: [PATCH] compulab: dts: Define tpm on spi@3210000
 
 Signed-off-by: Valentin Raevsky <valentin@compulab.co.il>
 Upstream-Status: Pending
@@ -10,10 +10,10 @@ Upstream-Status: Pending
  1 file changed, 6 insertions(+), 3 deletions(-)
 
 diff --git a/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-xxxx-nv-common.dtsi b/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-xxxx-nv-common.dtsi
-index f842be2..0cdcad3 100644
+index 4971c1a..aeeac3f 100644
 --- a/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-xxxx-nv-common.dtsi
 +++ b/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-xxxx-nv-common.dtsi
-@@ -114,10 +114,13 @@
+@@ -60,12 +60,15 @@
  		/* SPI1, 40pin header, Pin 19(MOSI), Pin 21(MISO), Pin 23(CLK), Pin 24(CS) */
  		spi@3210000{
  			status = "okay";
@@ -25,11 +25,13 @@ index f842be2..0cdcad3 100644
  				reg = <0x0>;
 -				spi-max-frequency = <50000000>;
 +				spi-max-frequency = <5000000>;
+ 				#address-cells = <1>;
+ 				#size-cells = <0>;
 +				status = "okay";
 +				reset-gpios = <&gpio TEGRA234_AON_GPIO(CC, 0) GPIO_ACTIVE_LOW>;
  				controller-data {
  					nvidia,enable-hw-based-cs;
  					nvidia,rx-clk-tap-delay = <0x10>;
 -- 
-2.34.1
+2.43.0
 

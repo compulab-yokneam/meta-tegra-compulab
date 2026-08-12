@@ -1,7 +1,7 @@
-From 8473685c2a2fd1a08fdbb2433abd111c0f6c0fe3 Mon Sep 17 00:00:00 2001
+From 77799d4eca2b7627ed3f9a30c2eaefd54c423a3d Mon Sep 17 00:00:00 2001
 From: Valentin Raevsky <valentin@compulab.co.il>
 Date: Mon, 9 Mar 2026 09:36:12 +0200
-Subject: [PATCH 2/6] compulab: dts: Update usb ports configuration
+Subject: [PATCH] compulab: dts: Update usb ports configuration
 
 Signed-off-by: Valentin Raevsky <valentin@compulab.co.il>
 Upstream-Status: Pending
@@ -51,5 +51,5 @@ index 99bf4d8..174c03d 100644
  						};
  
 -- 
-2.34.1
+2.43.0
 
