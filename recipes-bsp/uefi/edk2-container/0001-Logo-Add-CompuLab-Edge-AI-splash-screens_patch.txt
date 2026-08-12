@@ -1,8 +1,9 @@
 From a2b654678050b0f81e8d8f57c3cc3298377d7d17 Mon Sep 17 00:00:00 2001
-From: balenaOS build <build@balena.io>
+From: Valentin Raevsky <valentin@compulab.co.il>
 Date: Sat, 8 Aug 2026 14:30:44 +0000
 Subject: [PATCH] Logo: Add CompuLab Edge-AI splash screens
 
+Signed-off-by: Valentin Raevsky <valentin@compulab.co.il>
 ---
  .../NVIDIA/Drivers/Logo/nvidiagray1080.bmp    | Bin 6220854 -> 6220854 bytes
  Silicon/NVIDIA/Drivers/Logo/nvidiagray480.bmp | Bin 921654 -> 921654 bytes
@@ -8550,4 +8551,3 @@ p2oNAZfB*pk1PBlyK!5-N0t5&UAV7cs0RjXF5FkK+009DZfd^AN2b%x@
 
 -- 
 2.43.0
-
