@@ -14,7 +14,7 @@ mkdir tegra-compulab && cd tegra-compulab
 ```
 SRC_REV_NVIDIA="HEAD" \
 SRC_REV_CLAB="master" \
-bash <(wget -qO - https://raw.githubusercontent.com/compulab-yokneam/meta-tegra-compulab/refs/heads/master/tools/run.me)
+source <(wget -qO - https://raw.githubusercontent.com/compulab-yokneam/meta-tegra-compulab/refs/heads/master/tools/run.me)
 ```
 
 * Set environment variables:
