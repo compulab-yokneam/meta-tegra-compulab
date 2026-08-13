@@ -1,0 +1,65 @@
+From 2d72df50232bb66479b57e4f737fdf4c6043bf43 Mon Sep 17 00:00:00 2001
+From: Valentin Raevsky <valentin@compulab.co.il>
+Date: Sun, 9 Aug 2026 10:00:00 +0000
+Subject: [PATCH] jetson-qspi-helpers: Wait for QSPI device
+
+jetson-qspi-manager can start before udev and the MTD driver finish creating
+/dev/mtd0.  An immediate test then incorrectly treats a working QSPI device as
+inaccessible and triggers an unnecessary capsule update.
+
+Poll for the device for up to 30 seconds before declaring it inaccessible.
+Use the same bounded wait for the explicit accessibility check and the capsule
+update path.
+
+Signed-off-by: Valentin Raevsky <valentin@compulab.co.il>
+---
+ jetson-qspi-helpers | 19 +++++++++++++++++--
+ 1 file changed, 17 insertions(+), 2 deletions(-)
+
+diff --git a/jetson-qspi-helpers b/jetson-qspi-helpers
+index e658bcb..bac565a 100644
+--- a/jetson-qspi-helpers
++++ b/jetson-qspi-helpers
+@@ -12,6 +12,7 @@ RETRY_COUNT_FILE="jetson-qspi-retry-count"
+ CAPSULE_TARGET_PATH="/EFI/UpdateCapsule/TEGRA_BL.Cap"
+ BOOT_MOUNTPOINT="/mnt/boot/"
+ UEFI_CAPSULE_TARGET_MOUNTPOINT="$BOOT_MOUNTPOINT"
++QSPI_ACCESS_WAIT_SECONDS=30
+ force_capsule_update="n"
+ 
+ efivars_dir="/sys/firmware/efi/efivars/"
+@@ -36,8 +37,22 @@ qspi_accessible() {
+     fi
+ }
+ 
++wait_for_qspi_accessible() {
++    elapsed=0
++
++    while ! qspi_accessible && [ "${elapsed}" -lt "${QSPI_ACCESS_WAIT_SECONDS}" ]; do
++        if [ "${elapsed}" -eq 0 ]; then
++            info "Waiting up to ${QSPI_ACCESS_WAIT_SECONDS} seconds for QSPI access"
++        fi
++        sleep 1
++        elapsed=$((elapsed + 1))
++    done
++
++    qspi_accessible
++}
++
+ check_qspi_accessible() {
+-    if qspi_accessible ; then
++    if wait_for_qspi_accessible; then
+         info "QSPI is accessible"
+         exit 0
+     else
+@@ -155,7 +170,7 @@ try_capsule_update() {
+         force_capsule_update="y"
+     fi
+ 
+-    if qspi_accessible; then
++    if wait_for_qspi_accessible; then
+         if [[ "y" == "$force_capsule_update" ]]; then
+             info "QSPI is accessible, and forced update was requested"
+ 	else
+-- 
+2.43.0

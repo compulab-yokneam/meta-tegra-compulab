@@ -1,0 +1,35 @@
+From 8e1df1b077ddcfcf1e06a7de0cab9d42df7229ac Mon Sep 17 00:00:00 2001
+From: Valentin Raevsky <valentin@compulab.co.il>
+Date: Sun, 9 Aug 2026 09:00:00 +0000
+Subject: [PATCH] jetson-qspi-helpers: Fix prepared capsule path
+
+CAPSULE_TARGET_PATH is relative to the EFI system partition but begins with a
+slash.  Checking it directly therefore looks below the root filesystem instead
+of the configured capsule mountpoint.  Build the complete path from
+UEFI_CAPSULE_TARGET_MOUNTPOINT and normalize its trailing slash.
+
+Quote both paths while checking them so custom mountpoints containing shell
+metacharacters cannot break the test.
+
+Signed-off-by: Valentin Raevsky <valentin@compulab.co.il>
+---
+ jetson-qspi-helpers | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/jetson-qspi-helpers b/jetson-qspi-helpers
+index e658bcb..be558ad 100644
+--- a/jetson-qspi-helpers
++++ b/jetson-qspi-helpers
+@@ -47,7 +47,9 @@ check_qspi_accessible() {
+ }
+ 
+ capsule_update_prepared() {
+-    if [ -e ${os_indications_efivar} ] && [ -e ${CAPSULE_TARGET_PATH} ]; then
++    capsule_path="${UEFI_CAPSULE_TARGET_MOUNTPOINT%/}${CAPSULE_TARGET_PATH}"
++
++    if [ -e "${os_indications_efivar}" ] && [ -e "${capsule_path}" ]; then
+         return 0
+     else
+         return 1
+-- 
+2.43.0
