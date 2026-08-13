@@ -1,0 +1,11 @@
+--- a/os-power-mode	2026-08-06 09:52:34.122631390 +0000
++++ b/os-power-mode	2026-08-06 09:53:08.450076370 +0000
+@@ -89,7 +89,7 @@
+     fi
+ 
+     case $MACHINE in
+-        jetson-agx-orin-devkit|jetson-agx-orin-devkit-64gb|jetson-agx-orin-industrial|jetson-orin-nx-seeed-j4012)
++        jetson-agx-orin-devkit|jetson-agx-orin-devkit-64gb|jetson-agx-orin-industrial|jetson-orin-nx-seeed-j4012|edgeai-orn-nx)
+             power_modes=(["low"]="1" ["mid"]="3" ["high"]="0")
+             ;;
+         jetson-orin-nx-xavier-nx-devkit)

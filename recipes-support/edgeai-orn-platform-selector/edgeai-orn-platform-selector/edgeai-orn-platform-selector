@@ -1,0 +1,65 @@
+#!/bin/bash
+
+set -e
+
+efivar_dir=/sys/firmware/efi/efivars
+platform_spec_var="${efivar_dir}/TegraPlatformSpec-781e084c-a330-417c-b678-38e696380cb9"
+boot_mount=/mnt/boot
+uenv_file="${boot_mount}/extra_uEnv.txt"
+
+if [[ ! -r "${platform_spec_var}" ]]; then
+    echo "Edge-AI: TegraPlatformSpec is unavailable; keeping the fallback DTB" >&2
+    exit 0
+fi
+
+# EFI variables start with four attribute bytes. TegraPlatformSpec then holds
+# an ASCII board specification such as 3767-301-0004-F.1-1-0-... .
+platform_spec=$(dd if="${platform_spec_var}" bs=1 skip=4 2>/dev/null | tr -d '\000')
+IFS=- read -r board_id _ board_sku _ <<< "${platform_spec}"
+
+if [[ "${board_id}" != "3767" ]]; then
+    echo "Edge-AI: unsupported module board ID '${board_id}'" >&2
+    exit 0
+fi
+
+case " @SUPPORTED_SKUS@ " in
+    *" ${board_sku} "*) ;;
+    *)
+        echo "Edge-AI: P3767-${board_sku} does not belong to this image family" >&2
+        exit 0
+        ;;
+esac
+
+case "${board_sku}" in
+    0000) dtb=tegra234-p3768-0000+p3767-0000-nv-super.dtb ;;
+    0001) dtb=tegra234-p3768-0000+p3767-0001-nv-super.dtb ;;
+    0003) dtb=tegra234-p3768-0000+p3767-0003-nv-super.dtb ;;
+    0004) dtb=tegra234-p3768-0000+p3767-0004-nv-super.dtb ;;
+    *)
+        echo "Edge-AI: unsupported P3767 SKU '${board_sku}'" >&2
+        exit 0
+        ;;
+esac
+
+if [[ ! -f "${boot_mount}/boot/${dtb}" ]]; then
+    echo "Edge-AI: selected DTB is missing: ${dtb}" >&2
+    exit 1
+fi
+
+tmp_file=$(mktemp "${boot_mount}/.extra_uEnv.txt.XXXXXX")
+trap 'rm -f "${tmp_file}"' EXIT
+
+if [[ -f "${uenv_file}" ]]; then
+    sed '/^custom_fdt_file=/d' "${uenv_file}" > "${tmp_file}"
+fi
+printf 'custom_fdt_file=%s\n' "${dtb}" >> "${tmp_file}"
+
+if [[ -f "${uenv_file}" ]] && cmp -s "${tmp_file}" "${uenv_file}"; then
+    exit 0
+fi
+
+chmod 0644 "${tmp_file}"
+mv "${tmp_file}" "${uenv_file}"
+trap - EXIT
+sync "${uenv_file}"
+echo "Edge-AI: selected ${dtb} for P3767-${board_sku}"
