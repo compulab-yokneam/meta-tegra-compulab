@@ -1,6 +1,6 @@
 #!/bin/bash -e
 
-MACHINE=${MACHINE:-edge-ai-nx-16g}
+MACHINE=${MACHINE:-edge-ai-nx}
 DISTRO=${DISTRO:-tegrademo}
 T="../layers/meta-tegra-compulab/templates"
 M="../layers/meta-tegra-compulab/tools/${MACHINE}"
@@ -34,7 +34,7 @@ echo "Back to the build environment ${BD}"
 
 else
 
-. setup-env --machine ${MACHINE} build-edge-ai-nx-16g
+. setup-env --machine ${MACHINE} ${BD}
 
     temp_function
     mach_function

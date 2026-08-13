@@ -1,8 +1,7 @@
-From b3f6c2928e347d2f37166d73661c402c0e8d2885 Mon Sep 17 00:00:00 2001
+From 0851d92f82942b9a68ceb8de056d9b4a4fd1ca6e Mon Sep 17 00:00:00 2001
 From: Valentin Raevsky <valentin@compulab.co.il>
 Date: Mon, 9 Mar 2026 09:41:49 +0200
-Subject: [PATCH 4/6] compulab: dts: Change the display@13800000 hotplug
- polarity
+Subject: [PATCH] compulab: dts: Change the display@13800000 hotplug polarity
 
 Signed-off-by: Valentin Raevsky <valentin@compulab.co.il>
 ---
@@ -23,5 +22,5 @@ index cb76d57..2ed3600 100644
  	};
  
 -- 
-2.34.1
+2.43.0
 

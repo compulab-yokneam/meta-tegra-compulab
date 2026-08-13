@@ -1,7 +1,7 @@
-From 1991b87a607da44d7832837a9cd58b5ed6e29f70 Mon Sep 17 00:00:00 2001
+From 51130c362ea28304aafc3a410bfbbcb72a3a3544 Mon Sep 17 00:00:00 2001
 From: Valentin Raevsky <valentin@compulab.co.il>
 Date: Mon, 9 Mar 2026 09:48:03 +0200
-Subject: [PATCH 6/6] compulab: dts: Define tpm on spi@3210000
+Subject: [PATCH] compulab: dts: Define tpm on spi@3210000
 
 Signed-off-by: Valentin Raevsky <valentin@compulab.co.il>
 ---
@@ -30,5 +30,5 @@ index f842be2..0cdcad3 100644
  					nvidia,enable-hw-based-cs;
  					nvidia,rx-clk-tap-delay = <0x10>;
 -- 
-2.34.1
+2.43.0
 

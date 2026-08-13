@@ -1,0 +1,1 @@
+MACHINEOVERRIDES .= ":edge-ai-nano"
