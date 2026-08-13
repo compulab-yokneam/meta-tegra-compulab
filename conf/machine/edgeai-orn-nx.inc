@@ -1,0 +1,1 @@
+MACHINEOVERRIDES .= ":edgeai-orn-nx"

@@ -52,7 +52,7 @@ BSP: ${tegra_bsp_dir} is ready;
 --
 Available CompuLab configurations:
 eof
-for MACH in edge-ai-nx-16g edge-ai-nx-8g edge-ai-nano-8g edge-ai-nano-4g;do
+for MACH in edgeai-orn-nx edgeai-orn-nano;do
 cat << eof
     export MACHINE=${MACH}; source compulab-setup-env build-${MACH}
 eof

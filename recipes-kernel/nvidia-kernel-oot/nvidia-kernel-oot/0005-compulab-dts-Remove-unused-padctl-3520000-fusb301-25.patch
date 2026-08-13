@@ -1,7 +1,7 @@
-From 042d1c6641b15d4dcc298fe63e47a9f90d8ea518 Mon Sep 17 00:00:00 2001
+From ff6214cd96b8a98990d8bfd607bde688b5f18ff8 Mon Sep 17 00:00:00 2001
 From: Valentin Raevsky <valentin@compulab.co.il>
 Date: Mon, 9 Mar 2026 09:44:36 +0200
-Subject: [PATCH 5/6] compulab: dts: Remove unused padctl@3520000 fusb301@25
+Subject: [PATCH] compulab: dts: Remove unused padctl@3520000 fusb301@25
 
 Signed-off-by: Valentin Raevsky <valentin@compulab.co.il>
 ---
@@ -50,5 +50,5 @@ index 2ed3600..f842be2 100644
  
  		/* PWM1, 40pin header, pin 15 */
 -- 
-2.34.1
+2.43.0
 

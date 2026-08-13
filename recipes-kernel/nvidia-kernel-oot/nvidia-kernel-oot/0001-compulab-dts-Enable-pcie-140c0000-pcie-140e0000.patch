@@ -1,7 +1,7 @@
-From 71914d77c7b7687e7d3cd1808eaa20ad71668016 Mon Sep 17 00:00:00 2001
+From 5928c57d0f85f7c04b8182629b06a4495b72d3ca Mon Sep 17 00:00:00 2001
 From: Valentin Raevsky <valentin@compulab.co.il>
 Date: Mon, 9 Mar 2026 09:28:32 +0200
-Subject: [PATCH 1/6] compulab: dts: Enable pcie@140c0000, pcie@140e0000
+Subject: [PATCH] compulab: dts: Enable pcie@140c0000, pcie@140e0000
 
 Signed-off-by: Valentin Raevsky <valentin@compulab.co.il>
 ---
@@ -31,5 +31,5 @@ index 2601b43..99bf4d8 100644
  
  		pcie-ep@140e0000 {
 -- 
-2.34.1
+2.43.0
 
