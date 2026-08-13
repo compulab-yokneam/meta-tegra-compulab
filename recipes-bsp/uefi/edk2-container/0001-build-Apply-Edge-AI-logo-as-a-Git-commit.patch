@@ -1,0 +1,54 @@
+From 5dc371054298f01ed59064ee1c7829b13a7a7d79 Mon Sep 17 00:00:00 2001
+From: Valentin Raevsky <valentin@compulab.co.il>
+Date: Sat, 8 Aug 2026 14:42:00 +0000
+Subject: [PATCH] build: Commit Edge-AI firmware source changes
+
+Apply the binary logo mail patch after resetting edk2-nvidia. Record all
+subsequent generic and device-specific changes as commits as well, since
+NVIDIA derives the firmware version from the Git worktree state.
+
+Also commit the edk2 changes and verify both tracked worktrees are clean before
+starting the firmware build.
+
+Signed-off-by: Valentin Raevsky <valentin@compulab.co.il>
+---
+ build.sh | 17 ++++++++++++++++-
+ 1 file changed, 16 insertions(+), 1 deletion(-)
+
+diff --git a/build.sh b/build.sh
+index 32e5251..29f50be 100755
+--- a/build.sh
++++ b/build.sh
+@@ -40,8 +40,17 @@ fi
+ cd /build/nvidia-uefi/edk2 && \
+     git reset --hard HEAD && \
+     git apply ${edk2_patch} && \
++    git add -u && \
++    git -c user.name="Valentin Raevsky" \
++        -c user.email="valentin@compulab.co.il" \
++        commit -m "edk2: Apply balenaOS integration changes" && \
++    git diff --quiet && git diff --cached --quiet && \
+     cd /build/nvidia-uefi/edk2-nvidia && \
+     git reset --hard HEAD && \
++    git -c user.name="Valentin Raevsky" \
++        -c user.email="valentin@compulab.co.il" \
++        am /build/edge-ai-patches/0001-Logo-Add-CompuLab-Edge-AI-splash-screens_patch.txt && \
++    git diff --quiet && git diff --cached --quiet && \
+     for edk2_nvidia_patch in ${edk2_nvidia_patches[@]}
+     do
+         git apply "${edk2_nvidia_patch}" ;
+@@ -63,5 +72,11 @@ cd /build/nvidia-uefi/edk2 && \
+     done
+-
++git add -u
++git -c user.name="Valentin Raevsky" \
++    -c user.email="valentin@compulab.co.il" \
++    commit -m "edk2-nvidia: Apply balenaOS platform changes"
++git diff --quiet
++git diff --cached --quiet
++
+ # Trigger firmware and bootloader build, that is uefi_jetson.bin
+ # and BOOTAA64.efi
+ /build/nvidia-uefi/edk2-nvidia/Platform/NVIDIA/Tegra/build.sh --init-defconfig edk2-nvidia/Platform/NVIDIA/Tegra/DefConfigs/t23x_general.defconfig
+-- 
+2.43.0
