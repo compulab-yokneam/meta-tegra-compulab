@@ -2,4 +2,4 @@ FILESEXTRAPATHS:prepend := "${THISDIR}/files:"
 
 SRC_URI:append:edge-ai = " file://compulab.cfg"
 
-COMPATIBLE_MACHINE := "^(edge-ai-nx-16g|edge-ai-nx-8g|edge-ai-nano-8g|edge-ai-nano-4g|${COMPATIBLE_MACHINE})"
+COMPATIBLE_MACHINE := "^(edge-ai|${COMPATIBLE_MACHINE})"

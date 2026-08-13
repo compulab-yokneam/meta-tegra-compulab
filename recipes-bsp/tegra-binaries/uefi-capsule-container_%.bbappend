@@ -5,6 +5,8 @@ JETSON_BOARD_SPEC:edge-ai-nx-16g = "jetson_board_spec_edge_ai_nx_16g.cfg"
 JETSON_BOARD_SPEC:edge-ai-nx-8g = "jetson_board_spec_edge_ai_nx_8g.cfg"
 JETSON_BOARD_SPEC:edge-ai-nano-8g = "jetson_board_spec_edge_ai_nano_8g.cfg"
 JETSON_BOARD_SPEC:edge-ai-nano-4g = "jetson_board_spec_edge_ai_nano_4g.cfg"
+JETSON_BOARD_SPEC:edge-ai-nano = "jetson_board_spec_edge_ai_nano.cfg"
+JETSON_BOARD_SPEC:edge-ai-nx = "jetson_board_spec_edge_ai_nx.cfg"
 UEFI_CAPSULE:edge-ai-nx = "TEGRA_BL_Orin_NX.Cap.gz"
 UEFI_CAPSULE:edge-ai-nano = "TEGRA_BL_Orin_Nano.Cap.gz"
 
@@ -12,6 +14,8 @@ EDGE_AI_CAPSULE_DTBS:edge-ai-nx-16g = "tegra234-p3768-0000+p3767-0000-nv.dtb teg
 EDGE_AI_CAPSULE_DTBS:edge-ai-nx-8g = "tegra234-p3768-0000+p3767-0001-nv.dtb tegra234-p3768-0000+p3767-0001-nv-super.dtb"
 EDGE_AI_CAPSULE_DTBS:edge-ai-nano-8g = "tegra234-p3768-0000+p3767-0003-nv.dtb tegra234-p3768-0000+p3767-0003-nv-super.dtb"
 EDGE_AI_CAPSULE_DTBS:edge-ai-nano-4g = "tegra234-p3768-0000+p3767-0004-nv.dtb tegra234-p3768-0000+p3767-0004-nv-super.dtb"
+EDGE_AI_CAPSULE_DTBS:edge-ai-nano = "tegra234-p3768-0000+p3767-0003-nv.dtb tegra234-p3768-0000+p3767-0003-nv-super.dtb tegra234-p3768-0000+p3767-0004-nv.dtb tegra234-p3768-0000+p3767-0004-nv-super.dtb"
+EDGE_AI_CAPSULE_DTBS:edge-ai-nx = "tegra234-p3768-0000+p3767-0000-nv.dtb tegra234-p3768-0000+p3767-0000-nv-super.dtb tegra234-p3768-0000+p3767-0001-nv.dtb tegra234-p3768-0000+p3767-0001-nv-super.dtb"
 
 EDGE_AI_CAPSULE_DTB_DEPENDS = ""
 EDGE_AI_CAPSULE_DTB_DEPENDS:edge-ai-nx = "nvidia-kernel-oot-dtb:do_deploy"

@@ -5,6 +5,8 @@ DEFAULT_DTB:edge-ai-nx-8g = "tegra234-p3768-0000+p3767-0001-nv-super.dtb"
 EDGE_AI_NX_PATCH = "0001-Orin-NX-16GB-Integrate-with-balenaOS-on-L4T-36.5.patch"
 DEFAULT_DTB:edge-ai-nano-8g = "tegra234-p3768-0000+p3767-0003-nv-super.dtb"
 DEFAULT_DTB:edge-ai-nano-4g = "tegra234-p3768-0000+p3767-0004-nv-super.dtb"
+DEFAULT_DTB:edge-ai-nano = "tegra234-p3768-0000+p3767-0004-nv-super.dtb"
+DEFAULT_DTB:edge-ai-nx = "tegra234-p3768-0000+p3767-0001-nv-super.dtb"
 EDGE_AI_NANO_PATCH = "0001-Orin-Nano-Integrate-with-balenaOS-on-L4T-36.5.patch"
 
 SRC_URI:append:edge-ai = " \

@@ -18,7 +18,7 @@ new_str="exclusion-info = <0>;"
 pushd /build_dir/Linux_for_Tegra/
 
 case "${DEVICE_TYPE}" in
-	"edge-ai-nx-16g" | "edge-ai-nx-8g" | "edge-ai-nano-8g" | "edge-ai-nano-4g")
+	"edge-ai-nx" | "edge-ai-nx-16g" | "edge-ai-nx-8g" | "edge-ai-nano" | "edge-ai-nano-8g" | "edge-ai-nano-4g")
 		bct_dir="bootloader/generic/BCT"
 		# L4T resolves PINMUX_CONFIG, PMC_CONFIG, and MB2_BCT relative to
 		# bootloader/generic/BCT. The GPIO file must be colocated with the
@@ -41,7 +41,6 @@ PMC_CONFIG="tegra234-edge-ai-padvoltage-default.dtsi";
 MB2_BCT="tegra234-edge-ai-mb2-bct-misc-p3767-0000.dts";
 ODMDATA="gbe-uphy-config-9,hsstp-lane-map-3,hsio-uphy-config-0";
 EOF
-		sed -i 's/\(enable_wdt =\).*;/\1 <1>;/g' bootloader/tegra234-mb1-bct-misc-common.dtsi
 		;;
 	"jetson-agx-orin-devkit-64gb" | "jetson-agx-orin-devkit")
 		bl_spec="t23x_agx_bl_spec"

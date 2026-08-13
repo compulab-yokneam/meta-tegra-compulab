@@ -1,0 +1,13 @@
+[Unit]
+Description=Select Edge-AI module-specific device tree
+After=resin-boot.service setup-nv-boot-control.service
+Before=jetson-qspi-manager.service
+ConditionPathIsMountPoint=/mnt/boot
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/edge-ai-platform-selector
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
