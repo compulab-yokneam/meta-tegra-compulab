@@ -44,6 +44,48 @@ bitbake -k demo-image-weston
 bitbake -k demo-image-full
 ```
 
+## Universal Edge-AI release bundle
+
+The universal bundle contains one shared Weston root filesystem and four
+module-specific Tegra flash profiles. It supports these P3767 module SKUs:
+
+| Module | Machine | SKU |
+| --- | --- | --- |
+| Orin NX 16GB | `edge-ai-nx-16g` | `0000` |
+| Orin NX 8GB | `edge-ai-nx-8g` | `0001` |
+| Orin Nano 8GB | `edge-ai-nano-8g` | `0003` |
+| Orin Nano 4GB | `edge-ai-nano-4g` | `0004` |
+
+Enable the supplied multiconfigs in `conf/local.conf`:
+
+```
+require conf/include/edge-ai-universal-bundle.inc
+```
+
+Then build the release archive from the normal build environment:
+
+```
+bitbake edge-ai-universal-bundle
+```
+
+The archive and its SHA-256 file are written to
+`tmp/deploy/images/${MACHINE}/`. Extract the archive, put one target into USB
+recovery mode, and run:
+
+```
+sudo ./flash-edge-ai.sh
+```
+
+The dispatcher reads the module EEPROM, selects the matching profile, and
+flashes the shared runtime to NVMe. To inspect the detected profile without
+flashing, use `sudo ./flash-edge-ai.sh --detect-only`.
+
+The root filesystem is runtime-neutral: UEFI supplies the DTB from the selected
+flash profile, while the image selects the matching NVIDIA `nvpmodel`
+configuration and boot-control machine name during startup. Do not interchange
+the individual profile directories manually; the QSPI/BCT payloads remain
+module-specific.
+
 ## Precompiled Images
 * edge-ai-nx-16g
   * [demo-image-weston](https://drive.google.com/drive/folders/1Kj6_xZBRThOyjulUS2X3prKE2pX6xgyA)

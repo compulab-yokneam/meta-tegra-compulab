@@ -1,0 +1,11 @@
+#!/bin/sh
+
+sku=$(/usr/libexec/edge-ai-board-sku) || exit 1
+config="nvpmodel_p3767_${sku}_super.conf"
+
+if [ ! -r "/etc/nvpmodel/$config" ]; then
+    echo "Missing NVIDIA power model configuration: $config" >&2
+    exit 1
+fi
+
+ln -sfn "nvpmodel/$config" /etc/nvpmodel.conf

@@ -1,0 +1,13 @@
+#!/bin/sh
+
+sku=$(/usr/libexec/edge-ai-board-sku) || exit 1
+case "$sku" in
+    0000) echo edge-ai-nx-16g ;;
+    0001) echo edge-ai-nx-8g ;;
+    0003) echo edge-ai-nano-8g ;;
+    0004) echo edge-ai-nano-4g ;;
+    *)
+        echo "Unsupported P3767 module SKU: $sku" >&2
+        exit 1
+        ;;
+esac

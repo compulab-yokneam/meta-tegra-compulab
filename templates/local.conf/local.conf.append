@@ -1,2 +1,5 @@
 PACKAGE_CLASSES = " package_deb "
 EXTRA_IMAGE_FEATURES += " package-management " 
+
+# Uncomment to enable the shared-runtime/four-profile release bundle:
+# require conf/include/edge-ai-universal-bundle.inc

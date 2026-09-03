@@ -1,0 +1,28 @@
+#!/bin/sh
+
+for property in \
+    /proc/device-tree/nvidia,dtsfilename \
+    /proc/device-tree/compatible
+do
+    [ -r "$property" ] || continue
+    value=$(tr '\000' '\n' < "$property")
+    case "$value" in
+        *p3767-0000*) echo 0000; exit 0 ;;
+        *p3767-0001*) echo 0001; exit 0 ;;
+        *p3767-0003*) echo 0003; exit 0 ;;
+        *p3767-0004*) echo 0004; exit 0 ;;
+    esac
+done
+
+if command -v tegra-boardspec >/dev/null 2>&1; then
+    value=$(tegra-boardspec 2>/dev/null || true)
+    case "$value" in
+        *3767-*-0000-*) echo 0000; exit 0 ;;
+        *3767-*-0001-*) echo 0001; exit 0 ;;
+        *3767-*-0003-*) echo 0003; exit 0 ;;
+        *3767-*-0004-*) echo 0004; exit 0 ;;
+    esac
+fi
+
+echo "Unable to identify a supported P3767 module SKU" >&2
+exit 1
