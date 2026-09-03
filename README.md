@@ -33,11 +33,12 @@ source <(wget -qO - https://raw.githubusercontent.com/compulab-yokneam/meta-tegr
 source compulab-setup-env build-${MACHINE}
 ```
 
-## Optional Compulab UEFI boot logo
+## UEFI boot logo options
 
-The Compulab UEFI boot logo is disabled by default. To replace the NVIDIA boot
-logos with the Compulab Edge AI branding, add the following override to the
-build's `conf/local.conf`:
+The default build uses the NVIDIA UEFI boot logo. The following optional
+overrides can be selected from the build's `conf/local.conf`.
+
+To replace the NVIDIA logos with the Compulab Edge AI branding, add:
 
 ```bitbake
 MACHINEOVERRIDES =. "clab_logo:"
@@ -47,13 +48,24 @@ The override enables the binary logo patch for `edk2-firmware-tegra`, replacing
 the 480p, 720p, and 1080p logos. BitBake applies the replacements as Git
 commits, so the EDK2 source worktree remains clean.
 
+To disable the UEFI boot logo completely, add:
+
+```bitbake
+MACHINEOVERRIDES =. "no_logo:"
+```
+
+The `no_logo` override disables NVIDIA's `CONFIG_LOGO` firmware option. No
+NVIDIA or Compulab bitmap is embedded or displayed; the screen contains only
+the normal EDK2 console messages. If both overrides are present, `no_logo`
+takes precedence and the Compulab binary logo patch is not applied.
+
 Build the firmware directly, or build an image that depends on it:
 
 ```
 bitbake edk2-firmware-tegra
 ```
 
-To restore the default NVIDIA logos, remove or comment out the
+To restore the default NVIDIA logo, remove or comment out the logo-related
 `MACHINEOVERRIDES` assignment and rebuild.
 
 ## Build targets
