@@ -44,9 +44,12 @@ To replace the NVIDIA logos with the Compulab Edge AI branding, add:
 MACHINEOVERRIDES =. "clab_logo:"
 ```
 
-The override enables the binary logo patch for `edk2-firmware-tegra`, replacing
-the 480p, 720p, and 1080p logos. BitBake applies the replacements as Git
-commits, so the EDK2 source worktree remains clean.
+The override adds and enables EDK2's `CONFIG_CLAB_LOGO` option. It selects a
+dedicated `LogoClabGray` driver with `clab_gray480.bmp`, `clab_gray720.bmp`,
+and `clab_gray1080.bmp` assets. The original NVIDIA logo files remain
+unchanged. Scaling is disabled so the driver selects the largest native-size
+logo that fits the current display. BitBake applies the source changes as a
+Git commit, so the EDK2 source worktree remains clean.
 
 To disable the UEFI boot logo completely, add:
 
