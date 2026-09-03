@@ -1,0 +1,67 @@
+#!/bin/sh
+
+set -eu
+
+capsule_dir="@CAPSULE_DIR@"
+machine="@MACHINE@"
+
+usage() {
+    echo "Usage: $0 {nvidia-logo|clab-logo|no-logo} [LEGACY_FMP_GUID]" >&2
+    echo "Stages one complete UEFI boot-firmware capsule, then prompts for reboot." >&2
+}
+
+if [ "$#" -gt 2 ]; then
+    usage
+    exit 2
+fi
+
+case "${1-}" in
+    nvidia|nvidia-logo)
+        variant=nvidia-logo
+        ;;
+    clab|clab-logo)
+        variant=clab-logo
+        ;;
+    none|no-logo)
+        variant=no-logo
+        ;;
+    -h|--help)
+        usage
+        exit 0
+        ;;
+    *)
+        usage
+        exit 2
+        ;;
+esac
+
+legacy_guid=${2-}
+if [ -n "${legacy_guid}" ]; then
+    case "${legacy_guid}" in
+        ????????-????-????-????-????????????) ;;
+        *)
+            echo "Invalid legacy FMP GUID: ${legacy_guid}" >&2
+            exit 2
+            ;;
+    esac
+    case "${legacy_guid}" in
+        *[!0-9A-Fa-f-]*)
+            echo "Invalid legacy FMP GUID: ${legacy_guid}" >&2
+            exit 2
+            ;;
+    esac
+    capsule="${capsule_dir}/${machine}-uefi-${variant}-from-${legacy_guid}.cap"
+else
+    capsule="${capsule_dir}/${machine}-uefi-${variant}.cap"
+fi
+
+if [ ! -s "${capsule}" ]; then
+    echo "No matching capsule is installed: ${capsule}" >&2
+    exit 1
+fi
+
+echo "Verifying installed UEFI capsules..."
+(cd "${capsule_dir}" && sha256sum -c SHA256SUMS)
+
+"${capsule_dir}/apply-uefi-capsule" "${capsule}"
+echo "Reboot now to let UEFI consume the staged capsule."

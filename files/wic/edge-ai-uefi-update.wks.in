@@ -1,0 +1,6 @@
+# Removable-media image for staging an NVIDIA Tegra UEFI capsule.
+# The ESP mount point matches setup-nv-boot-control's default.
+part /boot/efi --source bootimg-efi --fstype=vfat --label boot --part-name esp --active --align 8192 --sourceparams="loader=grub-efi,initrd=${INITRAMFS_IMAGE}-${MACHINE}.${INITRAMFS_WKS_FSTYPE}" --use-uuid
+part / --source rootfs --fstype=ext4 --label uefi-update --part-name APP --align 8192 --use-uuid
+
+bootloader --ptable gpt --timeout=5 --append="mminit_loglevel=4 console=ttyTCU0,115200 firmware_class.path=/etc/firmware fbcon=map:0 nospectre_bhb rootwait"

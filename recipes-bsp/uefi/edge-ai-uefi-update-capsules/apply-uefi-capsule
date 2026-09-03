@@ -37,8 +37,9 @@ if ! command -v oe4t-set-uefi-OSIndications >/dev/null 2>&1; then
     exit 1
 fi
 
-install -d "${capsule_dir}"
-install -m 0600 "${capsule}" "${capsule_dest}.new"
+mkdir -p "${capsule_dir}"
+cp "${capsule}" "${capsule_dest}.new"
+chmod 0600 "${capsule_dest}.new"
 mv -f "${capsule_dest}.new" "${capsule_dest}"
 sync
 oe4t-set-uefi-OSIndications
