@@ -1,0 +1,45 @@
+From 5c64384620e4c0913a0d00eed97c86ce28bc143a Mon Sep 17 00:00:00 2001
+From: CompuLab <support@compulab.co.il>
+Date: Fri, 4 Sep 2026 12:30:00 +0000
+Subject: [PATCH] platform-preboot: allow explicit root selection
+
+The normal Tegra boot flow searches for an APP partition before honoring the
+root= kernel argument.  That can select an installed system's APP partition
+when a maintenance image is booted from removable media.
+
+Add an opt-in command-line flag which skips the APP scan and lets the existing
+root= resolution code select the intended partition.  Normal Tegra images are
+unchanged unless they pass tegra.prefer_cmdline_root=1.
+
+Upstream-Status: Inappropriate [product-specific removable update media]
+Signed-off-by: CompuLab <support@compulab.co.il>
+---
+ platform-preboot.sh | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/platform-preboot.sh b/platform-preboot.sh
+index 731e0ef..9ac9596 100644
+--- a/platform-preboot.sh
++++ b/platform-preboot.sh
+@@ -1,6 +1,7 @@
+ slotsfx=""
+ mayberoot=""
+ foundslotsfx="no"
++prefercmdroot="no"
+ bootdrive=@@BOOTDRIVE@@
+ for bootarg in `cat /proc/cmdline`; do
+     case "$bootarg" in
+@@ -9,5 +10,6 @@ for bootarg in `cat /proc/cmdline`; do
+         ro) opt="ro" ;;
+         rootwait) wait="yes" ;;
+         rootfstype=*) fstype="${bootarg##rootfstype=}" ;;
++        tegra.prefer_cmdline_root=1) prefercmdroot="yes" ;;
+     esac
+ done
+@@ -15,4 +17,5 @@ for bootarg in `cat /proc/cmdline`; do
+-if [ "$foundslotsfx" != "yes" ]; then
++# Maintenance media can opt out of probing an unrelated installed APP.
++if [ "$foundslotsfx" != "yes" -a "$prefercmdroot" != "yes" ]; then
+     # This variable file contains a type (should be 6) followed by the value (should be 0 or 1)
+     bcdata=$(echo $(hexdump -n 8 -e '2/4 " %u"' /sys/firmware/efi/efivars/BootChainOsCurrent-781e084c-a330-417c-b678-38e696380cb9 2>/dev/null))
+     if [ "$(echo "$bcdata" | cut -d' ' -f1)" = "6" ]; then

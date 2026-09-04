@@ -4,6 +4,40 @@ set -eu
 
 capsule_dir="@CAPSULE_DIR@"
 machine="@MACHINE@"
+legacy_tnspec="@LEGACY_TNSPEC@"
+platform_variable_guid="781e084c-a330-417c-b678-38e696380cb9"
+
+read_platform_spec() {
+    for variable in TegraPlatformCompatSpec TegraPlatformSpec; do
+        variable_file="/sys/firmware/efi/efivars/${variable}-${platform_variable_guid}"
+        if [ -r "${variable_file}" ]; then
+            dd if="${variable_file}" bs=1 skip=4 2>/dev/null | tr -d '\0'
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+select_tnspec_suffix() {
+    if ! platform_spec=$(read_platform_spec); then
+        echo "Cannot read TegraPlatformCompatSpec or TegraPlatformSpec from UEFI variables." >&2
+        return 1
+    fi
+
+    case "${platform_spec}" in
+        *-"${machine}"-)
+            ;;
+        *-"${legacy_tnspec}"-)
+            printf '%s' "-from-tnspec-${legacy_tnspec}"
+            ;;
+        *)
+            echo "Unsupported Tegra platform specification: ${platform_spec}" >&2
+            echo "Expected a target ending in -${machine}- or -${legacy_tnspec}-." >&2
+            return 1
+            ;;
+    esac
+}
 
 usage() {
     echo "Usage: $0 {nvidia-logo|clab-logo|no-logo} [LEGACY_FMP_GUID]" >&2
@@ -36,6 +70,7 @@ case "${1-}" in
 esac
 
 legacy_guid=${2-}
+tnspec_suffix=$(select_tnspec_suffix)
 if [ -n "${legacy_guid}" ]; then
     case "${legacy_guid}" in
         ????????-????-????-????-????????????) ;;
@@ -50,9 +85,13 @@ if [ -n "${legacy_guid}" ]; then
             exit 2
             ;;
     esac
-    capsule="${capsule_dir}/${machine}-uefi-${variant}-from-${legacy_guid}.cap"
+    if [ -n "${tnspec_suffix}" ]; then
+        capsule="${capsule_dir}/${machine}-uefi-${variant}${tnspec_suffix}-guid-${legacy_guid}.cap"
+    else
+        capsule="${capsule_dir}/${machine}-uefi-${variant}-from-${legacy_guid}.cap"
+    fi
 else
-    capsule="${capsule_dir}/${machine}-uefi-${variant}.cap"
+    capsule="${capsule_dir}/${machine}-uefi-${variant}${tnspec_suffix}.cap"
 fi
 
 if [ ! -s "${capsule}" ]; then
@@ -63,5 +102,6 @@ fi
 echo "Verifying installed UEFI capsules..."
 (cd "${capsule_dir}" && sha256sum -c SHA256SUMS)
 
+echo "Installed Tegra platform specification selects: $(basename "${capsule}")"
 "${capsule_dir}/apply-uefi-capsule" "${capsule}"
 echo "Reboot now to let UEFI consume the staged capsule."

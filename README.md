@@ -51,16 +51,17 @@ unchanged. Scaling is disabled so the driver selects the largest native-size
 logo that fits the current display. BitBake applies the source changes as a
 Git commit, so the EDK2 source worktree remains clean.
 
-To disable the UEFI boot logo completely, add:
+To suppress vendor branding while retaining the UEFI boot display, add:
 
 ```bitbake
 MACHINEOVERRIDES =. "no_logo:"
 ```
 
-The `no_logo` override disables NVIDIA's `CONFIG_LOGO` firmware option. No
-NVIDIA or Compulab bitmap is embedded or displayed; the screen contains only
-the normal EDK2 console messages. If both overrides are present, `no_logo`
-takes precedence and the Compulab binary logo patch is not applied.
+The `no_logo` override keeps EDK2's logo/display path and
+`CONFIG_DISPLAY_BOOT_INFO` enabled, but substitutes a full-screen black bitmap.
+No NVIDIA or Compulab artwork is displayed, while the firmware version and
+F11/ESC boot-menu prompts remain visible. If both overrides are present,
+`no_logo` takes precedence and the Compulab binary logo patch is not applied.
 
 Build the firmware directly, or build an image that depends on it:
 
@@ -121,20 +122,29 @@ bitbake edge-ai-uefi-update-capsules
 ```
 
 The old `edge-ai-uefi-logo-capsules` name remains available as a compatibility
-target. The directory
-`tmp/deploy/images/${MACHINE}/edge-ai-uefi-update-capsules/` contains three
-complete boot-firmware variants prefixed by
+target. Each capsule multiconfig sets `EDGE_AI_UEFI_LOGO_STYLE` directly; it
+does not modify `MACHINEOVERRIDES`. The latter remains only the normal-image
+and `local.conf` interface described above.
+
+The directory
+`tmp/deploy/images/${MACHINE}/edge-ai-uefi-update-capsules/` contains current
+and legacy-TNSPEC copies of all three complete boot-firmware variants,
+prefixed by
 `${EDGE_AI_UEFI_CAPSULE_MACHINE}`:
 
 * `${EDGE_AI_UEFI_CAPSULE_MACHINE}-uefi-nvidia-logo.cap`
 * `${EDGE_AI_UEFI_CAPSULE_MACHINE}-uefi-clab-logo.cap`
 * `${EDGE_AI_UEFI_CAPSULE_MACHINE}-uefi-no-logo.cap`
+* `${EDGE_AI_UEFI_CAPSULE_MACHINE}-uefi-nvidia-logo-from-tnspec-edge-ai.cap`
+* `${EDGE_AI_UEFI_CAPSULE_MACHINE}-uefi-clab-logo-from-tnspec-edge-ai.cap`
+* `${EDGE_AI_UEFI_CAPSULE_MACHINE}-uefi-no-logo-from-tnspec-edge-ai.cap`
 * `apply-uefi-capsule`
 * `SHA256SUMS`
 
 Copy the required capsule and `apply-uefi-capsule` to the running device, then
 stage the update as root. The EFI System Partition must be mounted at
-`/boot/efi`, and the device image must provide `setup-nv-boot-control`:
+`/boot/efi`, contain `EFI/BOOT/BOOTAA64.EFI`, and the device image must provide
+`efibootmgr` and `setup-nv-boot-control`:
 
 ```
 chmod +x apply-uefi-capsule
@@ -144,8 +154,14 @@ sudo reboot
 
 The helper installs the selected full boot-firmware capsule as
 `/boot/efi/EFI/UpdateCapsule/TEGRA_BL.Cap`, sets the UEFI `OsIndications`
-capsule-update flag, and leaves the reboot under operator control. Firmware may
-reboot a second time while switching the updated bootloader slot.
+capsule-update flag, and creates a `BootNext` entry pointing to that ESP. The
+explicit `BootNext` is required because EDK2 capsule-on-disk discovery searches
+only the ESPs referenced by `BootNext` and `BootOrder`; a removable device
+started through the fallback `EFI/BOOT/BOOTAA64.EFI` path is not necessarily in
+`BootOrder`. The dedicated entry is created without adding it to persistent
+`BootOrder`, and the reboot remains under operator control. Firmware consumes
+`BootNext` and may reboot a second time while switching the updated bootloader
+slot.
 
 #### Removable UEFI update media
 
@@ -188,10 +204,21 @@ edge-ai-uefi-update no-logo
 reboot
 ```
 
-The command verifies all capsule checksums before staging the selected file.
-Keep the removable media connected until capsule processing and any additional
-firmware-initiated reboot have finished. For firmware built with a custom
-legacy FMP image-type GUID, pass that GUID as the second argument, for example:
+The update root filesystem has its own `uefi-update` GPT partition name and
+boots by the PARTUUID generated into its GRUB configuration. Its initramfs is
+instructed to honor that explicit root device instead of probing for an `APP`
+partition, so an internal system disk may remain installed while the removable
+update media is used.
+
+The command reads `TegraPlatformCompatSpec` (falling back to
+`TegraPlatformSpec`) and automatically selects either the current-machine
+capsule or the legacy `edge-ai` TNSPEC capsule. It then verifies all capsule
+checksums, stages the selected file, registers the removable ESP as a UEFI boot
+option without changing persistent `BootOrder`, and verifies that `BootNext`
+selects it. Keep the removable media connected until capsule processing and
+any additional firmware-initiated reboot have finished. For firmware built
+with a custom legacy FMP image-type GUID, pass that GUID as the second argument,
+for example:
 
 ```
 edge-ai-uefi-update clab-logo 11111111-2222-3333-4444-555555555555
@@ -201,8 +228,12 @@ edge-ai-uefi-update clab-logo 11111111-2222-3333-4444-555555555555
 
 The standard full UEFI configurations for Orin in L4T R35/R36 (including the
 Scarthgap L4T R36.5.0 build) and the Wrynose R39 general configuration use FMP
-image-type GUID `bf0d4599-20d4-414e-b2c5-3595b1cda402`. No additional setting
-is required to update those earlier deployments with a Wrynose capsule.
+image-type GUID `bf0d4599-20d4-414e-b2c5-3595b1cda402`. Earlier CompuLab
+firmware can nevertheless record `edge-ai` as its platform TNSPEC target,
+whereas newer firmware records the complete machine name such as
+`edge-ai-nx-16g`. NVIDIA's R36 firmware requires the BUP entry TNSPEC to match
+the stored platform specification. The bundle therefore includes both TNSPEC
+forms, and `edge-ai-uefi-update` selects the matching form automatically.
 
 If an earlier product firmware was built with a custom FMP image-type GUID,
 list it before building:

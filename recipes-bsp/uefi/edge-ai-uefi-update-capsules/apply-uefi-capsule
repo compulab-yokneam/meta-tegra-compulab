@@ -6,6 +6,86 @@ capsule=${1-}
 esp_mount=${2-/boot/efi}
 capsule_dir="${esp_mount}/EFI/UpdateCapsule"
 capsule_dest="${capsule_dir}/TEGRA_BL.Cap"
+boot_label="CompuLab UEFI capsule update"
+boot_loader='\EFI\BOOT\BOOTAA64.EFI'
+
+boot_option_numbers_for_label() {
+    awk -v label="${boot_label}" '
+        $1 ~ /^Boot[0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f]\*?$/ {
+            description = $0
+            sub(/^[^[:space:]]+[[:space:]]+/, "", description)
+            # efibootmgr appends the device path after a tab.  Compare only
+            # the boot-option description so output such as
+            # "Boot0001* label<TAB>HD(...)/File(...)" is recognized.
+            sub(/\t.*/, "", description)
+            if (description == label)
+                print substr($1, 5, 4)
+        }
+    '
+}
+
+create_capsule_boot_option() {
+    esp_source=$(awk -v mountpoint="${esp_mount}" \
+        '$2 == mountpoint { print $1; exit }' /proc/mounts)
+    case "${esp_source}" in
+        /dev/*) ;;
+        *)
+            echo "Cannot create BootNext for ESP source: ${esp_source}" >&2
+            return 1
+            ;;
+    esac
+
+    esp_device=$(readlink -f "${esp_source}")
+    esp_block=${esp_device##*/}
+    sys_partition=$(readlink -f "/sys/class/block/${esp_block}")
+    if [ ! -r "${sys_partition}/partition" ]; then
+        echo "ESP source is not a block-device partition: ${esp_device}" >&2
+        return 1
+    fi
+
+    partition_number=$(cat "${sys_partition}/partition")
+    sys_disk=${sys_partition%/*}
+    disk_device="/dev/${sys_disk##*/}"
+    if [ ! -b "${disk_device}" ]; then
+        echo "Cannot identify the parent disk for ${esp_device}." >&2
+        return 1
+    fi
+
+    if [ ! -s "${esp_mount}/EFI/BOOT/BOOTAA64.EFI" ]; then
+        echo "The removable-media loader ${boot_loader} is missing from ${esp_mount}." >&2
+        return 1
+    fi
+
+    # Remove an entry left by an earlier attempt.  The dedicated entry is not
+    # added to BootOrder, but it can remain after firmware consumes BootNext.
+    for old_bootnum in $(efibootmgr | boot_option_numbers_for_label); do
+        efibootmgr --bootnum "${old_bootnum}" --delete-bootnum >/dev/null
+    done
+
+    boot_output=$(efibootmgr \
+        --create-only \
+        --disk "${disk_device}" \
+        --part "${partition_number}" \
+        --label "${boot_label}" \
+        --loader "${boot_loader}")
+    bootnum=$(printf '%s\n' "${boot_output}" | boot_option_numbers_for_label | head -n 1)
+    if [ -z "${bootnum}" ]; then
+        echo "efibootmgr created no identifiable update-media boot option." >&2
+        return 1
+    fi
+
+    efibootmgr --bootnext "${bootnum}" >/dev/null
+    configured_bootnext=$(efibootmgr | awk '$1 == "BootNext:" { print $2; exit }')
+    if [ "$(printf '%s' "${configured_bootnext}" | tr 'a-f' 'A-F')" != \
+         "$(printf '%s' "${bootnum}" | tr 'a-f' 'A-F')" ]; then
+        echo "BootNext verification failed: expected ${bootnum}, got ${configured_bootnext:-unset}." >&2
+        efibootmgr --delete-bootnext >/dev/null 2>&1 || true
+        efibootmgr --bootnum "${bootnum}" --delete-bootnum >/dev/null 2>&1 || true
+        return 1
+    fi
+
+    printf '%s\n' "${bootnum}"
+}
 
 if [ -z "${capsule}" ]; then
     echo "Usage: $0 CAPSULE [ESP_MOUNT]" >&2
@@ -37,11 +117,25 @@ if ! command -v oe4t-set-uefi-OSIndications >/dev/null 2>&1; then
     exit 1
 fi
 
+if ! command -v efibootmgr >/dev/null 2>&1; then
+    echo "efibootmgr is missing; install efibootmgr." >&2
+    exit 1
+fi
+
 mkdir -p "${capsule_dir}"
 cp "${capsule}" "${capsule_dest}.new"
 chmod 0600 "${capsule_dest}.new"
 mv -f "${capsule_dest}.new" "${capsule_dest}"
 sync
-oe4t-set-uefi-OSIndications
 
-echo "Staged ${capsule_dest}. Reboot to apply it; the firmware may reboot once more during the update."
+bootnum=$(create_capsule_boot_option)
+if ! oe4t-set-uefi-OSIndications; then
+    efibootmgr --delete-bootnext >/dev/null 2>&1 || true
+    efibootmgr --bootnum "${bootnum}" --delete-bootnum >/dev/null 2>&1 || true
+    echo "Failed to set the UEFI capsule-update indication." >&2
+    exit 1
+fi
+
+echo "Staged ${capsule_dest}."
+echo "BootNext ${bootnum} points firmware capsule discovery at the update-media ESP."
+echo "Reboot to apply the capsule; firmware may reboot once more during the update."
