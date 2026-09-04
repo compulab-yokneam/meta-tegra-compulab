@@ -66,6 +66,25 @@ do_deploy() {
         'CompuLab Edge-AI universal release bundle' \
         'Shared runtime: ${EDGE_AI_UNIVERSAL_IMAGE}.ext4' \
         'Supported modules: P3767-0000, P3767-0001, P3767-0003, P3767-0004' \
+        '' \
+        'BOARD-INSTALLED NVME (default)' \
+        '1. Power off the board and securely install a compatible NVMe.' \
+        '2. Put the board in USB recovery mode and connect it to this Linux host.' \
+        '3. Verify detection without writing anything:' \
+        '     sudo ./flash-edge-ai.sh --detect-only' \
+        '4. Erase and install the NVMe, and update matching QSPI boot firmware:' \
+        '     sudo ./flash-edge-ai.sh' \
+        '5. On success, power off, leave recovery mode, and boot from NVMe.' \
+        '' \
+        'The default uses initrd flashing to access nvme0n1 inside the board.' \
+        'Do not pass a host /dev/nvme path. Do not interrupt power or USB.' \
+        'To preserve compatible QSPI firmware and update only the board NVMe:' \
+        '     sudo ./flash-edge-ai.sh -- --external-only' \
+        'Failure logs are saved under profiles/<selected-machine>/log.initrd-flash.*' \
+        '' \
+        'HOST-CONNECTED MEDIA (explicit, destructive)' \
+        '     sudo ./flash-edge-ai.sh --host-device /dev/sdX' \
+        'Verify /dev/sdX carefully. Never select the host system disk.' \
         > "$bundle_dir/README.txt"
 
     install -d ${DEPLOYDIR}

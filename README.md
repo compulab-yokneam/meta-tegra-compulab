@@ -309,16 +309,80 @@ bitbake edge-ai-universal-bundle
 ```
 
 The archive and its SHA-256 file are written to
-`tmp/deploy/images/${MACHINE}/`. Extract the archive, put one target into USB
-recovery mode, and run:
+`tmp/deploy/images/${MACHINE}/`.
+
+### Installing the image on the board NVMe
+
+The default flash target is the NVMe physically installed in the Edge-AI
+board. It is not a `/dev/nvme*` device belonging to the build host. Prepare and
+flash it as follows:
+
+1. Power off and disconnect the board before installing or replacing its NVMe.
+   Install a compatible NVMe module securely in the board NVMe socket. The
+   drive must be large enough for the generated partition layout; it does not
+   need to be formatted or partitioned in advance.
+
+2. Extract the universal archive on a Linux host. Preserve its directory
+   layout, executable permissions, and symbolic links:
+
+   ```
+   tar --zstd -xf demo-image-weston-edge-ai-universal-*.tar.zst
+   cd demo-image-weston-edge-ai-universal-*
+   ```
+
+3. Put the board into USB recovery mode using the recovery procedure for the
+   carrier board, connect its recovery USB port to the host, and power it on.
+   Only one recovery-mode NVIDIA target should be connected. Detection can be
+   checked without modifying either the NVMe or boot firmware:
+
+   ```
+   sudo ./flash-edge-ai.sh --detect-only
+   ```
+
+   The command must report the module SKU and one of the four supported
+   `edge-ai-*` profiles before flashing is attempted.
+
+4. Flash the board-installed NVMe and the matching QSPI boot firmware:
+
+   ```
+   sudo ./flash-edge-ai.sh
+   ```
+
+   This erases and repartitions the board NVMe. Do not remove power, disconnect
+   USB, or leave recovery mode until the command reports successful completion.
+   The dispatcher reads the module EEPROM, selects the matching flash profile,
+   boots the flashing initrd over USB, and writes the NVMe known inside the
+   target as `nvme0n1` (`nvme0n1p1` is its boot partition). No host block-device
+   argument is required.
+
+5. After a successful flash, power off the board, remove the force-recovery
+   condition, and power it on again. UEFI should then boot the newly installed
+   system from NVMe. If flashing fails, inspect the newest
+   `profiles/<selected-machine>/log.initrd-flash.*` file.
+
+The normal command updates both the NVMe and the module-specific QSPI boot
+firmware. If compatible boot firmware is already installed, write only the
+board NVMe with:
 
 ```
-sudo ./flash-edge-ai.sh
+sudo ./flash-edge-ai.sh -- --external-only
 ```
 
-The dispatcher reads the module EEPROM, selects the matching profile, and
-flashes the shared runtime to NVMe. To inspect the detected profile without
-flashing, use `sudo ./flash-edge-ai.sh --detect-only`.
+The `--external-only` option refers to the NVMe installed in the board; it does
+not select storage connected directly to the host.
+
+### Writing host-connected media
+
+Writing an NVMe or USB storage device connected directly to the build host is
+still available, but must be requested explicitly:
+
+```
+sudo ./flash-edge-ai.sh --host-device /dev/sdX
+```
+
+Replace `/dev/sdX` with the host name of the intended device. Verify the name
+and contents carefully before confirming the operation; the selected host
+device is erased and overwritten. Never use the host system disk.
 
 The root filesystem is runtime-neutral: UEFI supplies the DTB from the selected
 flash profile, while the image selects the matching NVIDIA `nvpmodel`
