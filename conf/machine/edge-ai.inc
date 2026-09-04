@@ -1,4 +1,15 @@
 MACHINEOVERRIDES =. "edge-ai:"
+
+# Use the framebuffer exposed by the UEFI Graphics Output Protocol for tty1
+# until the NVIDIA DRM driver takes over.  This is opt-in because NVIDIA's
+# default Orin command line explicitly disables efifb.
+KERNEL_ARGS:remove:early_tty1 = "video=efifb:off console=tty0"
+KERNEL_ARGS:append:early_tty1 = " console=tty1 fbcon=nodefer"
+
+# The removable WIC images use GRUB command lines rather than KERNEL_ARGS.
+EDGE_AI_WIC_TTY1_ARGS ?= ""
+EDGE_AI_WIC_TTY1_ARGS:early_tty1 = "console=tty1 fbcon=nodefer"
+
 TEGRA_FLASHVAR_MB2BCT_CFG = "tegra234-edge-ai-mb2-bct-misc-p3767-0000.dts"
 TEGRA_FLASHVAR_PINMUX_CONFIG = "tegra234-edge-ai-pinmux.dtsi"
 TEGRA_FLASHVAR_PMC_CONFIG = "tegra234-edge-ai-padvoltage-default.dtsi"

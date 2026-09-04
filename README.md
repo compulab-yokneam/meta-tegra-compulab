@@ -71,6 +71,30 @@ bitbake edk2-firmware-tegra
 To restore the default NVIDIA logo, remove or comment out the logo-related
 `MACHINEOVERRIDES` assignment and rebuild.
 
+### Early HDMI tty1 console
+
+By default, the NVIDIA Orin kernel command line contains `video=efifb:off`.
+This disables the framebuffer supplied by the UEFI Graphics Output Protocol,
+so the HDMI virtual console cannot display kernel messages until the NVIDIA
+DRM driver has initialized.
+
+Enable an early HDMI `tty1` console in `conf/local.conf` with:
+
+```bitbake
+MACHINEOVERRIDES =. "early_tty1:"
+```
+
+The override removes `video=efifb:off`, changes the virtual-terminal console
+from `tty0` to `tty1`, and adds `fbcon=nodefer`. The serial `ttyTCU0` console
+remains enabled. It applies to both the L4TLauncher `extlinux.conf` used by
+flashed images and the GRUB command line generated for removable WIC images.
+
+Rebuild and deploy the OS image so that its boot configuration is regenerated;
+rebuilding only `edk2-firmware-tegra` or a UEFI capsule is not sufficient. The
+monitor must be attached while UEFI starts, and UEFI must successfully create
+a GOP framebuffer. A display mode change can occur later when NVIDIA DRM takes
+ownership of the display.
+
 ### Post-deployment full UEFI update capsules
 
 The layer can build complete machine-specific boot-firmware capsules without
