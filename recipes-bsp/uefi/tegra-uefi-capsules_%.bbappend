@@ -1,17 +1,18 @@
-# NVIDIA EDK2 treats an empty TNSPEC token as a wildcard.  For the universal
-# Edge-AI update bundle, blank only the target-name token generated from
-# MACHINE; the module board ID and SKU remain exact compatibility keys.
+FILESEXTRAPATHS:prepend := "${THISDIR}/${PN}:"
+
+SRC_URI:append = " file://clear-bup-tnspec.py"
+
+# NVIDIA EDK2 accepts an image-info entry with an empty TNSPEC without running
+# its token-count-sensitive platform comparison.  The BUP is generated for one
+# exact module first; only then is the image-info TNSPEC metadata cleared.
 EDGE_AI_UEFI_WILDCARD_TNSPEC ?= "0"
 
 tegraflash_custom_sign_bup() {
-    if [ "${EDGE_AI_UEFI_WILDCARD_TNSPEC}" != "1" ]; then
-        ./generate_bup_payload.sh ${TEGRA_SIGNING_ARGS}
-        return
-    fi
+    ./generate_bup_payload.sh ${TEGRA_SIGNING_ARGS}
 
-    wildcard_script=./generate_bup_payload-wildcard-tnspec.sh
-    sed "s/^MACHINE=${TNSPEC_MACHINE} /MACHINE= /" \
-        ./generate_bup_payload.sh > "$wildcard_script"
-    chmod 0755 "$wildcard_script"
-    "$wildcard_script" ${TEGRA_SIGNING_ARGS}
+    if [ "${EDGE_AI_UEFI_WILDCARD_TNSPEC}" = "1" ]; then
+        bup=${BUP_PAYLOAD_DIR}/bl_only_payload
+        [ -s "$bup" ] || bbfatal "Cannot clear BUP TNSPEC: missing $bup"
+        ${PYTHON} ${UNPACKDIR}/clear-bup-tnspec.py "$bup"
+    fi
 }

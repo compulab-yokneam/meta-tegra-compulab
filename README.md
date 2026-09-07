@@ -131,11 +131,14 @@ complete boot-firmware variants for each supported module:
 * `apply-uefi-capsule`
 * `SHA256SUMS`
 
-Each module-specific capsule keeps the board ID and SKU exact but leaves the
-BUP target-name field empty. NVIDIA EDK2 treats an empty TNSPEC field as a
-wildcard, so the same capsule accepts the current CompuLab machine name,
-historical `edge-ai` names, NVIDIA devkit names such as
-`jetson-orin-nano-devkit-super`, and other earlier target names.
+Each module-specific BUP is generated using the exact board ID and SKU. Before
+the BUP is wrapped in a capsule, its image-entry TNSPEC metadata is cleared.
+NVIDIA EDK2 accepts an empty TNSPEC without applying its token-count-sensitive
+platform comparison, so the same capsule accepts the current CompuLab machine
+name, historical `edge-ai` names, NVIDIA devkit names such as
+`jetson-orin-nano-devkit-super`, and other earlier target names. Always use
+`edge-ai-uefi-update` to stage these capsules: it retains the hardware safety
+check by selecting the payload from the module board ID and SKU.
 
 Copy the required capsule and `apply-uefi-capsule` to the running device, then
 stage the update as root. The EFI System Partition must be mounted at
@@ -226,11 +229,13 @@ The standard full UEFI configurations for Orin in L4T R35/R36 (including the
 Scarthgap L4T R36.5.0 build) and the Wrynose R39 general configuration use FMP
 image-type GUID `bf0d4599-20d4-414e-b2c5-3595b1cda402`. Earlier CompuLab
 firmware can record `edge-ai`, a complete CompuLab machine name, or an NVIDIA
-devkit name as its platform TNSPEC target. NVIDIA firmware requires a BUP entry
-TNSPEC to match the stored platform specification, but treats an empty field
-in either specification as a wildcard. Each capsule therefore uses an empty
-target-name field while retaining the exact board ID and SKU, and
-`edge-ai-uefi-update` selects the capsule using those hardware identifiers.
+devkit name as its platform TNSPEC target. NVIDIA firmware requires the BUP
+and installed specifications to have the same number of hyphen-delimited
+tokens even when individual empty tokens are used as wildcards. That makes a
+target-name-only wildcard unreliable because target names contain different
+numbers of hyphens. Each capsule therefore has empty image-entry TNSPEC
+metadata, while `edge-ai-uefi-update` supplies the hardware compatibility
+check using the module board ID and SKU.
 For example,
 `3767--0001--1--jetson-orin-nano-devkit-super-` selects the
 `edge-ai-nx-8g` capsule.

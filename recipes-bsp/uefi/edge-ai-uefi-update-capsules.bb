@@ -113,10 +113,11 @@ assemble_capsule_bundle() {
         'Lowest supported version after update: ${EDGE_AI_UEFI_CAPSULE_LSV}' \
         'Current FMP image-type GUID: '"$reference_guid" \
         'Additional legacy FMP GUIDs: ${EDGE_AI_UEFI_LEGACY_FMP_GUIDS}' \
-        'Accepted source TNSPEC target names: any (wildcard target-name field)' \
+        'Accepted source TNSPEC: any (empty BUP image-entry TNSPEC)' \
         '' \
         'The updater selects a machine-specific capsule from the module board ID and SKU.' \
-        'Every capsule keeps its module board ID and SKU exact and accepts any target name.' \
+        'Every BUP is built for one exact module before its TNSPEC metadata is cleared.' \
+        'Always use edge-ai-uefi-update so module board ID and SKU are checked before staging.' \
         'A -from-<GUID> capsule targets a device built with that custom legacy GUID.' \
         'Copy exactly one matching capsule and apply-uefi-capsule to the target.' \
         'The helper requires efibootmgr and setup-nv-boot-control.' \

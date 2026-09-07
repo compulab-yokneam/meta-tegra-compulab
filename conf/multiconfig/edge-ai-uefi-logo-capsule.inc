@@ -3,10 +3,11 @@
 EDGE_AI_UEFI_CAPSULE_MACHINE ?= "edge-ai-nx-16g"
 MACHINE = "${EDGE_AI_UEFI_CAPSULE_MACHINE}"
 
-# Leave only the target-name field empty in the BUP TNSPEC.  NVIDIA EDK2
-# treats an empty TNSPEC token as a wildcard, so the capsule can replace
-# firmware installed under any historical target name.  The board ID and SKU
-# remain exact, board-specific compatibility keys in every payload entry.
+# Generate the BUP for this exact module, then clear the complete image-entry
+# TNSPEC metadata before wrapping it in a capsule.  This avoids NVIDIA EDK2's
+# token-count-sensitive comparison and permits updates from firmware carrying
+# any historical platform specification.  Runtime capsule selection still
+# enforces the module board ID and SKU.
 EDGE_AI_UEFI_WILDCARD_TNSPEC = "1"
 
 # Standard R35/R36 Orin full-UEFI builds use the same image-type GUID as the
