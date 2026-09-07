@@ -3,40 +3,46 @@
 set -eu
 
 capsule_dir="@CAPSULE_DIR@"
-machine="@MACHINE@"
-legacy_tnspec="@LEGACY_TNSPEC@"
+efivars_dir="${EDGE_AI_UEFI_EFIVARS_DIR:-/sys/firmware/efi/efivars}"
 platform_variable_guid="781e084c-a330-417c-b678-38e696380cb9"
 
-read_platform_spec() {
-    for variable in TegraPlatformCompatSpec TegraPlatformSpec; do
-        variable_file="/sys/firmware/efi/efivars/${variable}-${platform_variable_guid}"
-        if [ -r "${variable_file}" ]; then
-            dd if="${variable_file}" bs=1 skip=4 2>/dev/null | tr -d '\0'
-            return 0
-        fi
-    done
-
-    return 1
+read_platform_variable() {
+    variable_file="${efivars_dir}/${1}-${platform_variable_guid}"
+    [ -r "${variable_file}" ] || return 1
+    dd if="${variable_file}" bs=1 skip=4 2>/dev/null | tr -d '\0'
 }
 
-select_tnspec_suffix() {
-    if ! platform_spec=$(read_platform_spec); then
-        echo "Cannot read TegraPlatformCompatSpec or TegraPlatformSpec from UEFI variables." >&2
-        return 1
-    fi
+select_machine() {
+    found_spec=no
+    for variable in TegraPlatformCompatSpec TegraPlatformSpec; do
+        if ! platform_spec=$(read_platform_variable "$variable"); then
+            continue
+        fi
+        found_spec=yes
+        board_id=$(printf '%s' "$platform_spec" | cut -d- -f1)
+        board_sku=$(printf '%s' "$platform_spec" | cut -d- -f3)
 
-    case "${platform_spec}" in
-        *-"${machine}"-)
-            ;;
-        *-"${legacy_tnspec}"-)
-            printf '%s' "-from-tnspec-${legacy_tnspec}"
-            ;;
-        *)
-            echo "Unsupported Tegra platform specification: ${platform_spec}" >&2
-            echo "Expected a target ending in -${machine}- or -${legacy_tnspec}-." >&2
-            return 1
-            ;;
-    esac
+        case "$board_id:$board_sku" in
+            3767:0000) machine=edge-ai-nx-16g ;;
+            3767:0001) machine=edge-ai-nx-8g ;;
+            3767:0003) machine=edge-ai-nano-8g ;;
+            3767:0004) machine=edge-ai-nano-4g ;;
+            *)
+                echo "Unsupported $variable: $platform_spec" >&2
+                continue
+                ;;
+        esac
+
+        printf '%s|%s' "$machine" "$platform_spec"
+        return 0
+    done
+
+    if [ "$found_spec" = no ]; then
+        echo "Cannot read TegraPlatformCompatSpec or TegraPlatformSpec from UEFI variables." >&2
+    else
+        echo "The updater supports P3767 module SKUs 0000, 0001, 0003, and 0004." >&2
+    fi
+    return 1
 }
 
 usage() {
@@ -70,7 +76,9 @@ case "${1-}" in
 esac
 
 legacy_guid=${2-}
-tnspec_suffix=$(select_tnspec_suffix)
+selection=$(select_machine)
+machine=${selection%%|*}
+platform_spec=${selection#*|}
 if [ -n "${legacy_guid}" ]; then
     case "${legacy_guid}" in
         ????????-????-????-????-????????????) ;;
@@ -85,13 +93,9 @@ if [ -n "${legacy_guid}" ]; then
             exit 2
             ;;
     esac
-    if [ -n "${tnspec_suffix}" ]; then
-        capsule="${capsule_dir}/${machine}-uefi-${variant}${tnspec_suffix}-guid-${legacy_guid}.cap"
-    else
-        capsule="${capsule_dir}/${machine}-uefi-${variant}-from-${legacy_guid}.cap"
-    fi
+    capsule="${capsule_dir}/${machine}-uefi-${variant}-from-${legacy_guid}.cap"
 else
-    capsule="${capsule_dir}/${machine}-uefi-${variant}${tnspec_suffix}.cap"
+    capsule="${capsule_dir}/${machine}-uefi-${variant}.cap"
 fi
 
 if [ ! -s "${capsule}" ]; then
@@ -102,6 +106,7 @@ fi
 echo "Verifying installed UEFI capsules..."
 (cd "${capsule_dir}" && sha256sum -c SHA256SUMS)
 
-echo "Installed Tegra platform specification selects: $(basename "${capsule}")"
+echo "Installed Tegra platform specification: ${platform_spec}"
+echo "Detected module selects: $(basename "${capsule}")"
 "${capsule_dir}/apply-uefi-capsule" "${capsule}"
 echo "Reboot now to let UEFI consume the staged capsule."

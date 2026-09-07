@@ -35,21 +35,8 @@ INITRAMFS_WKS_FSTYPE = "cpio.gz"
 IMAGE_ROOTFS_SIZE = "98304"
 IMAGE_ROOTFS_EXTRA_SPACE = "16384"
 
-EDGE_AI_UEFI_CAPSULE_MACHINE ??= ""
-
-python validate_uefi_update_image_machine() {
-    image_machine = d.getVar("MACHINE")
-    capsule_machine = d.getVar("EDGE_AI_UEFI_CAPSULE_MACHINE")
-
-    if not capsule_machine:
-        bb.fatal("edge-ai-uefi-update-image requires "
-                 "EDGE_AI_UEFI_CAPSULE_MACHINE to be set explicitly")
-    if capsule_machine != image_machine:
-        bb.fatal("Refusing to put %s capsules in an image for %s" %
-                 (capsule_machine, image_machine))
-}
-do_rootfs[prefuncs] += "validate_uefi_update_image_machine"
-
-COMPATIBLE_MACHINE = "(edge-ai.*)"
+# The capsule package is universal across the four supported P3767 module
+# SKUs.  MACHINE still determines the kernel and removable-media boot files.
+COMPATIBLE_MACHINE = "^(edge-ai-nx-16g|edge-ai-nx-8g|edge-ai-nano-8g|edge-ai-nano-4g)$"
 
 inherit core-image
