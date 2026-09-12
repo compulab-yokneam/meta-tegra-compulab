@@ -1,5 +1,9 @@
 MACHINEOVERRIDES =. "edge-ai:"
 
+# Relax /dev/mem access, allow PCI resource reassignment, and disable PCIe
+# Active State Power Management for the Edge-AI PCIe topology.
+KERNEL_ARGS:append = " iomem=relaxed pci=realloc pcie_aspm=off"
+
 # Use the framebuffer exposed by the UEFI Graphics Output Protocol for tty1
 # until the NVIDIA DRM driver takes over.  This is opt-in because NVIDIA's
 # default Orin command line explicitly disables efifb.
