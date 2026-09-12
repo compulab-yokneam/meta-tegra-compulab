@@ -291,8 +291,11 @@ bitbake -k demo-image-full
 
 ## Universal Edge-AI release bundle
 
-The universal bundle contains one shared Weston root filesystem and four
-module-specific Tegra flash profiles. It supports these P3767 module SKUs:
+The universal bundle contains one shared Weston root filesystem, four
+module-specific Tegra flash profiles, and the complete UEFI update capsule
+package. The installed `edge-ai-uefi-update` command can select the appropriate
+module and logo capsule at runtime. The bundle supports these P3767 module
+SKUs:
 
 | Module | Machine | SKU |
 | --- | --- | --- |
