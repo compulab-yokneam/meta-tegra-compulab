@@ -3,6 +3,7 @@
 MACHINE=${MACHINE:-edge-ai-nx-16g}
 DISTRO=${DISTRO:-tegrademo}
 T="../layers/meta-tegra-compulab/templates"
+P="../layers/meta-tegra-compulab/patches"
 M="../layers/meta-tegra-compulab/tools/${MACHINE}"
 
 [[ -z $@ ]] && BD="build-${MACHINE}" || BD=$(cat <<< $@ | awk '$0=$NF')
@@ -27,6 +28,33 @@ function temp_function() {
     done
 }
 
+function patch_function() {
+    local _patch_root=$(readlink -e "${P}")
+    local _repos_root=$(readlink -e "${BUILDDIR}/../repos")
+    local _layer _patch_folder _patch_file
+
+    [[ -d ${_patch_root} && -d ${_repos_root} ]] || return 0
+
+    for _layer in "${_repos_root}"/*; do
+        _patch_folder="${_patch_root}/$(basename "${_layer}")"
+        [[ -d ${_patch_folder} ]] || continue
+
+        for _patch_file in "${_patch_folder}"/*.patch; do
+            [[ -f ${_patch_file} ]] || continue
+
+            if git -C "${_layer}" apply --check "${_patch_file}" >/dev/null 2>&1; then
+                echo "Applying $(basename "${_patch_file}") to $(basename "${_layer}")"
+                git -C "${_layer}" apply "${_patch_file}"
+            elif git -C "${_layer}" apply --reverse --check "${_patch_file}" >/dev/null 2>&1; then
+                echo "Already applied: $(basename "${_patch_file}")"
+            else
+                echo "ERROR: $(basename "${_patch_file}") is incompatible with ${_layer}" >&2
+                return 1
+            fi
+        done
+    done
+}
+
 if [[ -d ${BD} ]];then
 
 echo "Back to the build environment ${BD}"
@@ -34,8 +62,9 @@ echo "Back to the build environment ${BD}"
 
 else
 
-. setup-env --machine ${MACHINE} build-${MACHINE}
+. setup-env --machine ${MACHINE} ${BD}
 
+    patch_function
     temp_function
     mach_function
 fi
