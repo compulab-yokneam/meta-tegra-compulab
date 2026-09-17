@@ -12,7 +12,7 @@ mkdir tegra-compulab && cd tegra-compulab
 
 * Download Tegra CompuLab repo:
 ```
-source <(wget -qO - https://raw.githubusercontent.com/compulab-yokneam/meta-tegra-compulab/refs/heads/master/tools/run.me)
+source <(wget -qO - https://raw.githubusercontent.com/compulab-yokneam/meta-tegra-compulab/refs/heads/jetpack-7.2-blacksail/tools/run.me)
 ```
 
 The bootstrap script uses a tested integration baseline by default. It checks
@@ -29,7 +29,7 @@ complete commit IDs for reproducible builds:
 SRC_REV_NVIDIA="<tested-tegra-demo-distro-commit>" \
 SRC_REV_CLAB="<tested-meta-tegra-compulab-commit>" \
 SRC_REV_BROWSER="<tested-meta-browser-commit>" \
-source <(wget -qO - https://raw.githubusercontent.com/compulab-yokneam/meta-tegra-compulab/refs/heads/master/tools/run.me)
+source <(wget -qO - https://raw.githubusercontent.com/compulab-yokneam/meta-tegra-compulab/refs/heads/jetpack-7.2-blacksail/tools/run.me)
 ```
 
 Using `HEAD` or a branch name is intended only for development because the
