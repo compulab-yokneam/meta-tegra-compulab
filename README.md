@@ -43,4 +43,4 @@ validated. The family capsules contain the carrier-specific configuration.
 Raw QSPI provisioning and the upgrade from JP6 must be tested on hardware before
 release; JP7 upgrades require an L4T 36.5.0 starting point.
 
-See [validation instructions and results](../../tests/compulab/README.md).
+See [validation instructions and results](tests/compulab/README.md).
