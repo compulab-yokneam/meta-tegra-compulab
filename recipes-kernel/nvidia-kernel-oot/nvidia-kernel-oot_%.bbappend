@@ -1,4 +1,4 @@
-FILESEXTRAPATHS:prepend := "${THISDIR}/${PN}:"
+FILESEXTRAPATHS:prepend:edgeai-orn := "${THISDIR}/${PN}:"
 
 SRC_URI:append:edgeai-orn = " \
 	file://0001-compulab-dts-Enable-pcie-140c0000-pcie-140e0000.patch \

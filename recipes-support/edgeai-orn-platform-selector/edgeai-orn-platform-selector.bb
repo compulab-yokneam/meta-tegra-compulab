@@ -7,11 +7,14 @@ SRC_URI = " \
     file://edgeai-orn-platform-selector.service \
 "
 
-S = "${WORKDIR}"
+S = "${UNPACKDIR}"
 
-inherit allarch systemd
+inherit systemd
 
-RDEPENDS:${PN} = "bash"
+COMPATIBLE_MACHINE = "^edgeai-orn-(nano|nx)$"
+PACKAGE_ARCH = "${MACHINE_ARCH}"
+
+RDEPENDS:${PN} = "bash coreutils util-linux"
 SYSTEMD_SERVICE:${PN} = "edgeai-orn-platform-selector.service"
 
 EDGE_AI_PLATFORM_SKUS:edgeai-orn-nano = "0003 0004"
@@ -21,11 +24,11 @@ do_compile[noexec] = "1"
 
 do_install() {
     install -d ${D}${sbindir}
-    install -m 0755 ${WORKDIR}/edgeai-orn-platform-selector ${D}${sbindir}/
+    install -m 0755 ${UNPACKDIR}/edgeai-orn-platform-selector ${D}${sbindir}/
     sed -i 's/@SUPPORTED_SKUS@/${EDGE_AI_PLATFORM_SKUS}/' \
         ${D}${sbindir}/edgeai-orn-platform-selector
 
     install -d ${D}${systemd_system_unitdir}
-    install -m 0644 ${WORKDIR}/edgeai-orn-platform-selector.service \
+    install -m 0644 ${UNPACKDIR}/edgeai-orn-platform-selector.service \
         ${D}${systemd_system_unitdir}/
 }

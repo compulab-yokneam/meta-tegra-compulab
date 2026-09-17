@@ -1,4 +1,0 @@
-BBLAYERS:append = " \
-  ##OEROOT##/meta-tegra-compulab \
-  ##OEROOT##/meta-browser/meta-firefox \
-  "

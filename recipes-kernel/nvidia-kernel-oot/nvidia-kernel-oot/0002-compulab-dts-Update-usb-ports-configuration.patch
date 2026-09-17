@@ -4,13 +4,9 @@ Date: Mon, 9 Mar 2026 09:36:12 +0200
 Subject: [PATCH] compulab: dts: Update usb ports configuration
 
 Signed-off-by: Valentin Raevsky <valentin@compulab.co.il>
+Upstream-Status: Inappropriate [carrier configuration]
 ---
- .../nvidia/t23x/nv-public/tegra234-p3768-0000+p3767.dtsi | 9 +++++++--
- hardware/nvidia/t23x/nv-public/tegra234.dtsi             | 2 +-
- 2 files changed, 8 insertions(+), 3 deletions(-)
-
 diff --git a/hardware/nvidia/t23x/nv-public/tegra234-p3768-0000+p3767.dtsi b/hardware/nvidia/t23x/nv-public/tegra234-p3768-0000+p3767.dtsi
-index 4182135..70431c0 100644
 --- a/hardware/nvidia/t23x/nv-public/tegra234-p3768-0000+p3767.dtsi
 +++ b/hardware/nvidia/t23x/nv-public/tegra234-p3768-0000+p3767.dtsi
 @@ -97,7 +97,7 @@
@@ -37,7 +33,6 @@ index 4182135..70431c0 100644
  				};
  			};
 diff --git a/hardware/nvidia/t23x/nv-public/tegra234.dtsi b/hardware/nvidia/t23x/nv-public/tegra234.dtsi
-index 99bf4d8..174c03d 100644
 --- a/hardware/nvidia/t23x/nv-public/tegra234.dtsi
 +++ b/hardware/nvidia/t23x/nv-public/tegra234.dtsi
 @@ -3176,7 +3176,7 @@
@@ -49,6 +44,3 @@ index 99bf4d8..174c03d 100644
  							#phy-cells = <0>;
  						};
  
--- 
-2.43.0
-

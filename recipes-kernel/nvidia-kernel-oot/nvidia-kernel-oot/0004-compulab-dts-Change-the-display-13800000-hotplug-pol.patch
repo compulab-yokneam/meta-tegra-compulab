@@ -1,26 +1,20 @@
-From 0851d92f82942b9a68ceb8de056d9b4a4fd1ca6e Mon Sep 17 00:00:00 2001
+From 767897a157d5e7d61c0310a25c01fd3d698160cd Mon Sep 17 00:00:00 2001
 From: Valentin Raevsky <valentin@compulab.co.il>
 Date: Mon, 9 Mar 2026 09:41:49 +0200
 Subject: [PATCH] compulab: dts: Change the display@13800000 hotplug polarity
 
 Signed-off-by: Valentin Raevsky <valentin@compulab.co.il>
+Upstream-Status: Pending
 ---
- .../nv-platform/tegra234-p3768-0000+p3767-xxxx-nv-common.dtsi   | 2 +-
- 1 file changed, 1 insertion(+), 1 deletion(-)
-
 diff --git a/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-xxxx-nv-common.dtsi b/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-xxxx-nv-common.dtsi
-index cb76d57..2ed3600 100644
 --- a/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-xxxx-nv-common.dtsi
 +++ b/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-xxxx-nv-common.dtsi
-@@ -346,7 +346,7 @@
+@@ -306,7 +306,7 @@
+ 	};
  
  	display@13800000 {
- 		/* os_gpio_hotplug_a is used for hotplug */
 -		os_gpio_hotplug_a = <&gpio TEGRA234_MAIN_GPIO(M, 0) GPIO_ACTIVE_HIGH>;
 +		os_gpio_hotplug_a = <&gpio TEGRA234_MAIN_GPIO(M, 0) GPIO_ACTIVE_LOW>;
  		status = "okay";
  	};
- 
--- 
-2.43.0
-
+ };

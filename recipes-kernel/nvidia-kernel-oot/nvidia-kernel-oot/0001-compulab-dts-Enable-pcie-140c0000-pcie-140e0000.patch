@@ -4,12 +4,9 @@ Date: Mon, 9 Mar 2026 09:28:32 +0200
 Subject: [PATCH] compulab: dts: Enable pcie@140c0000, pcie@140e0000
 
 Signed-off-by: Valentin Raevsky <valentin@compulab.co.il>
+Upstream-Status: Inappropriate [carrier configuration]
 ---
- hardware/nvidia/t23x/nv-public/tegra234.dtsi | 4 ++--
- 1 file changed, 2 insertions(+), 2 deletions(-)
-
 diff --git a/hardware/nvidia/t23x/nv-public/tegra234.dtsi b/hardware/nvidia/t23x/nv-public/tegra234.dtsi
-index 2601b43..99bf4d8 100644
 --- a/hardware/nvidia/t23x/nv-public/tegra234.dtsi
 +++ b/hardware/nvidia/t23x/nv-public/tegra234.dtsi
 @@ -4533,7 +4533,7 @@
@@ -30,6 +27,3 @@ index 2601b43..99bf4d8 100644
  		};
  
  		pcie-ep@140e0000 {
--- 
-2.43.0
-

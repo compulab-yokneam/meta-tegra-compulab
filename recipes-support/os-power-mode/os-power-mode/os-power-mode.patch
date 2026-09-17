@@ -1,6 +1,11 @@
---- a/os-power-mode	2026-08-06 09:52:34.122631390 +0000
-+++ b/os-power-mode	2026-08-06 09:53:08.450076370 +0000
-@@ -89,7 +89,7 @@
+From: CompuLab <dev@compulab.co.il>
+Subject: [PATCH] os-power-mode: Support EdgeAI-ORN families
+
+Upstream-Status: Inappropriate [device configuration]
+---
+--- a/os-power-mode
++++ b/os-power-mode
+@@ -89,13 +89,13 @@
      fi
  
      case $MACHINE in
@@ -9,3 +14,10 @@
              power_modes=(["low"]="1" ["mid"]="3" ["high"]="0")
              ;;
          jetson-orin-nx-xavier-nx-devkit)
+             power_modes=(["low"]="1" ["mid"]="4" ["high"]="0")
+             ;;
+-        jetson-orin-nano-devkit-nvme)
++        jetson-orin-nano-devkit-nvme|edgeai-orn-nano)
+             power_modes=(["low"]="0" ["mid"]="1" ["high"]="2")
+             ;;
+         jetson-orin-nano-seeed-j3010)

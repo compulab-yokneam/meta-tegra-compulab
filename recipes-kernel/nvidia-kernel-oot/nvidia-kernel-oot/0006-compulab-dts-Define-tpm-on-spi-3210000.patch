@@ -1,34 +1,88 @@
-From 51130c362ea28304aafc3a410bfbbcb72a3a3544 Mon Sep 17 00:00:00 2001
+From 9783c9498d0ee92c2b7191e5306610946440d1bd Mon Sep 17 00:00:00 2001
 From: Valentin Raevsky <valentin@compulab.co.il>
 Date: Mon, 9 Mar 2026 09:48:03 +0200
 Subject: [PATCH] compulab: dts: Define tpm on spi@3210000
 
 Signed-off-by: Valentin Raevsky <valentin@compulab.co.il>
+Upstream-Status: Pending
 ---
- .../tegra234-p3768-0000+p3767-xxxx-nv-common.dtsi        | 9 ++++++---
- 1 file changed, 6 insertions(+), 3 deletions(-)
-
 diff --git a/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-xxxx-nv-common.dtsi b/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-xxxx-nv-common.dtsi
-index f842be2..0cdcad3 100644
 --- a/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-xxxx-nv-common.dtsi
 +++ b/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-xxxx-nv-common.dtsi
-@@ -114,10 +114,13 @@
+@@ -60,6 +60,39 @@
  		/* SPI1, 40pin header, Pin 19(MOSI), Pin 21(MISO), Pin 23(CLK), Pin 24(CS) */
  		spi@3210000{
  			status = "okay";
--			spi@0 {
--				compatible = "tegra-spidev";
 +			cs-gpios = <&gpio TEGRA234_MAIN_GPIO(Z, 6) GPIO_ACTIVE_LOW>;  /* SPI1_CS0 */
 +			slb9670: spi@0 {
 +				compatible = "infineon,slb9670";
- 				reg = <0x0>;
--				spi-max-frequency = <50000000>;
++				reg = <0x0>;
 +				spi-max-frequency = <5000000>;
++				#address-cells = <1>;
++				#size-cells = <0>;
 +				status = "okay";
 +				reset-gpios = <&gpio TEGRA234_AON_GPIO(CC, 0) GPIO_ACTIVE_LOW>;
- 				controller-data {
- 					nvidia,enable-hw-based-cs;
- 					nvidia,rx-clk-tap-delay = <0x10>;
--- 
-2.43.0
-
++				controller-data {
++					nvidia,enable-hw-based-cs;
++					nvidia,rx-clk-tap-delay = <0x10>;
++					nvidia,tx-clk-tap-delay = <0x0>;
++				};
++			};
++			spi@1 {
++				compatible = "tegra-spidev";
++				reg = <0x1>;
++				spi-max-frequency = <50000000>;
++				#address-cells = <1>;
++				#size-cells = <0>;
++				controller-data {
++					nvidia,enable-hw-based-cs;
++					nvidia,rx-clk-tap-delay = <0x10>;
++					nvidia,tx-clk-tap-delay = <0x0>;
++				};
++			};
++
++		};
++
++		/* SPI3, 40pin header, Pin 37(MOSI), Pin 22(MISO), Pin 13(CLK), Pin 18(CS) */
++		spi@3230000{
++			status = "okay";
+ 			spi@0 {
+ 				compatible = "tegra-spidev";
+ 				reg = <0x0>;
+@@ -84,36 +117,6 @@
+ 					nvidia,tx-clk-tap-delay = <0x0>;
+ 				};
+ 			};
+-
+-		};
+-
+-		/* SPI3, 40pin header, Pin 37(MOSI), Pin 22(MISO), Pin 13(CLK), Pin 18(CS) */
+-		spi@3230000{
+-			status = "okay";
+-			spi@0 {
+-				compatible = "tegra-spidev";
+-				reg = <0x0>;
+-				spi-max-frequency = <50000000>;
+-				#address-cells = <1>;
+-				#size-cells = <0>;
+-				controller-data {
+-					nvidia,enable-hw-based-cs;
+-					nvidia,rx-clk-tap-delay = <0x10>;
+-					nvidia,tx-clk-tap-delay = <0x0>;
+-				};
+-			};
+-			spi@1 {
+-				compatible = "tegra-spidev";
+-				reg = <0x1>;
+-				spi-max-frequency = <50000000>;
+-				#address-cells = <1>;
+-				#size-cells = <0>;
+-				controller-data {
+-					nvidia,enable-hw-based-cs;
+-					nvidia,rx-clk-tap-delay = <0x10>;
+-					nvidia,tx-clk-tap-delay = <0x0>;
+-				};
+-			};
+ 		};
+ 
+ 		i2c@c240000 {

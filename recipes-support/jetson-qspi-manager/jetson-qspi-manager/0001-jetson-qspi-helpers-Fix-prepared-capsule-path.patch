@@ -12,15 +12,11 @@ Quote both paths while checking them so custom mountpoints containing shell
 metacharacters cannot break the test.
 
 Signed-off-by: Valentin Raevsky <valentin@compulab.co.il>
+Upstream-Status: Pending
 ---
- jetson-qspi-helpers | 4 +++-
- 1 file changed, 3 insertions(+), 1 deletion(-)
-
-diff --git a/jetson-qspi-helpers b/jetson-qspi-helpers
-index e658bcb..be558ad 100644
 --- a/jetson-qspi-helpers
 +++ b/jetson-qspi-helpers
-@@ -47,7 +47,9 @@ check_qspi_accessible() {
+@@ -56,7 +56,9 @@
  }
  
  capsule_update_prepared() {
@@ -31,5 +27,3 @@ index e658bcb..be558ad 100644
          return 0
      else
          return 1
--- 
-2.43.0

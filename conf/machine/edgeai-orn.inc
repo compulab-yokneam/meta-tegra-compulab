@@ -5,14 +5,14 @@ TEGRA_FLASHVAR_PMC_CONFIG = "tegra234-edgeai-orn-padvoltage-default.dtsi"
 
 # CompuLab Edge-AI carrier UPHY configuration.  The NVIDIA P3768 default uses
 # gbe-uphy-config-8, which does not describe the Edge-AI carrier routing.
-ODMDATA = "gbe-uphy-config-9,hsstp-lane-map-3,hsio-uphy-config-0"
+TEGRA_FLASHVAR_ODMDATA = "gbe-uphy-config-9,hsstp-lane-map-3,hsio-uphy-config-0"
 
 TNSPEC_BOOTDEV = "nvme0n1p1"
 PARTITION_LAYOUT_TEMPLATE_DEFAULT = "flash_t234_qspi.xml"
 PARTITION_LAYOUT_EXTERNAL_DEFAULT = "flash_l4t_t234_nvme.xml"
 TEGRAFLASH_NO_INTERNAL_STORAGE = "0"
 
-KERNEL_DEVICETREE:edgeai-orn:append = " \
+EDGE_AI_DTBS = " \
     tegra234-p3768-0000+p3767-0000-nv.dtb \
     tegra234-p3768-0000+p3767-0000-nv-super.dtb \
     tegra234-p3768-0000+p3767-0001-nv.dtb \
@@ -21,6 +21,7 @@ KERNEL_DEVICETREE:edgeai-orn:append = " \
     tegra234-p3768-0000+p3767-0003-nv-super.dtb \
     tegra234-p3768-0000+p3767-0004-nv.dtb \
     tegra234-p3768-0000+p3767-0004-nv-super.dtb \
+    tegra234-p3768-0000+p3767-0005-nv.dtb \
     tegra234-p3768-0000+p3767-0005-nv-super.dtb \
 "
 
@@ -31,10 +32,15 @@ CORE_IMAGE_EXTRA_INSTALL:append = " \
     nvidia-kernel-oot-cameras \
     nvidia-kernel-oot-display \
     nvidia-kernel-oot-alsa \
-    nvidia-kernel-oot-devicetrees \
+    nvidia-kernel-oot-dtb \
     kernel-modules \
 "
 
 CORE_IMAGE_EXTRA_INSTALL:append = " \
     i2c-tools \
 "
+
+# The first entry is also used by jetson-dtbs and tegraflash as the fallback.
+EDGE_AI_DEFAULT_DTB:edgeai-orn-nano = "tegra234-p3768-0000+p3767-0004-nv-super.dtb"
+EDGE_AI_DEFAULT_DTB:edgeai-orn-nx = "tegra234-p3768-0000+p3767-0001-nv-super.dtb"
+KERNEL_DEVICETREE = "${EDGE_AI_DEFAULT_DTB} ${EDGE_AI_DTBS}"

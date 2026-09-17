@@ -1,18 +1,15 @@
-From cbb4bbc276f821e26e6f91efe4e7fa2d66faaf05 Mon Sep 17 00:00:00 2001
+From d5634394270c71b4052bc47a2d7cbdeeb33429a4 Mon Sep 17 00:00:00 2001
 From: Valentin Raevsky <valentin@compulab.co.il>
 Date: Mon, 9 Mar 2026 09:37:41 +0200
 Subject: [PATCH] compulab: dts: Enable serial@3110000
 
 Signed-off-by: Valentin Raevsky <valentin@compulab.co.il>
+Upstream-Status: Pending
 ---
- hardware/nvidia/t23x/nv-public/nv-soc/tegra234-soc-overlay.dtsi | 2 +-
- 1 file changed, 1 insertion(+), 1 deletion(-)
-
 diff --git a/hardware/nvidia/t23x/nv-public/nv-soc/tegra234-soc-overlay.dtsi b/hardware/nvidia/t23x/nv-public/nv-soc/tegra234-soc-overlay.dtsi
-index adbcca2..24a8347 100644
 --- a/hardware/nvidia/t23x/nv-public/nv-soc/tegra234-soc-overlay.dtsi
 +++ b/hardware/nvidia/t23x/nv-public/nv-soc/tegra234-soc-overlay.dtsi
-@@ -291,7 +291,7 @@
+@@ -328,7 +328,7 @@
  			interrupts = <GIC_SPI TEGRA234_IRQ_UARTB IRQ_TYPE_LEVEL_HIGH>;
  			clocks = <&bpmp TEGRA234_CLK_UARTB>;
  			resets = <&bpmp TEGRA234_RESET_UARTB>;
@@ -20,7 +17,4 @@ index adbcca2..24a8347 100644
 +			status = "okay";
  		};
  
- 		tachometer@39c0000 {
--- 
-2.43.0
-
+ 		serial@3140000 {

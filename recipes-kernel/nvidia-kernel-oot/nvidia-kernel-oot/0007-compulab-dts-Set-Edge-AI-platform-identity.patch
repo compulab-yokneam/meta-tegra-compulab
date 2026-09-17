@@ -12,19 +12,9 @@ Apply the identity to both normal and Super DTBs because either variant can be
 selected by the bootloader or included in an update capsule.
 
 Signed-off-by: CompuLab <dev@compulab.co.il>
+Upstream-Status: Inappropriate [carrier configuration]
 ---
- .../tegra234-p3768-0000+p3767-0000-nv-super.dts   | 4 ++--
- .../nv-platform/tegra234-p3768-0000+p3767-0000-nv.dts | 5 +++++
- .../tegra234-p3768-0000+p3767-0001-nv-super.dts   | 4 ++--
- .../nv-platform/tegra234-p3768-0000+p3767-0001-nv.dts | 3 ++-
- .../tegra234-p3768-0000+p3767-0003-nv-super.dts   | 4 ++--
- .../nv-platform/tegra234-p3768-0000+p3767-0003-nv.dts | 3 ++-
- .../tegra234-p3768-0000+p3767-0004-nv-super.dts   | 4 ++--
- .../nv-platform/tegra234-p3768-0000+p3767-0004-nv.dts | 3 ++-
- 8 files changed, 19 insertions(+), 11 deletions(-)
-
 diff --git a/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0000-nv.dts b/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0000-nv.dts
-index 755f2af..d93b9f1 100644
 --- a/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0000-nv.dts
 +++ b/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0000-nv.dts
 @@ -5,3 +5,8 @@
@@ -37,7 +27,6 @@ index 755f2af..d93b9f1 100644
 +	model = "NVIDIA Jetson Orin NX EdgeAI-ORN";
 +};
 diff --git a/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0000-nv-super.dts b/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0000-nv-super.dts
-index 29abc63..810e7a2 100644
 --- a/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0000-nv-super.dts
 +++ b/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0000-nv-super.dts
 @@ -6,6 +6,6 @@
@@ -50,7 +39,6 @@ index 29abc63..810e7a2 100644
 +	model = "NVIDIA Jetson Orin NX EdgeAI-ORN";
  };
 diff --git a/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0001-nv.dts b/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0001-nv.dts
-index 7fcfa20..53fa634 100644
 --- a/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0001-nv.dts
 +++ b/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0001-nv.dts
 @@ -7,5 +7,6 @@
@@ -62,7 +50,6 @@ index 7fcfa20..53fa634 100644
 +	model = "NVIDIA Jetson Orin NX EdgeAI-ORN";
  };
 diff --git a/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0001-nv-super.dts b/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0001-nv-super.dts
-index 0b80389..1d60cc7 100644
 --- a/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0001-nv-super.dts
 +++ b/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0001-nv-super.dts
 @@ -6,6 +6,6 @@
@@ -75,7 +62,6 @@ index 0b80389..1d60cc7 100644
 +	model = "NVIDIA Jetson Orin NX EdgeAI-ORN";
  };
 diff --git a/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0003-nv.dts b/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0003-nv.dts
-index 335875e..0a592c3 100644
 --- a/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0003-nv.dts
 +++ b/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0003-nv.dts
 @@ -7,7 +7,8 @@
@@ -89,15 +75,9 @@ index 335875e..0a592c3 100644
  	bus@0 {
  		host1x@13e00000 {
 diff --git a/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0003-nv-super.dts b/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0003-nv-super.dts
-index f7193c0..fb06b44 100644
 --- a/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0003-nv-super.dts
 +++ b/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0003-nv-super.dts
-@@ -1,15 +1,15 @@
- // SPDX-License-Identifier: GPL-2.0
- // SPDX-FileCopyrightText: Copyright (c) 2024, NVIDIA CORPORATION & AFFILIATES.  All rights reserved.
- 
- /dts-v1/;
- 
+@@ -6,8 +6,8 @@
  #include "tegra234-p3768-0000+p3767-0003-nv.dts"
  
  / {
@@ -108,10 +88,7 @@ index f7193c0..fb06b44 100644
  };
  
  /delete-node/ &{/opp-table-cluster0/opp-1510400000};
- /delete-node/ &{/opp-table-cluster1/opp-1510400000};
- /delete-node/ &{/opp-table-cluster2/opp-1510400000};
 diff --git a/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0004-nv.dts b/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0004-nv.dts
-index 2ead82f..1ddf32f 100644
 --- a/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0004-nv.dts
 +++ b/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0004-nv.dts
 @@ -7,7 +7,8 @@
@@ -125,15 +102,9 @@ index 2ead82f..1ddf32f 100644
  	bus@0 {
  		host1x@13e00000 {
 diff --git a/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0004-nv-super.dts b/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0004-nv-super.dts
-index 31a7d0f..56dca9a 100644
 --- a/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0004-nv-super.dts
 +++ b/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0004-nv-super.dts
-@@ -1,15 +1,15 @@
- // SPDX-License-Identifier: GPL-2.0
- // SPDX-FileCopyrightText: Copyright (c) 2024, NVIDIA CORPORATION & AFFILIATES.  All rights reserved.
- 
- /dts-v1/;
- 
+@@ -6,8 +6,8 @@
  #include "tegra234-p3768-0000+p3767-0004-nv.dts"
  
  / {
@@ -144,7 +115,3 @@ index 31a7d0f..56dca9a 100644
  };
  
  /delete-node/ &{/opp-table-cluster0/opp-1510400000};
- /delete-node/ &{/opp-table-cluster1/opp-1510400000};
- /delete-node/ &{/opp-table-cluster2/opp-1510400000};
--- 
-2.43.0

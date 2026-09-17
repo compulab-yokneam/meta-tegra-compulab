@@ -1,5 +1,5 @@
 # Hack: The fetch task is disabled on this recipe, so the following is just for the task signature.
-FILESEXTRAPATHS:prepend := "${THISDIR}/tegra-flashvars:"
+FILESEXTRAPATHS:prepend:edgeai-orn := "${THISDIR}/tegra-flashvars:"
 SRC_URI:append:edgeai-orn = "\
     file://tegra234-edgeai-orn-gpio-default.dtsi \
     file://tegra234-edgeai-orn-padvoltage-default.dtsi \
