@@ -2,7 +2,7 @@
   <manifest>
   <remote fetch="https://github.com/compulab-yokneam" name="compulab"/>
 
-  <project name="meta-tegra-compulab" remote="compulab" revision="edge-ai" path="layers/meta-tegra-compulab" >
+  <project name="meta-tegra-compulab" remote="compulab" revision="d9780f5ff2a1085fd9cb34b808bd9c07bc1183a3" path="layers/meta-tegra-compulab" >
     <linkfile src="tools/compulab-setup-env" dest="compulab-setup-env" />
   </project>
 

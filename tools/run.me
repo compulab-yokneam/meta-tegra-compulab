@@ -1,83 +1,115 @@
-#!/bin/bash -x
+#!/bin/bash -e
 
-SRC_URI_NVIDIA="https://github.com/OE4T/tegra-demo-distro.git"
-SRC_REV_NVIDIA=${SRC_REV_NVIDIA:-HEAD}
-tegra_bsp_dir=$(basename ${SRC_URI_NVIDIA})
-tegra_bsp_dir=${tegra_bsp_dir/.git/}
+# Known-good integration baseline.  Update these revisions only after the
+# compatibility checks documented in README.md have passed.
+SRC_URI_NVIDIA=${SRC_URI_NVIDIA:-"https://github.com/OE4T/tegra-demo-distro.git"}
+SRC_REV_NVIDIA=${SRC_REV_NVIDIA:-"8ca9f4a8aa08e46bac501a483b7c4ffb2f3a61c3"}
 
-init_tegra() {
-    if [[ ! -d ${tegra_bsp_dir} ]];then
-        git clone ${SRC_URI_NVIDIA}
-    fi
-    cd tegra-demo-distro
-    git checkout ${SRC_REV_NVIDIA}
-    git submodule update --init
-}
-init_tegra
+SRC_URI_CLAB=${SRC_URI_CLAB:-"https://github.com/compulab-yokneam/meta-tegra-compulab.git"}
+SRC_REV_CLAB=${SRC_REV_CLAB:-"d9780f5ff2a1085fd9cb34b808bd9c07bc1183a3"}
 
-SRC_URI_CLAB=" https://github.com/compulab-yokneam/meta-tegra-compulab.git "
-META_LAYERS=" https://github.com/OSSystems/meta-browser.git "
-META_LAYERS+=" ${SRC_URI_CLAB} "
+SRC_URI_BROWSER=${SRC_URI_BROWSER:-"https://github.com/OSSystems/meta-browser.git"}
+SRC_REV_BROWSER=${SRC_REV_BROWSER:-"886bde2eb0e36ab2b062f563ff0192f9471a1150"}
 
-work_dir=$(pwd)
-layers_dir=${work_dir}/layers
+repo_dir_from_uri() {
+    local uri=$1
+    local repo_dir
 
-[[ -d ${layers_dir} ]] || exit 22
-
-_sync_layer() {
-    if [[ -d ${meta_layer_dir} ]];then
-        git -C ${meta_layer_dir} remote update
-        git -C ${meta_layer_dir} pull
-    fi
+    repo_dir=$(basename "${uri}")
+    printf '%s\n' "${repo_dir%.git}"
 }
 
-_clone_layer() {
-    if [[ ! -d ${meta_layer_dir} ]];then
-        pushd ${layers_dir}
-        git clone ${meta_layer}
-        popd
+clone_if_missing() {
+    local uri=$1
+    local repo_dir=$2
+
+    if [[ ! -e ${repo_dir} ]]; then
+        git clone "${uri}" "${repo_dir}"
+    elif ! git -C "${repo_dir}" rev-parse --is-inside-work-tree \
+            >/dev/null 2>&1; then
+        echo "ERROR: ${repo_dir} exists but is not a Git repository" >&2
+        return 1
     fi
 }
+
+checkout_ref() {
+    local repo_dir=$1
+    local revision=$2
+    local description=$3
+    local ref commit
+
+    if ! git -C "${repo_dir}" diff --quiet || \
+       ! git -C "${repo_dir}" diff --cached --quiet; then
+        echo "ERROR: refusing to switch dirty ${description} repository: ${repo_dir}" >&2
+        return 1
+    fi
+
+    git -C "${repo_dir}" fetch --prune --tags origin
+
+    if [[ ${revision} == "HEAD" ]]; then
+        ref="refs/remotes/origin/HEAD"
+    elif git -C "${repo_dir}" show-ref --verify --quiet \
+            "refs/remotes/origin/${revision}"; then
+        ref="refs/remotes/origin/${revision}"
+    elif git -C "${repo_dir}" show-ref --verify --quiet \
+            "refs/tags/${revision}"; then
+        ref="refs/tags/${revision}"
+    elif git -C "${repo_dir}" rev-parse --verify --quiet \
+            "${revision}^{commit}" >/dev/null; then
+        ref="${revision}"
+    else
+        echo "ERROR: cannot resolve ${description} revision: ${revision}" >&2
+        return 1
+    fi
+
+    commit=$(git -C "${repo_dir}" rev-parse "${ref}^{commit}")
+    git -C "${repo_dir}" checkout --detach "${commit}"
+    echo "Pinned ${description}: ${commit}"
+}
+
+tegra_bsp_dir=${TEGRA_BSP_DIR:-"$(repo_dir_from_uri "${SRC_URI_NVIDIA}")"}
+
+clone_if_missing "${SRC_URI_NVIDIA}" "${tegra_bsp_dir}"
+checkout_ref "${tegra_bsp_dir}" "${SRC_REV_NVIDIA}" "tegra-demo-distro"
+
+git -C "${tegra_bsp_dir}" submodule sync --recursive
+git -C "${tegra_bsp_dir}" submodule update --init --recursive
+
+work_dir="$(readlink -e "${tegra_bsp_dir}")"
+layers_dir="${work_dir}/layers"
 
 prepare_layer() {
-    local meta_layer_dir=$(basename ${meta_layer})
-    meta_layer_dir=${layers_dir}/${meta_layer_dir/.git/}
-    meta_layer_dir=${meta_layer_dir} meta_layer=${meta_layer} _clone_layer
-    meta_layer_dir=${meta_layer_dir} meta_layer=${meta_layer} _sync_layer
+    local uri=$1
+    local revision=$2
+    local description=$3
+    local layer_name layer_dir
+
+    layer_name=$(repo_dir_from_uri "${uri}")
+    layer_dir="${layers_dir}/${layer_name}"
+    clone_if_missing "${uri}" "${layer_dir}"
+    checkout_ref "${layer_dir}" "${revision}" "${description}"
 }
 
-SRC_REV_CLAB=${SRC_REV_CLAB:-"master"}
-clab_layer_dir=$(basename ${SRC_URI_CLAB})
-clab_layer_dir=${layers_dir}/${clab_layer_dir/.git/}
-clab_checkout() {
-    git -C ${clab_layer_dir} checkout remotes/origin/${SRC_REV_CLAB}
-}
+prepare_layer "${SRC_URI_BROWSER}" "${SRC_REV_BROWSER}" "meta-browser"
+prepare_layer "${SRC_URI_CLAB}" "${SRC_REV_CLAB}" "meta-tegra-compulab"
 
+ln -sfn layers/meta-tegra-compulab/tools/compulab-setup-env \
+    "${work_dir}/compulab-setup-env"
 
-show_help() {
-cat << eof
+cat <<EOF
 --
-BSP: ${tegra_bsp_dir} is ready;
+BSP: ${tegra_bsp_dir} is ready at the pinned integration baseline.
     Issue: cd ${tegra_bsp_dir}
 --
 Available CompuLab configurations:
-eof
-for MACH in edge-ai-nx-16g edge-ai-nx-8g edge-ai-nano-8g edge-ai-nano-4g;do
-cat << eof
-    export MACHINE=${MACH}; source compulab-setup-env build-${MACH}
-eof
+EOF
+
+for machine in edge-ai-nx-16g edge-ai-nx-8g edge-ai-nano-8g edge-ai-nano-4g; do
+    echo "    export MACHINE=${machine}; source compulab-setup-env build-${machine}"
 done
-cat << eof
+
+cat <<'EOF'
 --
     bitbake -k demo-image-weston
 --
-eof
-}
-
-for _meta_layer in ${META_LAYERS};do
-    meta_layer=${_meta_layer} prepare_layer
-done
-clab_checkout
-
-ln -fs layers/meta-tegra-compulab/tools/compulab-setup-env
-show_help
+EOF

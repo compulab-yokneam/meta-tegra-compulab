@@ -12,10 +12,29 @@ mkdir tegra-compulab && cd tegra-compulab
 
 * Download Tegra CompuLab repo:
 ```
-SRC_REV_NVIDIA="HEAD" \
-SRC_REV_CLAB="master" \
 source <(wget -qO - https://raw.githubusercontent.com/compulab-yokneam/meta-tegra-compulab/refs/heads/master/tools/run.me)
 ```
+
+The bootstrap script uses a tested integration baseline by default. It checks
+out detached revisions of `tegra-demo-distro`, `meta-tegra-compulab`, and
+`meta-browser`; the `tegra-demo-distro` commit in turn pins BitBake, OE-Core,
+`meta-tegra`, and its other submodules. Existing repositories are fetched but
+never pulled or merged, and the script refuses to change a repository that has
+tracked modifications.
+
+Every default can be overridden with a branch, tag, or complete commit ID. Use
+complete commit IDs for reproducible builds:
+
+```
+SRC_REV_NVIDIA="<tested-tegra-demo-distro-commit>" \
+SRC_REV_CLAB="<tested-meta-tegra-compulab-commit>" \
+SRC_REV_BROWSER="<tested-meta-browser-commit>" \
+source <(wget -qO - https://raw.githubusercontent.com/compulab-yokneam/meta-tegra-compulab/refs/heads/master/tools/run.me)
+```
+
+Using `HEAD` or a branch name is intended only for development because the
+resolved commit can change between invocations. The script prints the exact
+commit selected for each repository so it can be recorded with build results.
 
 * Set environment variables:
 
@@ -32,6 +51,51 @@ source <(wget -qO - https://raw.githubusercontent.com/compulab-yokneam/meta-tegr
 ```
 source compulab-setup-env build-${MACHINE}
 ```
+
+## Distro compatibility and revision updates
+
+`LAYERSERIES_COMPAT_meta-tegra-compulab` identifies the Yocto release series
+whose metadata interfaces this layer has been tested against. It does not pin
+the source repositories and must not be extended merely to silence a layer
+compatibility error.
+
+The default revisions in `tools/run.me` are the current known-good integration
+lock. Do not move them automatically to the newest upstream commits. Update the
+three revisions together in a dedicated change, then validate the new
+combination before making it the default. Keep the CompuLab revision in
+`scripts/meta-tegra-compulab.xml` synchronized with the corresponding
+`SRC_REV_CLAB` default.
+
+At minimum, check that every append still has a matching recipe and that all
+metadata parses:
+
+```
+bitbake-layers show-appends
+bitbake -p
+```
+
+Force the patch tasks for recipes whose upstream source layout is extended by
+this layer:
+
+```
+bitbake -f -c patch edk2-firmware-tegra
+bitbake -f -c patch nvidia-kernel-oot
+bitbake -f -c patch tegra-minimal-init
+bitbake -f -c patch wasi-sdk-toolchain-native
+```
+
+Then build the primary integration targets:
+
+```
+bitbake -k edge-ai-universal-bundle
+bitbake edge-ai-uefi-update-image
+```
+
+The universal bundle exercises the shared runtime and the four module-specific
+flash profiles. Before publishing a new baseline, also test NVMe flashing and
+UEFI capsule updates on the applicable hardware. Tag the resulting
+`meta-tegra-compulab` commit so downstream builds can select a stable layer
+revision instead of a moving branch.
 
 ## UEFI boot logo options
 
