@@ -45,7 +45,7 @@ for recipe in recipes:
     if data.getVar('__SKIPPED'): continue
     out=Path('metadata')
     out.mkdir(exist_ok=True)
-    values={v:data.getVar(v) for v in ('PN','PV','MACHINE','PACKAGE_ARCH','OVERRIDES','SRC_URI','FILESPATH','S','UNPACKDIR','WORKDIR','B','D','DEPLOY_DIR_IMAGE','DEFAULT_DTB','KERNEL_DEVICETREE','TNSPEC_MACHINE','TEGRA_BOARDSKU','TEGRA_FLASHVAR_ODMDATA','EDGE_AI_PLATFORM_SKUS','EDGE_AI_CAPSULE_DTBS','JETSON_BOARD_SPEC','UEFI_CAPSULE','HOSTAPP_HOOKS','IMAGE_INSTALL','PART_SPEC_FILE','PACKAGES','RDEPENDS','DEVICE_SPECIFIC_SPACE','BALENA_BOOT_SIZE','BALENA_STATE_SIZE','IMAGE_ROOTFS_SIZE','COMPAT_SPEC_NAME','do_configure','do_compile','do_install','do_patch','do_deploy','install_edge_ai_dtbs','do_deploy_clab_logo','base_do_configure')}
+    values={v:data.getVar(v) for v in ('PN','PV','MACHINE','PACKAGE_ARCH','SSTATE_PKGARCH','OVERRIDES','SRC_URI','FILESPATH','S','UNPACKDIR','WORKDIR','B','D','DEPLOY_DIR_IMAGE','DEFAULT_DTB','KERNEL_DEVICETREE','TNSPEC_MACHINE','TEGRA_BOARDSKU','TEGRA_FLASHVAR_ODMDATA','EDGE_AI_PLATFORM_SKUS','EDGE_AI_CAPSULE_DTBS','JETSON_BOARD_SPEC','UEFI_CAPSULE','HOSTAPP_HOOKS','IMAGE_INSTALL','PART_SPEC_FILE','PACKAGES','RDEPENDS','DEVICE_SPECIFIC_SPACE','BALENA_BOOT_SIZE','BALENA_STATE_SIZE','IMAGE_ROOTFS_SIZE','COMPAT_SPEC_NAME','do_configure','do_compile','do_install','do_patch','do_deploy','install_edge_ai_dtbs','do_deploy_clab_logo','base_do_configure')}
     for task in ('do_configure','do_compile','do_install','do_patch','do_deploy','install_edge_ai_dtbs','do_deploy_clab_logo','base_do_configure'):
         values[task+'_flags']=data.getVarFlags(task)
     for uri in data.getVar('SRC_URI').split():
@@ -77,6 +77,7 @@ if machine in ('edgeai-orn-nano','edgeai-orn-nx'):
     for pn in ('jetson-qspi-manager','os-power-mode'):
         assert not metadata[pn]['do_patch_flags'].get('noexec')
         assert metadata[pn]['PACKAGE_ARCH']==machine.replace('-','_')
+        assert metadata[pn]['SSTATE_PKGARCH']==machine.replace('-','_')
     capsule=metadata['uefi-capsule-container']
     assert len(capsule['EDGE_AI_CAPSULE_DTBS'].split())==4
     assert 'nvidia-kernel-oot-dtb:do_deploy' in capsule['do_compile_flags']['depends']
