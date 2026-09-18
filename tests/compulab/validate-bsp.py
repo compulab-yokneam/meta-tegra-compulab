@@ -103,6 +103,15 @@ update_flash_args
             for sku in skus:
                 for mode in ('', '-super'):
                     run(['bash', '-c', body, 'validation', sku, 'jetson-orin-nano-devkit'+mode+'.conf'], cwd=tree)
+                if family == 'nx':
+                    run(['bash', '-c', body + '[[ "$ext_target_board" == "edge-ai" ]]\n',
+                         'validation', sku, 'edge-ai.conf'], cwd=tree)
+            if family == 'nx':
+                board_spec = (layer/'recipes-bsp/tegra-binaries/uefi-capsule-container/jetson_board_spec_edge_ai_nx.cfg').read_text()
+                for sku in skus:
+                    assert f'boardsku={sku};' in board_spec
+                    assert any(f'boardsku={sku};' in line and 'board=edge-ai;' in line
+                               for line in board_spec.splitlines())
             # Compile the actual carrier pinmux, GPIO, voltage, and MB2 inputs.
             bct = tree/'bootloader/generic/BCT'
             for name in ('tegra234-mb2-bct-common.dtsi', 'pinctrl-tegra.h', 'tegra234-gpio.h'):
