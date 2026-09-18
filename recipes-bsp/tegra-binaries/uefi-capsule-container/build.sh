@@ -41,6 +41,10 @@ PMC_CONFIG="tegra234-edgeai-orn-padvoltage-default.dtsi";
 MB2_BCT="tegra234-edgeai-orn-mb2-bct-misc-p3767-0000.dts";
 ODMDATA="gbe-uphy-config-9,hsstp-lane-map-3,hsio-uphy-config-0";
 EOF
+		# Preserve compatibility with systems originally flashed using the
+		# legacy edge-ai board name recorded in the UEFI TNSPEC variables.
+		cp p3768-0000-p3767-0000-a0.conf edge-ai.conf
+		echo "ext_target_board=edge-ai" >> edge-ai.conf
 		;;
 	"jetson-agx-orin-devkit-64gb" | "jetson-agx-orin-devkit")
 		bl_spec="t23x_agx_bl_spec"
