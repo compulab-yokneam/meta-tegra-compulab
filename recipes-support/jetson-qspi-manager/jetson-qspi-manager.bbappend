@@ -1,5 +1,16 @@
 FILESEXTRAPATHS:prepend := "${THISDIR}/${PN}:"
 
+# The installed helper embeds a family-specific capsule filename, so the
+# EdgeAI variants are not architecture-independent.  The upstream recipe
+# inherits allarch; override both package and sstate architectures after its
+# pre-finalization handler so Nano and NX outputs cannot collide.
+python __anonymous() {
+    if "edgeai-orn" in (d.getVar("MACHINEOVERRIDES") or "").split(":"):
+        machine_arch = d.getVar("MACHINE_ARCH")
+        d.setVar("PACKAGE_ARCH", machine_arch)
+        d.setVar("SSTATE_PKGARCH", machine_arch)
+}
+
 SRC_URI:append:edgeai-orn = " \
     file://0001-jetson-qspi-helpers-Fix-prepared-capsule-path.patch \
     file://0002-jetson-qspi-helpers-Wait-for-QSPI-device.patch \
