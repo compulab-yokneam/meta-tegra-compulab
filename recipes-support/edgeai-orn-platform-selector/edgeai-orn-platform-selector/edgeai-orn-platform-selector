@@ -4,6 +4,7 @@ set -e
 
 efivar_dir=/sys/firmware/efi/efivars
 platform_spec_var="${efivar_dir}/TegraPlatformSpec-781e084c-a330-417c-b678-38e696380cb9"
+root_boot=/boot
 boot_mount=/mnt/boot
 uenv_file="${boot_mount}/extra_uEnv.txt"
 
@@ -41,9 +42,26 @@ case "${board_sku}" in
         ;;
 esac
 
-if [[ ! -f "${boot_mount}/boot/${dtb}" ]]; then
-    echo "Edge-AI: selected DTB is missing: ${dtb}" >&2
+source_dtb="${root_boot}/${dtb}"
+target_dir="${boot_mount}/boot"
+target_dtb="${target_dir}/${dtb}"
+
+if [[ ! -f "${source_dtb}" ]]; then
+    echo "Edge-AI: selected DTB is missing from the root filesystem: ${dtb}" >&2
     exit 1
+fi
+
+# UEFI resolves custom_fdt_file on resin-boot, while the jetson-dtbs package
+# installs the family DTBs in the active root filesystem.  Keep the selected
+# DTB on resin-boot in sync before changing extra_uEnv.txt.
+install -d -m 0755 "${target_dir}"
+if [[ ! -f "${target_dtb}" ]] || ! cmp -s "${source_dtb}" "${target_dtb}"; then
+    dtb_tmp=$(mktemp "${target_dir}/.${dtb}.XXXXXX")
+    trap 'rm -f "${dtb_tmp}"' EXIT
+    install -m 0644 "${source_dtb}" "${dtb_tmp}"
+    mv "${dtb_tmp}" "${target_dtb}"
+    trap - EXIT
+    sync "${target_dtb}"
 fi
 
 tmp_file=$(mktemp "${boot_mount}/.extra_uEnv.txt.XXXXXX")

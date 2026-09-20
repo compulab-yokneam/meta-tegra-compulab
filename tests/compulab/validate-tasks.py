@@ -13,7 +13,7 @@ import subprocess
 import sys
 import tempfile
 
-root = Path(__file__).resolve().parents[2]
+root = Path(__file__).resolve().parents[4]
 metadata = {p.stem: json.loads(p.read_text()) for p in Path(sys.argv[1]).glob('*.json')}
 dtbs = Path(sys.argv[2]).resolve()
 family = metadata['balena-image']['MACHINE'].removeprefix('edgeai-orn-')
@@ -85,9 +85,11 @@ with tempfile.TemporaryDirectory(prefix='edgeai-runtime-') as temp:
     temp = Path(temp)
     boot = temp/'boot'
     (boot/'boot').mkdir(parents=True)
+    root_boot = temp/'root-boot'
+    root_boot.mkdir()
     efivars = temp/'efivars'
     efivars.mkdir()
-    script = selector.read_text().replace('efivar_dir=/sys/firmware/efi/efivars', f'efivar_dir={efivars}').replace('boot_mount=/mnt/boot', f'boot_mount={boot}')
+    script = selector.read_text().replace('efivar_dir=/sys/firmware/efi/efivars', f'efivar_dir={efivars}').replace('root_boot=/boot', f'root_boot={root_boot}').replace('boot_mount=/mnt/boot', f'boot_mount={boot}')
     envfile = boot/'extra_uEnv.txt'
     efivar = efivars/'TegraPlatformSpec-781e084c-a330-417c-b678-38e696380cb9'
     def select(sku, board='3767', expected=0):
@@ -100,18 +102,25 @@ with tempfile.TemporaryDirectory(prefix='edgeai-runtime-') as temp:
     skus = ('0003', '0004') if family == 'nano' else ('0000', '0001')
     for sku in skus:
         dtb = f'tegra234-p3768-0000+p3767-{sku}-nv-super.dtb'
-        (boot/'boot'/dtb).write_bytes((dtbs/dtb).read_bytes())
+        source = root_boot/dtb
+        target = boot/'boot'/dtb
+        source.write_bytes((dtbs/dtb).read_bytes())
         select(sku)
+        assert target.read_bytes() == source.read_bytes()
         assert envfile.read_text() == f'user_setting=keep\ncustom_fdt_file={dtb}\n'
         stamp = envfile.stat().st_mtime_ns
+        target_stamp = target.stat().st_mtime_ns
         select(sku)
         assert envfile.stat().st_mtime_ns == stamp  # no rewrite on subsequent boots
+        assert target.stat().st_mtime_ns == target_stamp
     previous = envfile.read_bytes()
     select('0000' if family == 'nano' else '0003')
     select('9999')
     select(skus[0], board='3701')
     assert envfile.read_bytes() == previous
-    (boot/'boot'/f'tegra234-p3768-0000+p3767-{skus[0]}-nv-super.dtb').unlink()
+    missing = f'tegra234-p3768-0000+p3767-{skus[0]}-nv-super.dtb'
+    (boot/'boot'/missing).unlink()
+    (root_boot/missing).unlink()
     select(skus[0], expected=1)
     assert envfile.read_bytes() == previous
     assert not list(boot.glob('.extra_uEnv.txt.*'))
