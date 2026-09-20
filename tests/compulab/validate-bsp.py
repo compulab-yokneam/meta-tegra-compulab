@@ -140,6 +140,9 @@ update_flash_args
         assert '#define BALENA_ROOTFS_INDEX_A          15' in text
         assert '#define BALENA_ROOTFS_INDEX_B          16' in text
         assert data['DEFAULT_DTB'] in text and '@@DEFAULT_DTB@@' not in text
+        build_general = (scratch/'edk2-nvidia/Platform/NVIDIA/KconfigIncludes/BuildGeneral.conf').read_text()
+        assert 'imply USE_MULTIPLE_GRAY_LOGOS' in build_general
+        assert 'imply USE_SINGLE_BLACK_LOGO' not in build_general
         logo = scratch/'edk2-nvidia/Silicon/NVIDIA/Drivers/Logo'
         for size in ('480', '720', '1080'):
             source = layer/f'recipes-bsp/uefi/edk2-firmware-tegra/EdgeAI-ORN{size}.bmp'

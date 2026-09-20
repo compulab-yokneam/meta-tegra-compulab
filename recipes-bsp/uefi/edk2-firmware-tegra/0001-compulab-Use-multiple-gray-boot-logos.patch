@@ -1,0 +1,26 @@
+From f795fc185fc0fa0fa9a1b37b37f6098e1183d80b Mon Sep 17 00:00:00 2001
+From: Valentin Raevsky <valentin@compulab.co.il>
+Date: Sun, 20 Sep 2026 10:44:51 +0000
+Subject: [PATCH] compulab: Use multiple gray boot logos
+
+Signed-off-by: Valentin Raevsky <valentin@compulab.co.il>
+Upstream-Status: Inappropriate [product branding]
+---
+ Platform/NVIDIA/KconfigIncludes/BuildGeneral.conf | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/Platform/NVIDIA/KconfigIncludes/BuildGeneral.conf b/Platform/NVIDIA/KconfigIncludes/BuildGeneral.conf
+index 32344d2b..d8528879 100644
+--- a/Platform/NVIDIA/KconfigIncludes/BuildGeneral.conf
++++ b/Platform/NVIDIA/KconfigIncludes/BuildGeneral.conf
+@@ -47,7 +47,7 @@ config BUILD_GENERAL
+   imply DEFAULT_DEFAULT_GOP_MODE_MAX
+   imply LOGO
+   imply USE_40_PERCENT_LOGO_SCALING
+-  imply USE_SINGLE_BLACK_LOGO
++  imply USE_MULTIPLE_GRAY_LOGOS
+   imply DEFAULT_FIRMWARE_MANAGEMENT_DIRECT
+   imply FIRMWARE_CAPSULE_SUPPORTED
+   imply SELECT_ALL_NETWORKING_MODES
+-- 
+2.43.0

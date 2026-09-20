@@ -1,6 +1,8 @@
 FILESEXTRAPATHS:prepend:edgeai-orn := "${THISDIR}/${PN}:"
 
-SRC_URI:append:edgeai-orn = " file://0001-compulab-Disable-DecreaseRootfsRetryCount.patch;patchdir=../edk2-nvidia"
+SRC_URI:append:edgeai-orn = " \
+    file://0001-compulab-Use-multiple-gray-boot-logos.patch;patchdir=../edk2-nvidia \
+"
 SRC_URI:append:edgeai-orn = " \
     file://EdgeAI-ORN480.bmp \
     file://EdgeAI-ORN720.bmp \
