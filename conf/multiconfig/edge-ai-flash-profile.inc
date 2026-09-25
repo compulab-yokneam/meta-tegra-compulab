@@ -14,7 +14,7 @@ EDGE_AI_ROOTFS_PLACEHOLDER = "${WORKDIR}/edge-ai-rootfs-placeholder.ext4"
 
 IMAGE_TEGRAFLASH_ROOTFS:edge-ai-profile-build = "${EDGE_AI_ROOTFS_PLACEHOLDER}"
 IMAGE_TYPEDEP:tegraflash-tar:edge-ai-profile-build = ""
-do_image_tegraflash_tar[mcdepends] += "mc::${EDGE_AI_UNIVERSAL_RUNTIME_MC}:${EDGE_AI_UNIVERSAL_IMAGE}:do_image_ext4"
+do_image_tegraflash_tar[mcdepends] += "mc:${BB_CURRENT_MC}:${EDGE_AI_UNIVERSAL_RUNTIME_MC}:${EDGE_AI_UNIVERSAL_IMAGE}:do_image_ext4"
 
 edge_ai_create_rootfs_placeholder() {
     rm -f ${EDGE_AI_ROOTFS_PLACEHOLDER}

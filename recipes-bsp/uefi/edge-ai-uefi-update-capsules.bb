@@ -39,18 +39,18 @@ EDGE_AI_UEFI_CAPSULE_INSTALL_DIR = "${datadir}/compulab/uefi-update-capsules"
 
 do_install[depends] += "coreutils-native:do_populate_sysroot"
 do_install[mcdepends] += " \
-    mc::edge-ai-uefi-nvidia-logo:tegra-uefi-capsules:do_deploy \
-    mc::edge-ai-uefi-clab-logo:tegra-uefi-capsules:do_deploy \
-    mc::edge-ai-uefi-no-logo:tegra-uefi-capsules:do_deploy \
-    mc::edge-ai-uefi-nx-8g-nvidia-logo:tegra-uefi-capsules:do_deploy \
-    mc::edge-ai-uefi-nx-8g-clab-logo:tegra-uefi-capsules:do_deploy \
-    mc::edge-ai-uefi-nx-8g-no-logo:tegra-uefi-capsules:do_deploy \
-    mc::edge-ai-uefi-nano-8g-nvidia-logo:tegra-uefi-capsules:do_deploy \
-    mc::edge-ai-uefi-nano-8g-clab-logo:tegra-uefi-capsules:do_deploy \
-    mc::edge-ai-uefi-nano-8g-no-logo:tegra-uefi-capsules:do_deploy \
-    mc::edge-ai-uefi-nano-4g-nvidia-logo:tegra-uefi-capsules:do_deploy \
-    mc::edge-ai-uefi-nano-4g-clab-logo:tegra-uefi-capsules:do_deploy \
-    mc::edge-ai-uefi-nano-4g-no-logo:tegra-uefi-capsules:do_deploy \
+    mc:${BB_CURRENT_MC}:edge-ai-uefi-nvidia-logo:tegra-uefi-capsules:do_deploy \
+    mc:${BB_CURRENT_MC}:edge-ai-uefi-clab-logo:tegra-uefi-capsules:do_deploy \
+    mc:${BB_CURRENT_MC}:edge-ai-uefi-no-logo:tegra-uefi-capsules:do_deploy \
+    mc:${BB_CURRENT_MC}:edge-ai-uefi-nx-8g-nvidia-logo:tegra-uefi-capsules:do_deploy \
+    mc:${BB_CURRENT_MC}:edge-ai-uefi-nx-8g-clab-logo:tegra-uefi-capsules:do_deploy \
+    mc:${BB_CURRENT_MC}:edge-ai-uefi-nx-8g-no-logo:tegra-uefi-capsules:do_deploy \
+    mc:${BB_CURRENT_MC}:edge-ai-uefi-nano-8g-nvidia-logo:tegra-uefi-capsules:do_deploy \
+    mc:${BB_CURRENT_MC}:edge-ai-uefi-nano-8g-clab-logo:tegra-uefi-capsules:do_deploy \
+    mc:${BB_CURRENT_MC}:edge-ai-uefi-nano-8g-no-logo:tegra-uefi-capsules:do_deploy \
+    mc:${BB_CURRENT_MC}:edge-ai-uefi-nano-4g-nvidia-logo:tegra-uefi-capsules:do_deploy \
+    mc:${BB_CURRENT_MC}:edge-ai-uefi-nano-4g-clab-logo:tegra-uefi-capsules:do_deploy \
+    mc:${BB_CURRENT_MC}:edge-ai-uefi-nano-4g-no-logo:tegra-uefi-capsules:do_deploy \
 "
 
 assemble_capsule_bundle() {
