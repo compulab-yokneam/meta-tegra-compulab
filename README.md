@@ -34,7 +34,7 @@ The QSPI manager retains JP7.2's firmware version/marker checks and `/tmp`
 migration search, with a family-specific capsule filename and a corrected
 prepared-capsule path. Obsolete container-based UEFI builds and the old
 QSPI-accessibility polling patch are omitted. Local inputs use UNPACKDIR, the
-kernel provider is `linux-noble-nvidia-tegra`, and the device-tree package is
+kernel provider is `linux-yocto`, and the device-tree package is
 `nvidia-kernel-oot-dtb`.
 
 As in the source repository, `tegra-flash-dry` uses the generic Orin Nano Super

@@ -32,7 +32,7 @@ masks=[re.compile(mask) for mask in (builder.data.getVar('BBMASK') or '').split(
 files=[f for f in files if not any(mask.search(f) for mask in masks)]
 appends=sorted((f for f in files if f.endswith('.bbappend')),key=lambda f:(priority(f),f))
 recipes=sorted(f for f in files if f.endswith('.bb'))
-selected={'balena-image','balena-image-flasher','balena-image-initramfs','packagegroup-resin-flasher','nvidia-kernel-oot','nvidia-kernel-oot-dtb','jetson-dtbs','linux-noble-nvidia-tegra','edk2-firmware-tegra','uefi-capsule-container','tegra-bootfiles','tegra-flashvars','tegra-flash-dry','tegra-nv-boot-control-config','setup-nv-boot-control','edgeai-orn-platform-selector','hostapp-update-hooks','jetson-qspi-manager','os-power-mode'}
+selected={'balena-image','balena-image-flasher','balena-image-initramfs','packagegroup-resin-flasher','nvidia-kernel-oot','nvidia-kernel-oot-dtb','jetson-dtbs','linux-yocto','l4t-launcher-extlinux','edk2-firmware-tegra','uefi-capsule-container','tegra-bootfiles','tegra-flashvars','tegra-flash-dry','tegra-nv-boot-control-config','setup-nv-boot-control','edgeai-orn-platform-selector','hostapp-update-hooks','jetson-qspi-manager','os-power-mode'}
 for recipe in recipes:
     pn=Path(recipe).name.split('_')[0].removesuffix('.bb')
     if Path(recipe).name.endswith("_git.bb"): continue
@@ -66,20 +66,29 @@ if machine in ('edgeai-orn-nano','edgeai-orn-nx'):
     family=machine.removeprefix('edgeai-orn-')
     fallback='0004' if family=='nano' else '0001'
     dtb=f'tegra234-p3768-0000+p3767-{fallback}-nv-super.dtb'
-    assert builder.data.getVar('PREFERRED_PROVIDER_virtual/kernel')=='linux-noble-nvidia-tegra'
+    assert builder.data.getVar('PREFERRED_PROVIDER_virtual/kernel')=='linux-yocto'
     assert metadata['jetson-dtbs']['KERNEL_DEVICETREE'].split()[0]==dtb
     assert metadata['edk2-firmware-tegra']['DEFAULT_DTB']==dtb
-    assert metadata['linux-noble-nvidia-tegra']['KERNEL_DEVICETREE']==''
+    assert metadata['linux-yocto']['KERNEL_DEVICETREE']==''
+    assert 'linux-yocto-extlinux' in metadata['linux-yocto']['PACKAGES'].split()
     assert metadata['balena-image']['PART_SPEC_FILE']=='partition_specification234_orin_nano.txt'
-    assert 'edgeai-orn-platform-selector' in metadata['balena-image']['IMAGE_INSTALL'].split()
     assert 'nvidia-kernel-oot-devicetrees' not in metadata['balena-image']['IMAGE_INSTALL'].split()
     assert 'nvidia-kernel-oot-display' in metadata['balena-image']['IMAGE_INSTALL'].split()
     assert 'tegra-configs-display-driver' in metadata['balena-image']['IMAGE_INSTALL'].split()
     assert 'nvidia-drm-loadconf' not in metadata['balena-image']['IMAGE_INSTALL'].split()
+    assert 'linux-yocto-extlinux' in metadata['balena-image']['IMAGE_INSTALL'].split()
+    assert 'linux-noble-nvidia-tegra-extlinux' not in metadata['balena-image']['IMAGE_INSTALL'].split()
+    assert 'kernel-module-rtw88-8822ce' in metadata['balena-image']['IMAGE_INSTALL'].split()
+    assert 'kernel-module-rtl8822ce' not in metadata['balena-image']['IMAGE_INSTALL'].split()
     assert 'kernel-modules' not in metadata['balena-image-flasher']['IMAGE_INSTALL'].split()
     assert 'nvidia-kernel-oot' not in metadata['balena-image-flasher']['IMAGE_INSTALL'].split()
     assert 'nvidia-kernel-oot-display' not in metadata['balena-image-flasher']['IMAGE_INSTALL'].split()
     assert 'nvidia-drm-loadconf' not in metadata['balena-image-flasher']['IMAGE_INSTALL'].split()
+    assert 'linux-yocto-extlinux' in metadata['balena-image-flasher']['IMAGE_INSTALL'].split()
+    assert 'linux-noble-nvidia-tegra-extlinux' not in metadata['balena-image-flasher']['IMAGE_INSTALL'].split()
+    assert 'kernel-module-rtw88-8822ce' in metadata['balena-image-flasher']['IMAGE_INSTALL'].split()
+    assert 'kernel-module-rtl8822ce' not in metadata['balena-image-flasher']['IMAGE_INSTALL'].split()
+    assert 'linux-noble-nvidia-tegra:do_deploy' not in metadata['l4t-launcher-extlinux']['do_install_flags'].get('depends','').split()
     assert 'kernel-modules' not in metadata['packagegroup-resin-flasher']['PACKAGE_RDEPENDS'].split()
     assert metadata['hostapp-update-hooks']['HOSTAPP_HOOKS'].split().count('99-resin-bootfiles-orin-nano-devkit-nvme')==1
     assert '99-resin-bootfiles-orin-nx-xavier-nx-devkit' not in metadata['hostapp-update-hooks']['HOSTAPP_HOOKS'].split()
