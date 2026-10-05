@@ -1,5 +1,9 @@
 FILESEXTRAPATHS:prepend:edgeai-orn := "${THISDIR}/${PN}:"
 
+# linux-yocto supplies the RTL8822CE driver through the in-tree RTW88 stack.
+# Do not make the empty NVIDIA Wi-Fi package depend on the skipped OOT driver.
+TEGRA_OOT_WIFI_DRIVERS:remove:edgeai-orn = "${KERNEL_MODULE_PACKAGE_PREFIX}kernel-module-rtl8822ce"
+
 SRC_URI:append:edgeai-orn = " \
 	file://0001-compulab-dts-Enable-pcie-140c0000-pcie-140e0000.patch \
 	file://0002-compulab-dts-Update-usb-ports-configuration.patch \

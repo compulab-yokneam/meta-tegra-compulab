@@ -14,4 +14,5 @@ BALENA_STATE_SIZE:edgeai-orn-nano = "20480"
 # platform-aware loader so the Orin modules are selected in dependency order;
 # the generic balena loader attempts to load nvidia-drm directly.
 IMAGE_INSTALL:append:edgeai-orn = " tegra-configs-display-driver"
-IMAGE_INSTALL:remove:edgeai-orn = "nvidia-drm-loadconf"
+IMAGE_INSTALL:append:edgeai-orn = " linux-yocto-extlinux kernel-module-rtw88-8822ce "
+IMAGE_INSTALL:remove:edgeai-orn = "nvidia-drm-loadconf linux-noble-nvidia-tegra-extlinux kernel-module-rtl8822ce"

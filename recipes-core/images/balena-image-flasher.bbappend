@@ -8,4 +8,8 @@ IMAGE_INSTALL:remove:edgeai-orn = " \
     nvidia-kernel-oot \
     nvidia-kernel-oot-display \
     nvidia-drm-loadconf \
+    linux-noble-nvidia-tegra-extlinux \
+    kernel-module-rtl8822ce \
 "
+
+IMAGE_INSTALL:append:edgeai-orn = " linux-yocto-extlinux kernel-module-rtw88-8822ce "
