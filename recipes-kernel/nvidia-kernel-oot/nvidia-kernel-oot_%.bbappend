@@ -9,3 +9,8 @@ SRC_URI:append:edge-ai = " \
 	file://0006-compulab-dts-Define-tpm-on-spi-3210000.patch \
 	file://0007-compulab-dts-Set-Edge-AI-platform-identity.patch \
 	"
+
+# Keep the legacy NVIDIA-only build unchanged unless the ADI profile is enabled.
+SRC_URI:append:edge-ai:adi-gmsl-v18 = " \
+    file://0100-media-tegra-support-adi-streams-graph.patch;patchdir=nvidia-oot \
+"
