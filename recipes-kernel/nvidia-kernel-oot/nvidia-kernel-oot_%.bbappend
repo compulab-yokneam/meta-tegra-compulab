@@ -13,4 +13,9 @@ SRC_URI:append:edge-ai = " \
 # Keep the legacy NVIDIA-only build unchanged unless the ADI profile is enabled.
 SRC_URI:append:edge-ai:adi-gmsl-v18 = " \
     file://0100-media-tegra-support-adi-streams-graph.patch;patchdir=nvidia-oot \
+    file://0101-media-edgedes-add-tevs-and-framos-imx678.patch;patchdir=nvidia-oot \
+"
+
+TEGRA_OOT_EXTRA_CAMERA_DRIVERS:append:edge-ai:adi-gmsl-v18 = " \
+    nv-kernel-module-tevs nv-kernel-module-fr-imx678 \
 "
