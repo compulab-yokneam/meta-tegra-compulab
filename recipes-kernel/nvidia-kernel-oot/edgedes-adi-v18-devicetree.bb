@@ -14,6 +14,7 @@ SRC_URI = " \
     file://tegra234-edge-ai-adi-base.dts \
     file://edgedes-adi-v18-tevs-ar0144-port3.dtso \
     file://edgedes-adi-v18-framos-imx678-port0.dtso \
+    file://edgedes-adi-v18-framos-imx676-port0.dtso \
 "
 
 S = "${UNPACKDIR}"
@@ -22,6 +23,7 @@ DT_FILES = " \
     tegra234-edge-ai-adi-base.dts \
     edgedes-adi-v18-tevs-ar0144-port3.dtso \
     edgedes-adi-v18-framos-imx678-port0.dtso \
+    edgedes-adi-v18-framos-imx676-port0.dtso \
 "
 
 # Produce complete FDTs for extlinux as well as reusable DT overlays.
@@ -30,7 +32,7 @@ python do_compile:append() {
     import os
     import subprocess
     build = d.getVar("B")
-    for profile in ("tevs-ar0144-port3", "framos-imx678-port0"):
+    for profile in ("tevs-ar0144-port3", "framos-imx678-port0", "framos-imx676-port0"):
         name = "edgedes-adi-v18-" + profile
         subprocess.run([
             "fdtoverlay", "-i", os.path.join(build, "tegra234-edge-ai-adi-base.dtb"),
