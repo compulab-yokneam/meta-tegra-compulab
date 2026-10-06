@@ -1,0 +1,2446 @@
+Subject: [PATCH] Capture local JetPack 7.2 Edge-AI build and deployment changes
+
+Base-commit: a4acce6fa6d06c047c367bb5f8546583f7434a85
+Tracked BSP and upstream source files were unchanged during the build.
+This additive patch packages local build configuration, scripts and metadata,
+replay helpers, and the extracted-flasher automount fix prepared on 2026-10-03.
+The immutable image archive and rootfs are unchanged. Hardware retry pending.
+See build-support/jetpack-7.2-blacksail/README.txt for build scope and use,
+and deployment/README.txt for the flashing fix and its captured evidence.
+
+---
+ build-support/jetpack-7.2-blacksail/README.txt     | 227 ++++++++++++++++++++
+ .../batch-configs/browser-corrected.conf           |   2 +
+ .../batch-configs/browser.conf                     |   2 +
+ .../batch-configs/completed-capsule-kernels.conf   |   2 +
+ .../batch-configs/edge-ai-nano-4g.conf             |   2 +
+ .../batch-configs/edge-ai-nano-8g.conf             |   2 +
+ .../batch-configs/edge-ai-nx-16g.conf              |   2 +
+ .../batch-configs/edge-ai-nx-8g.conf               |   2 +
+ .../batch-configs/prebuilt-capsules.conf           |   4 +
+ .../batch-configs/release-integration.conf         |   3 +
+ build-support/jetpack-7.2-blacksail/build-batch.sh |  15 ++
+ build-support/jetpack-7.2-blacksail/build-image.sh |  17 ++
+ .../classes/clab-prebuilt-capsules.bbclass         |  30 +++
+ .../jetpack-7.2-blacksail/build-module-batches.sh  |  19 ++
+ .../build-runtime-packages.sh                      |  23 ++
+ .../jetpack-7.2-blacksail/deployment/README.txt    |  32 +++
+ .../deployment/captured-files.json                 |  58 ++++++
+ .../deployment/clab-flash-target.json              |   7 +
+ .../deployment/deploy-edge-ai.sh                   |  79 +++++++
+ .../deployment/deployment-readiness.snapshot.json  |  78 +++++++
+ .../device-logs-failed-attempt/bootloader.log      | 232 +++++++++++++++++++++
+ .../device-logs-failed-attempt/command_sequence    |   6 +
+ .../custom-extra-pre-wipe.log                      |   1 +
+ .../device-logs-failed-attempt/custom-extra.log    |   1 +
+ .../device-logs-failed-attempt/erase-mmc.log       |   1 +
+ .../device-logs-failed-attempt/export-nvme0n1.log  |  36 ++++
+ .../evidence/device-logs-failed-attempt/status     |   1 +
+ .../deployment/flash-failure-report.txt            |  57 +++++
+ .../deployment/make-sdcard-automount-fix.patch     |  25 +++
+ .../deployment/prepare-flash-target.py             | 100 +++++++++
+ .../evidence/build-report.txt                      |  51 +++++
+ .../evidence/build-state.json                      |  68 ++++++
+ .../evidence/captured-files.json                   | 183 ++++++++++++++++
+ .../evidence/download-cache-location.txt           |   2 +
+ .../evidence/host-toolchain-packages.sha256        |   2 +
+ .../evidence/host-toolchain-symlinks.json          |  52 +++++
+ .../evidence/local.conf.applied-block.txt          |  14 ++
+ .../evidence/packaging-files.json                  |  11 +
+ .../evidence/prebuilt-capsule-inputs.json          |  86 ++++++++
+ .../evidence/release-verification.json             |  31 +++
+ .../jetpack-7.2-blacksail/evidence/revisions.txt   |  10 +
+ .../jetpack-7.2-blacksail/host-tools/bin/g++-12    |   3 +
+ .../host-tools/cxx20-check.cpp                     |   8 +
+ .../host-tools/packages.sha256                     |   2 +
+ .../integration-revisions.json                     |  12 ++
+ .../launch-release-integration.py                  |  23 ++
+ .../local-build-overrides.conf                     |  14 ++
+ .../jetpack-7.2-blacksail/monitor-build.py         |  33 +++
+ .../reclaim-completed-capsule-kernels.sh           |  45 ++++
+ .../jetpack-7.2-blacksail/record-capsule-inputs.py |  49 +++++
+ .../relocate-download-cache.py                     |  22 ++
+ .../jetpack-7.2-blacksail/replay-crate-recovery.py |  60 ++++++
+ .../jetpack-7.2-blacksail/replay-host-toolchain.sh |  65 ++++++
+ .../jetpack-7.2-blacksail/resume-build.sh          |  11 +
+ .../jetpack-7.2-blacksail/verify-release.py        | 125 +++++++++++
+ 55 files changed, 2048 insertions(+)
+
+diff --git a/build-support/jetpack-7.2-blacksail/README.txt b/build-support/jetpack-7.2-blacksail/README.txt
+new file mode 100644
+index 0000000..01cb4b7
+--- /dev/null
++++ b/build-support/jetpack-7.2-blacksail/README.txt
+@@ -0,0 +1,227 @@
++JetPack 7.2 / L4T R39.2.1 build changes captured on 2026-10-03
++===========================================================
++
++Scope and provenance
++--------------------
++This patch captures the local changes used to complete the Edge-AI universal
++build on branch jetpack-7.2-blacksail at:
++  a4acce6fa6d06c047c367bb5f8546583f7434a85
++
++No tracked BSP, BitBake, OE-Core, meta-browser, or other upstream source files
++were edited during the build. The original repositories are clean. This is
++an additive build-workspace patch, not an upstream recipe-fix patch.
++
++The files copied from .build-jetpack-7.2-blacksail are preserved byte for byte.
++Their original locations and SHA256 values are in evidence/captured-files.json.
++The one intentional normalization is in local-build-overrides.conf: its two
++absolute /home/igor/.../host-tools paths become ${TOPDIR}/../../host-tools.
++The exact original configuration block is archived under evidence/.
++
++Three new helpers package operations originally performed manually:
++  replay-host-toolchain.sh: downloads/checks/extracts the two Ubuntu packages
++    and recreates the local GCC support/runtime links and C++20 smoke check.
++  replay-crate-recovery.py: populates missing pinned wasm-tools crates using
++    the alternate official static filename URL and recipe SHA256 values.
++  record-capsule-inputs.py: records the twelve completed capsule/GUID inputs
++    used by final rootfs verification.
++These helpers are packaging glue; they have not been exercised in a complete
++fresh image build. The original image and its verification did pass.
++
++The later review recommendations (bootstrap refactoring, default-pin changes,
++profile-dependency removal, scheduler fixes, persistent cache redesign, etc.)
++were not implemented during the build and are not included in this patch.
++
++Captured changes
++----------------
++* Universal image enablement; 16 task threads, 32 parse threads, make -j16;
++  rm_work; recipe-specific nodejs-native GCC 12 and libcxx-native GCC selection.
++* Narrow browser/runtime, per-module capsule, cleanup, prebuilt capsule, and
++  final release integration configuration files. Scope files unset
++  BBMULTICONFIG before assigning it, clearing inherited append operations.
++* clab-prebuilt-capsules.bbclass: checks 12 capsules and 12 GUID files, replaces
++  completed capsule producer mcdepends with 24 do_install file-checksums.
++  Normal runtime/profile dependencies remain intact. It supports the default
++  twelve-capsule set only, not legacy GUID extensions.
++* Original build/resume/batch runners, runtime package batch, kernel-work
++  cleanup, cache relocation, monitor, detached launcher, and release verifier.
++* Local GCC wrapper, C++20 check source, package checksums, exact revision lock,
++  and archived release/configuration/toolchain evidence.
++
++Not embedded: source clones, downloaded/extracted binary toolchain packages,
++BitBake caches/work trees, images, compiled smoke-test binaries, py-spy binaries,
++logs, sockets, or live process identifiers. Reconstruct the toolchain with the
++helper and let BitBake create the image/caches. Binary packages cannot be
++recreated by a text patch alone.
++
++The evidence/ directory is historical documentation. It deliberately does
++not populate live logs/*.exit, *.cleaned, or build-state.json with old success
++values. Do not copy the archived completed state into an operational workspace.
++
++Host requirements for the captured compiler workaround
++------------------------------------------------------
++The original host was Ubuntu 22.04.5 x86_64, with 32 logical CPUs and 125 GiB
++RAM. The workaround borrows the installed gcc-12, libgcc-12-dev and libstdc++6
++at version 12.3.0-1ubuntu1~22.04.3. The replay helper checks that baseline; it
++does not install system packages or change the host default compiler.
++
++The extracted g++-12 and libstdc++-12-dev packages have the same exact version.
++Their checksums are recorded in host-tools/packages.sha256. If an archive is
++no longer available through APT, supply that exact archive in
++host-tools/packages/; the helper still verifies it before extraction.
++
++The normal Yocto host dependencies, network access, BitBake Unix sockets,
++zstd/tar/debugfs and suitable storage are also required. This build reached
++low disk space despite rm_work because kernels are excluded from rm_work.
++
++Apply and prepare a fresh workspace
++----------------------------------
++Apply this patch at the root of a clean checkout of the base revision above:
++  git apply --check jetpack-7.2-blacksail-build-changes.patch
++  git apply jetpack-7.2-blacksail-build-changes.patch
++
++The package directory itself can act as a new workspace. Alternatively copy
++its contents to a fresh .build-jetpack-7.2-blacksail directory. All helpers
++locate their containing directory, and the metadata expects:
++  <workspace>/tegra-demo-distro/build-edge-ai-nx-16g
++
++From the layer checkout root, prepare the packaged workspace:
++  clab_layer_root=$PWD
++  clab_workspace=$PWD/build-support/jetpack-7.2-blacksail
++  mkdir -p "$clab_workspace/logs"
++  (
++    cd "$clab_workspace"
++    SRC_REV_NVIDIA=8ca9f4a8aa08e46bac501a483b7c4ffb2f3a61c3 \
++    SRC_REV_CLAB=a4acce6fa6d06c047c367bb5f8546583f7434a85 \
++    SRC_REV_BROWSER=886bde2eb0e36ab2b062f563ff0192f9471a1150 \
++    TEGRA_BSP_DIR="$clab_workspace/tegra-demo-distro" \
++      bash -e "$clab_layer_root/tools/run.me" > logs/bootstrap.log 2>&1
++  )
++  bash "$clab_workspace/replay-host-toolchain.sh"
++  (
++    set -e
++    cd "$clab_workspace/tegra-demo-distro"
++    export MACHINE=edge-ai-nx-16g DISTRO=tegrademo
++    source ./compulab-setup-env build-edge-ai-nx-16g
++    printf '\nrequire ${TOPDIR}/../../local-build-overrides.conf\n' >> conf/local.conf
++    bitbake-layers show-appends > "$clab_workspace/logs/show-appends.log" 2>&1
++    bitbake -p > "$clab_workspace/logs/parse.log" 2>&1
++  )
++
++The configuration include above should be added once to a fresh local.conf.
++integration-revisions.json records every selected repository revision.
++The CLAB override is essential: the original bootstrap default selected the
++older d9780f5 revision, not the a4acce6 dependency fix used for this release.
++
++Successful staged build method
++-----------------------------
++Keep clab_workspace set to the absolute workspace path from above. Execute
++the following phases sequentially; proceed only after each command succeeds.
++Do not run multiple runners against this workspace concurrently.
++
++1. Firefox/browser prerequisites, using the runtime-only scope:
++  bash "$clab_workspace/build-batch.sh" \
++    -R "$clab_workspace/batch-configs/browser.conf" mc:edge-ai-runtime:firefox
++  mv "$clab_workspace/logs/build.log" "$clab_workspace/logs/browser-success.log"
++  mv "$clab_workspace/logs/build.exit" "$clab_workspace/logs/browser-success.exit"
++
++2. Twelve capsule variants, grouped by the four modules:
++  bash "$clab_workspace/build-module-batches.sh"
++  python3 "$clab_workspace/record-capsule-inputs.py"
++
++3. Remaining runtime packages:
++  bash "$clab_workspace/build-runtime-packages.sh"
++  mv "$clab_workspace/logs/build.log" "$clab_workspace/logs/runtime-packages.log"
++  mv "$clab_workspace/logs/build.exit" "$clab_workspace/logs/runtime-packages.exit"
++
++4. Shared runtime filesystem, importing the verified completed capsules:
++  bash "$clab_workspace/build-batch.sh" \
++    -R "$clab_workspace/batch-configs/prebuilt-capsules.conf" \
++    mc:edge-ai-runtime:demo-image-weston
++  mv "$clab_workspace/logs/build.log" "$clab_workspace/logs/runtime-image.log"
++  mv "$clab_workspace/logs/build.exit" "$clab_workspace/logs/runtime-image.exit"
++
++5. All four flash profiles and final bundle, retaining their runtime edges:
++  bash "$clab_workspace/build-batch.sh" \
++    -R "$clab_workspace/batch-configs/release-integration.conf" \
++    -c deploy edge-ai-universal-bundle
++  mv "$clab_workspace/logs/build.log" "$clab_workspace/logs/universal-bundle.log"
++  mv "$clab_workspace/logs/build.exit" "$clab_workspace/logs/universal-bundle.exit"
++
++For the original detached-launch method, replace the phase-5 build command
++with the following after phase 4 has produced a fresh runtime-image.exit:
++  printf '{}\n' > "$clab_workspace/build-state.json"
++  python3 "$clab_workspace/launch-release-integration.py"
++Wait for the child to finish and inspect logs/build.exit before archiving its
++log/exit files. Do not start a second runner while that child is active.
++
++6. Verify the exact archive, shared rootfs, profiles, installed capsules,
++   helper syntax/modes and selected runtime packages:
++  python3 "$clab_workspace/verify-release.py"
++The original verifier uses assert and must run without Python optimization
++(no -O and no PYTHONOPTIMIZE). It expects exactly one universal archive in
++the deploy directory. Its receipt does not constitute hardware boot testing.
++
++Stop the idle BitBake server after work completes:
++  (
++    set -e
++    cd "$clab_workspace/tegra-demo-distro"
++    export MACHINE=edge-ai-nx-16g DISTRO=tegrademo
++    source ./compulab-setup-env build-edge-ai-nx-16g
++    bitbake -m
++  )
++
++Manual recovery operations captured by the patch
++-----------------------------------------------
++Fetch: wasm-tools-native was blocked by HTTP 500 for
++wasmtime-internal-jit-debug 36.0.7. The alternate official URL used was:
++  https://static.crates.io/crates/wasmtime-internal-jit-debug/wasmtime-internal-jit-debug-36.0.7.crate
++Its pinned SHA256 is:
++  1287e310fef4c8759a6b5caa0d44eff9a03ebcd6c273729cc39ce3e321a9e26a
++With BitBake idle, replay that recovery with:
++  python3 "$clab_workspace/replay-crate-recovery.py" \
++    --crate wasmtime-internal-jit-debug-36.0.7
++The original operation also populated 36 remaining missing pinned wasm-tools
++crates with this URL form and recipe checksums. Running the helper without
++--crate checks the pinned list and downloads any missing entries. --list-only
++prints that list without network access. No checksum validation is weakened.
++
++Space: the batch runner invokes reclaim-completed-capsule-kernels.sh when
++available workspace space is below 90 GiB. It uses successful per-module exit
++receipts to clean only capsule-config linux-yocto work, preserving sstate and
++separate capsule deploy outputs. completed-capsule-kernels.conf is regenerated;
++the captured file contains the final Nano 4GB cleanup scope.
++
++The original 34 GB download cache was moved to a separate /tmp filesystem,
++retaining the original downloads path as a symlink. The optional captured
++relocate-download-cache.py replays that move and must only run while idle.
++The old absolute destination in evidence/download-cache-location.txt is a
++historical record, not a path to restore. This temporary storage workaround
++is not a durable shared-cache design.
++
++Interruptions: after the original server exited, confirmed orphan parser
++workers and a hash daemon still held inherited locks/sockets. Only those
++identified leftovers were terminated before restart. There is no generic
++kill/delete-lock script in this patch; old process IDs do not identify a new
++build. Prefer the official idle shutdown command above and inspect ownership
++before any manual stale-resource cleanup.
++
++Optional diagnostics: py-spy 0.4.1 was installed in host-tools/diagnostics, but
++host ptrace permissions prevented stack profiling. It is not needed for the
++image. The corresponding binary installation is not embedded in the patch.
++An older download cache was also used to save fetching time; old images or
++sstate were not used as release inputs.
++
++Known limitations retained from the build
++----------------------------------------
++These are the original ad hoc helpers, not the proposed production runner.
++They share/overwrite build.log and build.exit, have no workspace lock, and
++some cleanup/resume decisions trust marker files without input fingerprints.
++The prebuilt class tracks input content but does not prove producer freshness
++against changed source revisions. Regenerate capsules and their receipt after
++changing the integration inputs. The verifier's assertions/path/version
++assumptions and detached launcher's state handling remain as originally used.
++
++The final integration passed 33,949 tasks with 699 warnings, including 675
++automatically recovered deferred-task scheduling warnings. No scheduler or
++SPDX cleanup patch was applied. See evidence/build-report.txt and
++evidence/release-verification.json for the successful image and limitations.
+diff --git a/build-support/jetpack-7.2-blacksail/batch-configs/browser-corrected.conf b/build-support/jetpack-7.2-blacksail/batch-configs/browser-corrected.conf
+new file mode 100644
+index 0000000..d785c1a
+--- /dev/null
++++ b/build-support/jetpack-7.2-blacksail/batch-configs/browser-corrected.conf
+@@ -0,0 +1,2 @@
++unset BBMULTICONFIG
++BBMULTICONFIG = "edge-ai-runtime"
+diff --git a/build-support/jetpack-7.2-blacksail/batch-configs/browser.conf b/build-support/jetpack-7.2-blacksail/batch-configs/browser.conf
+new file mode 100644
+index 0000000..d785c1a
+--- /dev/null
++++ b/build-support/jetpack-7.2-blacksail/batch-configs/browser.conf
+@@ -0,0 +1,2 @@
++unset BBMULTICONFIG
++BBMULTICONFIG = "edge-ai-runtime"
+diff --git a/build-support/jetpack-7.2-blacksail/batch-configs/completed-capsule-kernels.conf b/build-support/jetpack-7.2-blacksail/batch-configs/completed-capsule-kernels.conf
+new file mode 100644
+index 0000000..356192e
+--- /dev/null
++++ b/build-support/jetpack-7.2-blacksail/batch-configs/completed-capsule-kernels.conf
+@@ -0,0 +1,2 @@
++unset BBMULTICONFIG
++BBMULTICONFIG = "edge-ai-uefi-nano-4g-nvidia-logo edge-ai-uefi-nano-4g-clab-logo edge-ai-uefi-nano-4g-no-logo"
+diff --git a/build-support/jetpack-7.2-blacksail/batch-configs/edge-ai-nano-4g.conf b/build-support/jetpack-7.2-blacksail/batch-configs/edge-ai-nano-4g.conf
+new file mode 100644
+index 0000000..356192e
+--- /dev/null
++++ b/build-support/jetpack-7.2-blacksail/batch-configs/edge-ai-nano-4g.conf
+@@ -0,0 +1,2 @@
++unset BBMULTICONFIG
++BBMULTICONFIG = "edge-ai-uefi-nano-4g-nvidia-logo edge-ai-uefi-nano-4g-clab-logo edge-ai-uefi-nano-4g-no-logo"
+diff --git a/build-support/jetpack-7.2-blacksail/batch-configs/edge-ai-nano-8g.conf b/build-support/jetpack-7.2-blacksail/batch-configs/edge-ai-nano-8g.conf
+new file mode 100644
+index 0000000..a714e56
+--- /dev/null
++++ b/build-support/jetpack-7.2-blacksail/batch-configs/edge-ai-nano-8g.conf
+@@ -0,0 +1,2 @@
++unset BBMULTICONFIG
++BBMULTICONFIG = "edge-ai-uefi-nano-8g-nvidia-logo edge-ai-uefi-nano-8g-clab-logo edge-ai-uefi-nano-8g-no-logo"
+diff --git a/build-support/jetpack-7.2-blacksail/batch-configs/edge-ai-nx-16g.conf b/build-support/jetpack-7.2-blacksail/batch-configs/edge-ai-nx-16g.conf
+new file mode 100644
+index 0000000..f89f430
+--- /dev/null
++++ b/build-support/jetpack-7.2-blacksail/batch-configs/edge-ai-nx-16g.conf
+@@ -0,0 +1,2 @@
++unset BBMULTICONFIG
++BBMULTICONFIG = "edge-ai-uefi-nvidia-logo edge-ai-uefi-clab-logo edge-ai-uefi-no-logo"
+diff --git a/build-support/jetpack-7.2-blacksail/batch-configs/edge-ai-nx-8g.conf b/build-support/jetpack-7.2-blacksail/batch-configs/edge-ai-nx-8g.conf
+new file mode 100644
+index 0000000..6bc6c39
+--- /dev/null
++++ b/build-support/jetpack-7.2-blacksail/batch-configs/edge-ai-nx-8g.conf
+@@ -0,0 +1,2 @@
++unset BBMULTICONFIG
++BBMULTICONFIG = "edge-ai-uefi-nx-8g-nvidia-logo edge-ai-uefi-nx-8g-clab-logo edge-ai-uefi-nx-8g-no-logo"
+diff --git a/build-support/jetpack-7.2-blacksail/batch-configs/prebuilt-capsules.conf b/build-support/jetpack-7.2-blacksail/batch-configs/prebuilt-capsules.conf
+new file mode 100644
+index 0000000..3272387
+--- /dev/null
++++ b/build-support/jetpack-7.2-blacksail/batch-configs/prebuilt-capsules.conf
+@@ -0,0 +1,4 @@
++unset BBMULTICONFIG
++BBMULTICONFIG = "edge-ai-runtime"
++BBPATH:append = ":${TOPDIR}/../../build-metadata"
++INHERIT += "clab-prebuilt-capsules"
+diff --git a/build-support/jetpack-7.2-blacksail/batch-configs/release-integration.conf b/build-support/jetpack-7.2-blacksail/batch-configs/release-integration.conf
+new file mode 100644
+index 0000000..a9009b2
+--- /dev/null
++++ b/build-support/jetpack-7.2-blacksail/batch-configs/release-integration.conf
+@@ -0,0 +1,3 @@
++require ${TOPDIR}/../../batch-configs/prebuilt-capsules.conf
++unset BBMULTICONFIG
++BBMULTICONFIG = "edge-ai-runtime edge-ai-nx-16g edge-ai-nx-8g edge-ai-nano-8g edge-ai-nano-4g"
+diff --git a/build-support/jetpack-7.2-blacksail/build-batch.sh b/build-support/jetpack-7.2-blacksail/build-batch.sh
+new file mode 100644
+index 0000000..56582c5
+--- /dev/null
++++ b/build-support/jetpack-7.2-blacksail/build-batch.sh
+@@ -0,0 +1,15 @@
++#!/usr/bin/env bash
++set -eo pipefail
++clab_build_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
++rm -f "$clab_build_root/logs/build.exit"
++if [ "$#" -eq 0 ]; then
++    set -- edge-ai-universal-bundle
++fi
++trap 'clab_build_rc=$?; printf "%s\n" "$clab_build_rc" > "$clab_build_root/logs/build.exit"' EXIT
++cd "$clab_build_root/tegra-demo-distro"
++export MACHINE=edge-ai-nx-16g DISTRO=tegrademo
++source ./compulab-setup-env build-edge-ai-nx-16g > "$clab_build_root/logs/batch-setup.log" 2>&1
++bash "$clab_build_root/reclaim-completed-capsule-kernels.sh"
++printf 'Building batch: %s\n' "$*"
++bitbake -T 600 -k "$@" > "$clab_build_root/logs/build.log" 2>&1
++printf '%s\n' 'Batch completed successfully.'
+diff --git a/build-support/jetpack-7.2-blacksail/build-image.sh b/build-support/jetpack-7.2-blacksail/build-image.sh
+new file mode 100644
+index 0000000..4644b4d
+--- /dev/null
++++ b/build-support/jetpack-7.2-blacksail/build-image.sh
+@@ -0,0 +1,17 @@
++#!/usr/bin/env bash
++set -eo pipefail
++
++clab_build_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
++clab_build_target=${1:-edge-ai-universal-bundle}
++mkdir -p "$clab_build_root/logs"
++trap 'clab_build_rc=$?; printf "%s\n" "$clab_build_rc" > "$clab_build_root/logs/build.exit"' EXIT
++
++cd "$clab_build_root/tegra-demo-distro"
++export MACHINE=edge-ai-nx-16g DISTRO=tegrademo
++source ./compulab-setup-env build-edge-ai-nx-16g
++
++printf '%s\n' 'Checking all metadata...'
++bitbake -p > "$clab_build_root/logs/parse.log" 2>&1
++printf 'Building %s...\n' "$clab_build_target"
++bitbake -k "$clab_build_target" > "$clab_build_root/logs/build.log" 2>&1
++printf '%s\n' 'Build completed successfully.'
+diff --git a/build-support/jetpack-7.2-blacksail/build-metadata/classes/clab-prebuilt-capsules.bbclass b/build-support/jetpack-7.2-blacksail/build-metadata/classes/clab-prebuilt-capsules.bbclass
+new file mode 100644
+index 0000000..28d987c
+--- /dev/null
++++ b/build-support/jetpack-7.2-blacksail/build-metadata/classes/clab-prebuilt-capsules.bbclass
+@@ -0,0 +1,30 @@
++# Track successfully built capsule inputs without rescheduling their producers.
++python () {
++    if d.getVar("PN") != "edge-ai-uefi-update-capsules":
++        return
++    import os
++    if d.getVar("EDGE_AI_UEFI_LEGACY_FMP_GUIDS"):
++        bb.fatal("This prebuilt integration scope expects the twelve default capsules")
++    inputs = []
++    for mc in d.getVar("EDGE_AI_UEFI_CAPSULE_MCS").split():
++        if mc in ("edge-ai-uefi-nvidia-logo", "edge-ai-uefi-clab-logo", "edge-ai-uefi-no-logo"):
++            machine = "edge-ai-nx-16g"
++        elif mc.startswith("edge-ai-uefi-nx-8g-"):
++            machine = "edge-ai-nx-8g"
++        elif mc.startswith("edge-ai-uefi-nano-8g-"):
++            machine = "edge-ai-nano-8g"
++        elif mc.startswith("edge-ai-uefi-nano-4g-"):
++            machine = "edge-ai-nano-4g"
++        else:
++            bb.fatal("Unknown capsule producer: " + mc)
++        deploy = os.path.join(d.getVar("TOPDIR"), "tmp-mc-" + mc, "deploy/images", machine)
++        inputs.extend((os.path.join(deploy, machine + "-tegra-bl.cap"),
++                       os.path.join(deploy, d.getVar("TEGRA_FLASHVAR_UEFI_IMAGE") + ".fmp-image-type-id")))
++    if len(inputs) != 24:
++        bb.fatal("Expected twelve prebuilt capsules and their GUID files")
++    for path in inputs:
++        if not os.path.isfile(path) or os.path.getsize(path) == 0:
++            bb.fatal("Missing prebuilt capsule input: " + path)
++    d.delVarFlag("do_install", "mcdepends")
++    d.appendVarFlag("do_install", "file-checksums", " " + " ".join(path + ":True" for path in inputs))
++}
+diff --git a/build-support/jetpack-7.2-blacksail/build-module-batches.sh b/build-support/jetpack-7.2-blacksail/build-module-batches.sh
+new file mode 100644
+index 0000000..6a332ce
+--- /dev/null
++++ b/build-support/jetpack-7.2-blacksail/build-module-batches.sh
+@@ -0,0 +1,19 @@
++#!/usr/bin/env bash
++set -eo pipefail
++clab_build_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
++trap 'clab_build_rc=$?; printf "%s\n" "$clab_build_rc" > "$clab_build_root/logs/module-batches.exit"' EXIT
++for clab_machine in edge-ai-nx-16g edge-ai-nx-8g edge-ai-nano-8g edge-ai-nano-4g; do
++    if [ "$clab_machine" = edge-ai-nx-16g ]; then
++        clab_prefix=edge-ai-uefi
++    else
++        clab_prefix=${clab_machine/edge-ai-/edge-ai-uefi-}
++    fi
++    clab_targets=()
++    for clab_variant in nvidia-logo clab-logo no-logo; do
++        clab_targets+=("mc:$clab_prefix-$clab_variant:tegra-uefi-capsules")
++    done
++    bash "$clab_build_root/build-batch.sh" -R "$clab_build_root/batch-configs/$clab_machine.conf" "${clab_targets[@]}"
++    mv "$clab_build_root/logs/build.log" "$clab_build_root/logs/$clab_machine-batch.log"
++    mv "$clab_build_root/logs/build.exit" "$clab_build_root/logs/$clab_machine-batch.exit"
++done
++printf '%s\n' 'All module firmware capsule batches completed.'
+diff --git a/build-support/jetpack-7.2-blacksail/build-runtime-packages.sh b/build-support/jetpack-7.2-blacksail/build-runtime-packages.sh
+new file mode 100644
+index 0000000..38a27d1
+--- /dev/null
++++ b/build-support/jetpack-7.2-blacksail/build-runtime-packages.sh
+@@ -0,0 +1,23 @@
++#!/usr/bin/env bash
++set -eo pipefail
++clab_build_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
++# Build the packages selected by demo-image-weston before the full image graph.
++# Firmware capsule assembly remains in the final, complete multiconfig build.
++clab_recipes=(
++    packagegroup-core-boot packagegroup-base
++    packagegroup-core-weston packagegroup-core-ssh-openssh
++    packagegroup-demo-base packagegroup-demo-basetests
++    packagegroup-demo-systemd packagegroup-demo-westontests
++    packagegroup-demo-x11tests packagegroup-demo-vulkantests
++    gtk+3 matchbox-terminal pulseaudio
++    gstreamer1.0-plugins-nvvideo4linux2
++    nvidia-kernel-oot linux-firmware
++    bluez5 can-utils nfs-utils usbutils net-tools i2c-tools libgpiod
++    memtester minicom tmux iotop htop iperf3
++    edge-ai-universal-runtime
++)
++clab_targets=()
++for clab_recipe in "${clab_recipes[@]}"; do
++    clab_targets+=("mc:edge-ai-runtime:$clab_recipe")
++done
++bash "$clab_build_root/build-batch.sh" -R "$clab_build_root/batch-configs/browser.conf" "${clab_targets[@]}"
+diff --git a/build-support/jetpack-7.2-blacksail/deployment/README.txt b/build-support/jetpack-7.2-blacksail/deployment/README.txt
+new file mode 100644
+index 0000000..49fcb44
+--- /dev/null
++++ b/build-support/jetpack-7.2-blacksail/deployment/README.txt
+@@ -0,0 +1,32 @@
++Deployment fixes captured after the 2026-10-03 flashing failure
++
++The build patch now also records local changes to the extracted NX 16GB
++flashing workspace. These changes were not made to the immutable image
++archive or to tracked BSP sources. See flash-failure-report.txt for evidence,
++validation and the remaining hardware retry.
++
++Captured files:
++- deploy-edge-ai.sh: launcher with scoped temporary UDisks rule and lock.
++- prepare-flash-target.py: exact target guard and pre-GPT unmount checks.
++- clab-flash-target.json: checked board USB serial and NVMe capacity.
++- make-sdcard-automount-fix.patch: delta against original profile make-sdcard.
++- deployment-readiness.snapshot.json: historical state; includes local paths.
++- evidence/device-logs-failed-attempt/: logs saved from the target.
++
++The active fixed launcher remains in .deploy-jetpack-7.2-blacksail/.
++The captured launcher expects deployment-readiness.json beside it. This
++snapshot must not be treated as a fresh hardware verification on another
++host/board. In the checked extraction, prepare-flash-target.py is copied
++as profiles/edge-ai-nx-16g/clab-prepare-flash-target.py with the JSON beside it,
++and the make-sdcard delta has already been applied.
++
++For another extraction of this same image and the same checked board, copy
++the helper and JSON into the NX 16GB profile, and apply the make-sdcard delta
++from the bundle root directory with patch -p1. Place the launcher beside an
++up-to-date readiness file naming that extraction. Recheck EEPROM and USB
++identity before using these files for different hardware.
++
++No permanent automount setting is changed. The launcher rule is installed
++under /run/udev/rules.d only for the checked USB gadget serial, and removed
++on normal exit or a trapped interrupt. Hardware flashing and normal boot
++verification are still pending at capture time.
+diff --git a/build-support/jetpack-7.2-blacksail/deployment/captured-files.json b/build-support/jetpack-7.2-blacksail/deployment/captured-files.json
+new file mode 100644
+index 0000000..b039a9f
+--- /dev/null
++++ b/build-support/jetpack-7.2-blacksail/deployment/captured-files.json
+@@ -0,0 +1,58 @@
++[
++  {
++    "path": "README.txt",
++    "sha256": "69da17c92668bb771b0af985117c9488e1e9178b3250d1308e809c72b6e6db47"
++  },
++  {
++    "path": "clab-flash-target.json",
++    "sha256": "83e34348d58222e35a88ead231984f36bdfa0225b15d09aed71e2998bb96988a"
++  },
++  {
++    "path": "deploy-edge-ai.sh",
++    "sha256": "2727d863aecb21ab1c7e250865d3aa5ef47258a9b99f7770bef2ece4f105c3e3"
++  },
++  {
++    "path": "deployment-readiness.snapshot.json",
++    "sha256": "59f847f7aa7379ceb0c009d9bb8a7c71d18e086a84c015f968b8c3a2bed7e301"
++  },
++  {
++    "path": "evidence/device-logs-failed-attempt/bootloader.log",
++    "sha256": "d21fe8f1f699a5cb4e7aaffe2d0acb9e8f18bd55fb3530ff186aacbca0466528"
++  },
++  {
++    "path": "evidence/device-logs-failed-attempt/command_sequence",
++    "sha256": "065a2a33420d6ebac2fb1aa386b7d74be9d5a2a37dd6d58c4948c87fadf3f15f"
++  },
++  {
++    "path": "evidence/device-logs-failed-attempt/custom-extra-pre-wipe.log",
++    "sha256": "c08e8cee9afd713d44bed4bfd0a20909910900117e73c91771b52be9d75d0145"
++  },
++  {
++    "path": "evidence/device-logs-failed-attempt/custom-extra.log",
++    "sha256": "26b539e052a5798ad2a273376af9402faa7d6227a54550154b395e85654f1b7a"
++  },
++  {
++    "path": "evidence/device-logs-failed-attempt/erase-mmc.log",
++    "sha256": "76c5c3692451f017ba430661b74c2584ab23bee1f86c74091d472090def6844f"
++  },
++  {
++    "path": "evidence/device-logs-failed-attempt/export-nvme0n1.log",
++    "sha256": "d8c163af80fa6fe25af6d7837193558b32beea368d30d65c75fe780b84c494b9"
++  },
++  {
++    "path": "evidence/device-logs-failed-attempt/status",
++    "sha256": "1f513d4ecec4e91ddd48da1a59b6d96f1b76c374dc1da641980782a34f43b102"
++  },
++  {
++    "path": "flash-failure-report.txt",
++    "sha256": "2beeb034bf92294371a48263a9ef9a518a1e3a7d14acd88eee211c2ff34d93d7"
++  },
++  {
++    "path": "make-sdcard-automount-fix.patch",
++    "sha256": "a05bc1c46b230590fe9472752d90e272460c55cdc6ff342e54a3a316da0cbfc6"
++  },
++  {
++    "path": "prepare-flash-target.py",
++    "sha256": "388fcf20f493429d68a40c24124c37b495156e4ebcfb3d9f0ebe615ece30131b"
++  }
++]
+diff --git a/build-support/jetpack-7.2-blacksail/deployment/clab-flash-target.json b/build-support/jetpack-7.2-blacksail/deployment/clab-flash-target.json
+new file mode 100644
+index 0000000..798289d
+--- /dev/null
++++ b/build-support/jetpack-7.2-blacksail/deployment/clab-flash-target.json
+@@ -0,0 +1,7 @@
++{
++  "usb_serial": "46fc1920",
++  "disk_sectors": 488397168,
++  "board_id": "3767",
++  "board_sku": "0000",
++  "machine": "edge-ai-nx-16g"
++}
+diff --git a/build-support/jetpack-7.2-blacksail/deployment/deploy-edge-ai.sh b/build-support/jetpack-7.2-blacksail/deployment/deploy-edge-ai.sh
+new file mode 100755
+index 0000000..45e4237
+--- /dev/null
++++ b/build-support/jetpack-7.2-blacksail/deployment/deploy-edge-ai.sh
+@@ -0,0 +1,79 @@
++#!/usr/bin/env bash
++set -euo pipefail
++if [ "$#" -ne 0 ]; then
++    printf '%s\n' 'Usage: deploy-edge-ai.sh (no arguments)' >&2
++    exit 2
++fi
++if [ "$EUID" -ne 0 ]; then
++    exec sudo -- bash "$(readlink -f -- "${BASH_SOURCE[0]}")"
++fi
++clab_deploy_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
++clab_metadata=$(python3 - "$clab_deploy_root/deployment-readiness.json" <<'PYTHON'
++import json, re, sys
++with open(sys.argv[1]) as stream:
++    state = json.load(stream)
++target = state.get('flash_target', {})
++if (not state.get('recovery_eeprom_probe_completed')
++        or state.get('machine') != 'edge-ai-nx-16g'
++        or target.get('board_id') != '3767' or target.get('board_sku') != '0000'):
++    raise SystemExit('The NX 16GB recovery check must pass before deployment')
++if not re.fullmatch('[0-9a-f]{8}', target.get('usb_serial', '')):
++    raise SystemExit('Missing checked USB serial for the automount guard')
++print(state['deployment_directory'])
++print(target['usb_serial'])
++PYTHON
++)
++mapfile -t clab_fields <<< "$clab_metadata"
++[ "${#clab_fields[@]}" -eq 2 ] || exit 1
++clab_bundle=${clab_fields[0]}
++clab_usb_serial=${clab_fields[1]}
++exec 9> "$clab_deploy_root/deployment.lock"
++flock --nonblock 9 || { printf '%s\n' 'Another deployment is already running.' >&2; exit 1; }
++
++clab_rule=
++clab_cleanup() {
++    local clab_rc=$?
++    trap - EXIT
++    if [ -n "$clab_rule" ]; then
++        rm -f -- "$clab_rule"
++        udevadm control --reload-rules || printf '%s\n' 'Could not reload udev rules after cleanup.' >&2
++    fi
++    exit "$clab_rc"
++}
++trap clab_cleanup EXIT
++trap 'exit 130' INT
++trap 'exit 143' TERM
++
++# Match only this board's flashing gadget. Explicit UDisks mounts used by
++# initrd-flash remain available, while desktop automount is suppressed.
++mkdir -p /run/udev/rules.d
++clab_rule=$(mktemp --suffix=.rules "/run/udev/rules.d/99-zz-clab-edge-ai-${clab_usb_serial}-XXXXXX")
++printf 'SUBSYSTEM=="block", SUBSYSTEMS=="usb", ATTRS{idVendor}=="1d6b", ATTRS{idProduct}=="0104", ATTRS{serial}=="%s", ENV{UDISKS_IGNORE}="1", ENV{UDISKS_AUTO}="0"\n' \
++    "$clab_usb_serial" > "$clab_rule"
++chmod 0644 "$clab_rule"
++udevadm control --reload-rules
++printf 'Temporary automount guard enabled for Edge-AI USB serial %s.\n' "$clab_usb_serial"
++
++python3 - "$clab_deploy_root/deployment-readiness.json" <<'PYTHON'
++from pathlib import Path
++import json, sys
++path = Path(sys.argv[1])
++state = json.loads(path.read_text())
++state.update(status='flashing', deployment_started=True, deployment_completed=False)
++path.write_text(json.dumps(state, indent=2) + '\n')
++PYTHON
++cd -- "$clab_bundle"
++printf '%s\n' 'Deploying JetPack 7.2 / L4T R39.2.1: replaces board NVMe contents and updates QSPI boot firmware.'
++clab_flash_rc=0
++./flash-edge-ai.sh || clab_flash_rc=$?
++python3 - "$clab_deploy_root/deployment-readiness.json" "$clab_flash_rc" <<'PYTHON'
++from pathlib import Path
++import json, sys
++path = Path(sys.argv[1])
++state = json.loads(path.read_text())
++rc = int(sys.argv[2])
++state.update(status='flash_completed_pending_boot_check' if rc == 0 else 'flash_failed',
++             flash_exit_code=rc, deployment_completed=rc == 0)
++path.write_text(json.dumps(state, indent=2) + '\n')
++PYTHON
++exit "$clab_flash_rc"
+diff --git a/build-support/jetpack-7.2-blacksail/deployment/deployment-readiness.snapshot.json b/build-support/jetpack-7.2-blacksail/deployment/deployment-readiness.snapshot.json
+new file mode 100644
+index 0000000..3f3d7bb
+--- /dev/null
++++ b/build-support/jetpack-7.2-blacksail/deployment/deployment-readiness.snapshot.json
+@@ -0,0 +1,78 @@
++{
++  "status": "flash_failed_retry_prepared_requires_force_recovery",
++  "ssh_host": "root@192.168.55.1",
++  "ssh_connected": true,
++  "module": "CompuLab Edge-AI Orin NX 16GB",
++  "module_sku": "P3767-0000",
++  "machine": "edge-ai-nx-16g",
++  "current_l4t": "39.2.0",
++  "image_l4t": "39.2.1",
++  "target_disk": "nvme0n1",
++  "target_disk_gib": 232.9,
++  "archive": "/home/igor/prj/meta-tegra-compulab/.build-jetpack-7.2-blacksail/tegra-demo-distro/build-edge-ai-nx-16g/tmp/deploy/images/edge-ai-nx-16g/demo-image-weston-edge-ai-universal-6.1+snapshot-f94ae3d6ba49aef86f497998c0e0232a5039510a.tar.zst",
++  "archive_sha256": "cb1e3e540c3aaec5ff0861b7126611bf80b1f3e09746cb27aedeabe0719c1c2b",
++  "staged_rootfs_sha256": "b48bed134b067a87eb371287b90076b8cd2ec5636c157fb1eb261f148818890b",
++  "deployment_directory": "/home/igor/prj/meta-tegra-compulab/.deploy-jetpack-7.2-blacksail/demo-image-weston-edge-ai-universal-6.1+snapshot-f94ae3d6ba49aef86f497998c0e0232a5039510a",
++  "recovery_usb_detected": true,
++  "sudo_password_required": true,
++  "checks_passed": [
++    "SSH hardware identification",
++    "archive SHA256",
++    "staged rootfs SHA256",
++    "NX 16GB SKU selection",
++    "shared rootfs link",
++    "flash script syntax",
++    "required profile files",
++    "host command availability"
++  ],
++  "next_readonly_command": "sudo ./flash-edge-ai.sh --detect-only",
++  "planned_deploy_command": "bash .deploy-jetpack-7.2-blacksail/deploy-edge-ai.sh",
++  "deploy_effect": "Repartition/write the board NVMe and update matching QSPI boot firmware",
++  "deployment_started": true,
++  "recovery_usb_id": "0955:7323",
++  "recovery_eeprom_probe_completed": true,
++  "recovery_board": {
++    "BOARDID": "3767",
++    "BOARDSKU": "0000",
++    "FAB": "303",
++    "BOARDREV": "B.1",
++    "CHIPREV": "1",
++    "CHIP_SKU": "00:00:00:D3",
++    "RAMCODE": "1"
++  },
++  "recovery_probe_warning": "Upstream numeric SKU comparison evaluates an empty CHECK_BOARDSKU during detect-only; dispatcher independently matched BOARDID=3767 and BOARDSKU=0000.",
++  "deployment_completed": false,
++  "failed_phase": "partprobe after partition table creation",
++  "failure_evidence": {
++    "rootfs_automounted": "/dev/sdd1 at 18:47:42 +0300",
++    "efi_automounted": "/dev/sdd10 at 18:47:43 +0300",
++    "usb_serial": "46fc1920",
++    "disk_sectors": 488397168,
++    "inference": "Mounted old partitions likely prevented kernel partition table reread; partprobe stderr was discarded.",
++    "device_side_gpt": "No errors detected; 16 partitions, 488397168 sectors"
++  },
++  "flash_target": {
++    "usb_serial": "46fc1920",
++    "disk_sectors": 488397168,
++    "board_id": "3767",
++    "board_sku": "0000",
++    "machine": "edge-ai-nx-16g"
++  },
++  "staged_flashing_fixes": [
++    "Temporary per-board UDisks automount guard",
++    "USB identity and capacity verification before GPT writes",
++    "Unmount and recheck target partitions before GPT writes",
++    "Preserve partprobe stderr in flash log"
++  ],
++  "observed_device_state": "initrd final-status USB mass-storage gadget, not force-recovery",
++  "device_side_status": "SUCCESS (device commands only; host NVMe/rootfs flash failed)",
++  "qspi_flash_completed": true,
++  "nvme_gpt_written": true,
++  "nvme_gpt_verified_by_target": true,
++  "rootfs_copy_started": false,
++  "device_log_directory": "/home/igor/prj/meta-tegra-compulab/.deploy-jetpack-7.2-blacksail/device-logs-failed-attempt",
++  "flash_fix_checks": [
++    "Bash syntax and launcher ShellCheck passed",
++    "Simulated guard: unmount old rootfs and EFI; reject wrong USB device, missing guard, and busy unmount"
++  ]
++}
+diff --git a/build-support/jetpack-7.2-blacksail/deployment/evidence/device-logs-failed-attempt/bootloader.log b/build-support/jetpack-7.2-blacksail/deployment/evidence/device-logs-failed-attempt/bootloader.log
+new file mode 100644
+index 0000000..f353fc6
+--- /dev/null
++++ b/build-support/jetpack-7.2-blacksail/deployment/evidence/device-logs-failed-attempt/bootloader.log
+@@ -0,0 +1,232 @@
++Erasing /dev/mtd0
++Erasing 65536 Kibyte @ 0 --  0 % complete Erasing 65536 Kibyte @ 0 -- 100 % complete 
++Writing br_bct_BR.bct (size=8192) to BCT (offset=0)
++Copied 8192 bytes from br_bct_BR.bct to address 0x00000000 in flash
++Writing br_bct_BR.bct to BCT+1 (offset=16384)
++Copied 8192 bytes from br_bct_BR.bct to address 0x00004000 in flash
++Writing br_bct_BR.bct to BCT+2 (offset=32768)
++Copied 8192 bytes from br_bct_BR.bct to address 0x00008000 in flash
++Writing br_bct_BR.bct to BCT+3 (offset=49152)
++Copied 8192 bytes from br_bct_BR.bct to address 0x0000c000 in flash
++Writing br_bct_BR.bct to BCT+4 (offset=65536)
++Copied 8192 bytes from br_bct_BR.bct to address 0x00010000 in flash
++Writing br_bct_BR.bct to BCT+5 (offset=81920)
++Copied 8192 bytes from br_bct_BR.bct to address 0x00014000 in flash
++Writing br_bct_BR.bct to BCT+6 (offset=98304)
++Copied 8192 bytes from br_bct_BR.bct to address 0x00018000 in flash
++Writing br_bct_BR.bct to BCT+7 (offset=114688)
++Copied 8192 bytes from br_bct_BR.bct to address 0x0001c000 in flash
++Writing br_bct_BR.bct to BCT+8 (offset=131072)
++Copied 8192 bytes from br_bct_BR.bct to address 0x00020000 in flash
++Writing br_bct_BR.bct to BCT+9 (offset=147456)
++Copied 8192 bytes from br_bct_BR.bct to address 0x00024000 in flash
++Writing br_bct_BR.bct to BCT+10 (offset=163840)
++Copied 8192 bytes from br_bct_BR.bct to address 0x00028000 in flash
++Writing br_bct_BR.bct to BCT+11 (offset=180224)
++Copied 8192 bytes from br_bct_BR.bct to address 0x0002c000 in flash
++Writing br_bct_BR.bct to BCT+12 (offset=196608)
++Copied 8192 bytes from br_bct_BR.bct to address 0x00030000 in flash
++Writing br_bct_BR.bct to BCT+13 (offset=212992)
++Copied 8192 bytes from br_bct_BR.bct to address 0x00034000 in flash
++Writing br_bct_BR.bct to BCT+14 (offset=229376)
++Copied 8192 bytes from br_bct_BR.bct to address 0x00038000 in flash
++Writing br_bct_BR.bct to BCT+15 (offset=245760)
++Copied 8192 bytes from br_bct_BR.bct to address 0x0003c000 in flash
++Writing br_bct_BR.bct to BCT+16 (offset=262144)
++Copied 8192 bytes from br_bct_BR.bct to address 0x00040000 in flash
++Writing br_bct_BR.bct to BCT+17 (offset=278528)
++Copied 8192 bytes from br_bct_BR.bct to address 0x00044000 in flash
++Writing br_bct_BR.bct to BCT+18 (offset=294912)
++Copied 8192 bytes from br_bct_BR.bct to address 0x00048000 in flash
++Writing br_bct_BR.bct to BCT+19 (offset=311296)
++Copied 8192 bytes from br_bct_BR.bct to address 0x0004c000 in flash
++Writing br_bct_BR.bct to BCT+20 (offset=327680)
++Copied 8192 bytes from br_bct_BR.bct to address 0x00050000 in flash
++Writing br_bct_BR.bct to BCT+21 (offset=344064)
++Copied 8192 bytes from br_bct_BR.bct to address 0x00054000 in flash
++Writing br_bct_BR.bct to BCT+22 (offset=360448)
++Copied 8192 bytes from br_bct_BR.bct to address 0x00058000 in flash
++Writing br_bct_BR.bct to BCT+23 (offset=376832)
++Copied 8192 bytes from br_bct_BR.bct to address 0x0005c000 in flash
++Writing br_bct_BR.bct to BCT+24 (offset=393216)
++Copied 8192 bytes from br_bct_BR.bct to address 0x00060000 in flash
++Writing br_bct_BR.bct to BCT+25 (offset=409600)
++Copied 8192 bytes from br_bct_BR.bct to address 0x00064000 in flash
++Writing br_bct_BR.bct to BCT+26 (offset=425984)
++Copied 8192 bytes from br_bct_BR.bct to address 0x00068000 in flash
++Writing br_bct_BR.bct to BCT+27 (offset=442368)
++Copied 8192 bytes from br_bct_BR.bct to address 0x0006c000 in flash
++Writing br_bct_BR.bct to BCT+28 (offset=458752)
++Copied 8192 bytes from br_bct_BR.bct to address 0x00070000 in flash
++Writing br_bct_BR.bct to BCT+29 (offset=475136)
++Copied 8192 bytes from br_bct_BR.bct to address 0x00074000 in flash
++Writing br_bct_BR.bct to BCT+30 (offset=491520)
++Copied 8192 bytes from br_bct_BR.bct to address 0x00078000 in flash
++Writing br_bct_BR.bct to BCT+31 (offset=507904)
++Copied 8192 bytes from br_bct_BR.bct to address 0x0007c000 in flash
++Writing br_bct_BR.bct to BCT+32 (offset=524288)
++Copied 8192 bytes from br_bct_BR.bct to address 0x00080000 in flash
++Writing br_bct_BR.bct to BCT+33 (offset=540672)
++Copied 8192 bytes from br_bct_BR.bct to address 0x00084000 in flash
++Writing br_bct_BR.bct to BCT+34 (offset=557056)
++Copied 8192 bytes from br_bct_BR.bct to address 0x00088000 in flash
++Writing br_bct_BR.bct to BCT+35 (offset=573440)
++Copied 8192 bytes from br_bct_BR.bct to address 0x0008c000 in flash
++Writing br_bct_BR.bct to BCT+36 (offset=589824)
++Copied 8192 bytes from br_bct_BR.bct to address 0x00090000 in flash
++Writing br_bct_BR.bct to BCT+37 (offset=606208)
++Copied 8192 bytes from br_bct_BR.bct to address 0x00094000 in flash
++Writing br_bct_BR.bct to BCT+38 (offset=622592)
++Copied 8192 bytes from br_bct_BR.bct to address 0x00098000 in flash
++Writing br_bct_BR.bct to BCT+39 (offset=638976)
++Copied 8192 bytes from br_bct_BR.bct to address 0x0009c000 in flash
++Writing br_bct_BR.bct to BCT+40 (offset=655360)
++Copied 8192 bytes from br_bct_BR.bct to address 0x000a0000 in flash
++Writing br_bct_BR.bct to BCT+41 (offset=671744)
++Copied 8192 bytes from br_bct_BR.bct to address 0x000a4000 in flash
++Writing br_bct_BR.bct to BCT+42 (offset=688128)
++Copied 8192 bytes from br_bct_BR.bct to address 0x000a8000 in flash
++Writing br_bct_BR.bct to BCT+43 (offset=704512)
++Copied 8192 bytes from br_bct_BR.bct to address 0x000ac000 in flash
++Writing br_bct_BR.bct to BCT+44 (offset=720896)
++Copied 8192 bytes from br_bct_BR.bct to address 0x000b0000 in flash
++Writing br_bct_BR.bct to BCT+45 (offset=737280)
++Copied 8192 bytes from br_bct_BR.bct to address 0x000b4000 in flash
++Writing br_bct_BR.bct to BCT+46 (offset=753664)
++Copied 8192 bytes from br_bct_BR.bct to address 0x000b8000 in flash
++Writing br_bct_BR.bct to BCT+47 (offset=770048)
++Copied 8192 bytes from br_bct_BR.bct to address 0x000bc000 in flash
++Writing br_bct_BR.bct to BCT+48 (offset=786432)
++Copied 8192 bytes from br_bct_BR.bct to address 0x000c0000 in flash
++Writing br_bct_BR.bct to BCT+49 (offset=802816)
++Copied 8192 bytes from br_bct_BR.bct to address 0x000c4000 in flash
++Writing br_bct_BR.bct to BCT+50 (offset=819200)
++Copied 8192 bytes from br_bct_BR.bct to address 0x000c8000 in flash
++Writing br_bct_BR.bct to BCT+51 (offset=835584)
++Copied 8192 bytes from br_bct_BR.bct to address 0x000cc000 in flash
++Writing br_bct_BR.bct to BCT+52 (offset=851968)
++Copied 8192 bytes from br_bct_BR.bct to address 0x000d0000 in flash
++Writing br_bct_BR.bct to BCT+53 (offset=868352)
++Copied 8192 bytes from br_bct_BR.bct to address 0x000d4000 in flash
++Writing br_bct_BR.bct to BCT+54 (offset=884736)
++Copied 8192 bytes from br_bct_BR.bct to address 0x000d8000 in flash
++Writing br_bct_BR.bct to BCT+55 (offset=901120)
++Copied 8192 bytes from br_bct_BR.bct to address 0x000dc000 in flash
++Writing br_bct_BR.bct to BCT+56 (offset=917504)
++Copied 8192 bytes from br_bct_BR.bct to address 0x000e0000 in flash
++Writing br_bct_BR.bct to BCT+57 (offset=933888)
++Copied 8192 bytes from br_bct_BR.bct to address 0x000e4000 in flash
++Writing br_bct_BR.bct to BCT+58 (offset=950272)
++Copied 8192 bytes from br_bct_BR.bct to address 0x000e8000 in flash
++Writing br_bct_BR.bct to BCT+59 (offset=966656)
++Copied 8192 bytes from br_bct_BR.bct to address 0x000ec000 in flash
++Writing br_bct_BR.bct to BCT+60 (offset=983040)
++Copied 8192 bytes from br_bct_BR.bct to address 0x000f0000 in flash
++Writing br_bct_BR.bct to BCT+61 (offset=999424)
++Copied 8192 bytes from br_bct_BR.bct to address 0x000f4000 in flash
++Writing br_bct_BR.bct to BCT+62 (offset=1015808)
++Copied 8192 bytes from br_bct_BR.bct to address 0x000f8000 in flash
++Writing br_bct_BR.bct to BCT+63 (offset=1032192)
++Copied 8192 bytes from br_bct_BR.bct to address 0x000fc000 in flash
++Writing mb1_t234_prod_aligned_sigheader.bin.encrypt (size=287584) to A_mb1 (offset=1048576)
++Copied 287584 bytes from mb1_t234_prod_aligned_sigheader.bin.encrypt to address 0x00100000 in flash
++Writing psc_bl1_t234_prod_aligned_sigheader.bin.encrypt (size=139264) to A_psc_bl1 (offset=1572864)
++Copied 139264 bytes from psc_bl1_t234_prod_aligned_sigheader.bin.encrypt to address 0x00180000 in flash
++Writing mb1_cold_boot_bct_MB1_sigheader.bct.encrypt (size=17616) to A_MB1_BCT (offset=1835008)
++Copied 17616 bytes from mb1_cold_boot_bct_MB1_sigheader.bct.encrypt to address 0x001c0000 in flash
++Writing mem_coldboot_sigheader.bct.encrypt (size=243712) to A_MEM_BCT (offset=1966080)
++Copied 243712 bytes from mem_coldboot_sigheader.bct.encrypt to address 0x001e0000 in flash
++Writing tsec_t234_sigheader.bin.encrypt (size=192512) to A_tsec-fw (offset=2228224)
++Copied 192512 bytes from tsec_t234_sigheader.bin.encrypt to address 0x00220000 in flash
++Writing nvdec_t234_prod_sigheader.fw.encrypt (size=294912) to A_nvdec (offset=3276800)
++Copied 294912 bytes from nvdec_t234_prod_sigheader.fw.encrypt to address 0x00320000 in flash
++Writing mb2_t234_with_mb2_cold_boot_bct_MB2_sigheader.bin.encrypt (size=439312) to A_mb2 (offset=4325376)
++Copied 439312 bytes from mb2_t234_with_mb2_cold_boot_bct_MB2_sigheader.bin.encrypt to address 0x00420000 in flash
++Writing xusb_t234_prod_sigheader.bin.encrypt (size=164864) to A_xusb-fw (offset=4849664)
++Copied 164864 bytes from xusb_t234_prod_sigheader.bin.encrypt to address 0x004a0000 in flash
++Writing bpmp_t234-TE980M-A1_prod_sigheader.bin.encrypt (size=1027072) to A_bpmp-fw (offset=5111808)
++Copied 1027072 bytes from bpmp_t234-TE980M-A1_prod_sigheader.bin.encrypt to address 0x004e0000 in flash
++Writing tegra234-bpmp-3767-0000-3768-super_with_odm_sigheader.dtb.encrypt (size=383552) to A_bpmp-fw-dtb (offset=6684672)
++Copied 383552 bytes from tegra234-bpmp-3767-0000-3768-super_with_odm_sigheader.dtb.encrypt to address 0x00660000 in flash
++Writing pscfw_t234_prod_sigheader.bin.encrypt (size=342336) to A_psc-fw (offset=10878976)
++Copied 342336 bytes from pscfw_t234_prod_sigheader.bin.encrypt to address 0x00a60000 in flash
++Writing mce_flash_o10_cr_prod_sigheader.bin.encrypt (size=187328) to A_mts-mce (offset=11665408)
++Copied 187328 bytes from mce_flash_o10_cr_prod_sigheader.bin.encrypt to address 0x00b20000 in flash
++Writing sc7_t234_prod_sigheader.bin.encrypt (size=193120) to A_sc7 (offset=12189696)
++Copied 193120 bytes from sc7_t234_prod_sigheader.bin.encrypt to address 0x00ba0000 in flash
++Writing psc_rf_t234_prod_sigheader.bin.encrypt (size=139264) to A_pscrf (offset=12386304)
++Copied 139264 bytes from psc_rf_t234_prod_sigheader.bin.encrypt to address 0x00bd0000 in flash
++Writing mb2rf_t234_sigheader.bin.encrypt (size=117792) to A_mb2rf (offset=12582912)
++Copied 117792 bytes from mb2rf_t234_sigheader.bin.encrypt to address 0x00c00000 in flash
++Writing uefi_t23x_general_with_dtb_aligned_blob_w_bin_sigheader.bin.encrypt (size=2859184) to A_cpu-bootloader (offset=12713984)
++Copied 2859184 bytes from uefi_t23x_general_with_dtb_aligned_blob_w_bin_sigheader.bin.encrypt to address 0x00c20000 in flash
++Writing tos-optee_t234_sigheader.img.encrypt (size=1632704) to A_secure-os (offset=16384000)
++Copied 1632704 bytes from tos-optee_t234_sigheader.img.encrypt to address 0x00fa0000 in flash
++Writing eks_sigheader.img.encrypt (size=9232) to A_eks (offset=22675456)
++Copied 9232 bytes from eks_sigheader.img.encrypt to address 0x015a0000 in flash
++Writing display-t234-dce_with_tegra234-p3768-0000+p3767-0000-nv-super_with_odm_overlay.dtb_aligned_blob_w_bin_sigheader.bin.encrypt (size=1083696) to A_dce-fw (offset=22937600)
++Copied 1083696 bytes from display-t234-dce_with_tegra234-p3768-0000+p3767-0000-nv-super_with_odm_overlay.dtb_aligned_blob_w_bin_sigheader.bin.encrypt to address 0x015e0000 in flash
++Writing spe_t234_sigheader.bin.encrypt (size=270336) to A_spe-fw (offset=28180480)
++Copied 270336 bytes from spe_t234_sigheader.bin.encrypt to address 0x01ae0000 in flash
++Writing camera-rtcpu-t234-rce_sigheader.img.encrypt (size=699616) to A_rce-fw (offset=28770304)
++Copied 699616 bytes from camera-rtcpu-t234-rce_sigheader.img.encrypt to address 0x01b70000 in flash
++Writing adsp-fw_sigheader.bin.encrypt (size=420272) to A_adsp-fw (offset=29818880)
++Copied 420272 bytes from adsp-fw_sigheader.bin.encrypt to address 0x01c70000 in flash
++Writing nvpva_020_aligned_blob_w_bin_sigheader.fw.encrypt (size=77424) to A_pva-fw (offset=31916032)
++Copied 77424 bytes from nvpva_020_aligned_blob_w_bin_sigheader.fw.encrypt to address 0x01e70000 in flash
++Writing mb1_t234_prod_aligned_sigheader.bin.encrypt (size=287584) to B_mb1 (offset=33292288)
++Copied 287584 bytes from mb1_t234_prod_aligned_sigheader.bin.encrypt to address 0x01fc0000 in flash
++Writing psc_bl1_t234_prod_aligned_sigheader.bin.encrypt (size=139264) to B_psc_bl1 (offset=33816576)
++Copied 139264 bytes from psc_bl1_t234_prod_aligned_sigheader.bin.encrypt to address 0x02040000 in flash
++Writing mb1_cold_boot_bct_MB1_sigheader.bct.encrypt (size=17616) to B_MB1_BCT (offset=34078720)
++Copied 17616 bytes from mb1_cold_boot_bct_MB1_sigheader.bct.encrypt to address 0x02080000 in flash
++Writing mem_coldboot_sigheader.bct.encrypt (size=243712) to B_MEM_BCT (offset=34209792)
++Copied 243712 bytes from mem_coldboot_sigheader.bct.encrypt to address 0x020a0000 in flash
++Writing tsec_t234_sigheader.bin.encrypt (size=192512) to B_tsec-fw (offset=34471936)
++Copied 192512 bytes from tsec_t234_sigheader.bin.encrypt to address 0x020e0000 in flash
++Writing nvdec_t234_prod_sigheader.fw.encrypt (size=294912) to B_nvdec (offset=35520512)
++Copied 294912 bytes from nvdec_t234_prod_sigheader.fw.encrypt to address 0x021e0000 in flash
++Writing mb2_t234_with_mb2_cold_boot_bct_MB2_sigheader.bin.encrypt (size=439312) to B_mb2 (offset=36569088)
++Copied 439312 bytes from mb2_t234_with_mb2_cold_boot_bct_MB2_sigheader.bin.encrypt to address 0x022e0000 in flash
++Writing xusb_t234_prod_sigheader.bin.encrypt (size=164864) to B_xusb-fw (offset=37093376)
++Copied 164864 bytes from xusb_t234_prod_sigheader.bin.encrypt to address 0x02360000 in flash
++Writing bpmp_t234-TE980M-A1_prod_sigheader.bin.encrypt (size=1027072) to B_bpmp-fw (offset=37355520)
++Copied 1027072 bytes from bpmp_t234-TE980M-A1_prod_sigheader.bin.encrypt to address 0x023a0000 in flash
++Writing tegra234-bpmp-3767-0000-3768-super_with_odm_sigheader.dtb.encrypt (size=383552) to B_bpmp-fw-dtb (offset=38928384)
++Copied 383552 bytes from tegra234-bpmp-3767-0000-3768-super_with_odm_sigheader.dtb.encrypt to address 0x02520000 in flash
++Writing pscfw_t234_prod_sigheader.bin.encrypt (size=342336) to B_psc-fw (offset=43122688)
++Copied 342336 bytes from pscfw_t234_prod_sigheader.bin.encrypt to address 0x02920000 in flash
++Writing mce_flash_o10_cr_prod_sigheader.bin.encrypt (size=187328) to B_mts-mce (offset=43909120)
++Copied 187328 bytes from mce_flash_o10_cr_prod_sigheader.bin.encrypt to address 0x029e0000 in flash
++Writing sc7_t234_prod_sigheader.bin.encrypt (size=193120) to B_sc7 (offset=44433408)
++Copied 193120 bytes from sc7_t234_prod_sigheader.bin.encrypt to address 0x02a60000 in flash
++Writing psc_rf_t234_prod_sigheader.bin.encrypt (size=139264) to B_pscrf (offset=44630016)
++Copied 139264 bytes from psc_rf_t234_prod_sigheader.bin.encrypt to address 0x02a90000 in flash
++Writing mb2rf_t234_sigheader.bin.encrypt (size=117792) to B_mb2rf (offset=44826624)
++Copied 117792 bytes from mb2rf_t234_sigheader.bin.encrypt to address 0x02ac0000 in flash
++Writing uefi_t23x_general_with_dtb_aligned_blob_w_bin_sigheader.bin.encrypt (size=2859184) to B_cpu-bootloader (offset=44957696)
++Copied 2859184 bytes from uefi_t23x_general_with_dtb_aligned_blob_w_bin_sigheader.bin.encrypt to address 0x02ae0000 in flash
++Writing tos-optee_t234_sigheader.img.encrypt (size=1632704) to B_secure-os (offset=48627712)
++Copied 1632704 bytes from tos-optee_t234_sigheader.img.encrypt to address 0x02e60000 in flash
++Writing eks_sigheader.img.encrypt (size=9232) to B_eks (offset=54919168)
++Copied 9232 bytes from eks_sigheader.img.encrypt to address 0x03460000 in flash
++Writing display-t234-dce_with_tegra234-p3768-0000+p3767-0000-nv-super_with_odm_overlay.dtb_aligned_blob_w_bin_sigheader.bin.encrypt (size=1083696) to B_dce-fw (offset=55181312)
++Copied 1083696 bytes from display-t234-dce_with_tegra234-p3768-0000+p3767-0000-nv-super_with_odm_overlay.dtb_aligned_blob_w_bin_sigheader.bin.encrypt to address 0x034a0000 in flash
++Writing spe_t234_sigheader.bin.encrypt (size=270336) to B_spe-fw (offset=60424192)
++Copied 270336 bytes from spe_t234_sigheader.bin.encrypt to address 0x039a0000 in flash
++Writing camera-rtcpu-t234-rce_sigheader.img.encrypt (size=699616) to B_rce-fw (offset=61014016)
++Copied 699616 bytes from camera-rtcpu-t234-rce_sigheader.img.encrypt to address 0x03a30000 in flash
++Writing adsp-fw_sigheader.bin.encrypt (size=420272) to B_adsp-fw (offset=62062592)
++Copied 420272 bytes from adsp-fw_sigheader.bin.encrypt to address 0x03b30000 in flash
++Writing nvpva_020_aligned_blob_w_bin_sigheader.fw.encrypt (size=77424) to B_pva-fw (offset=64159744)
++Copied 77424 bytes from nvpva_020_aligned_blob_w_bin_sigheader.fw.encrypt to address 0x03d30000 in flash
++Writing bct_backup.img (size=32768) to BCT-boot-chain_backup (offset=66715648)
++Copied 32768 bytes from bct_backup.img to address 0x03fa0000 in flash
++Writing gpt_backup_secondary_3_0.bin (size=16896) to secondary_gpt_backup (offset=66846720)
++Copied 16896 bytes from gpt_backup_secondary_3_0.bin to address 0x03fc0000 in flash
++Writing edge-ai-nx-16g_bootblob_ver.txt (size=109) to B_VER (offset=66912256)
++Copied 109 bytes from edge-ai-nx-16g_bootblob_ver.txt to address 0x03fd0000 in flash
++Writing edge-ai-nx-16g_bootblob_ver.txt (size=109) to A_VER (offset=66977792)
++Copied 109 bytes from edge-ai-nx-16g_bootblob_ver.txt to address 0x03fe0000 in flash
++Writing gpt_secondary_3_0.bin (size=16896) to secondary_gpt (offset=67091968)
++Copied 16896 bytes from gpt_secondary_3_0.bin to address 0x03ffbe00 in flash
+diff --git a/build-support/jetpack-7.2-blacksail/deployment/evidence/device-logs-failed-attempt/command_sequence b/build-support/jetpack-7.2-blacksail/deployment/evidence/device-logs-failed-attempt/command_sequence
+new file mode 100644
+index 0000000..d8d079a
+--- /dev/null
++++ b/build-support/jetpack-7.2-blacksail/deployment/evidence/device-logs-failed-attempt/command_sequence
+@@ -0,0 +1,6 @@
++bootloader
++extra-pre-wipe
++erase-mmc
++export-devices nvme0n1
++extra
++reboot
+diff --git a/build-support/jetpack-7.2-blacksail/deployment/evidence/device-logs-failed-attempt/custom-extra-pre-wipe.log b/build-support/jetpack-7.2-blacksail/deployment/evidence/device-logs-failed-attempt/custom-extra-pre-wipe.log
+new file mode 100644
+index 0000000..a1cf712
+--- /dev/null
++++ b/build-support/jetpack-7.2-blacksail/deployment/evidence/device-logs-failed-attempt/custom-extra-pre-wipe.log
+@@ -0,0 +1 @@
++No init_extra_pre_wipe was found, ignoring
+diff --git a/build-support/jetpack-7.2-blacksail/deployment/evidence/device-logs-failed-attempt/custom-extra.log b/build-support/jetpack-7.2-blacksail/deployment/evidence/device-logs-failed-attempt/custom-extra.log
+new file mode 100644
+index 0000000..9402562
+--- /dev/null
++++ b/build-support/jetpack-7.2-blacksail/deployment/evidence/device-logs-failed-attempt/custom-extra.log
+@@ -0,0 +1 @@
++No init_extra was found, ignoring
+diff --git a/build-support/jetpack-7.2-blacksail/deployment/evidence/device-logs-failed-attempt/erase-mmc.log b/build-support/jetpack-7.2-blacksail/deployment/evidence/device-logs-failed-attempt/erase-mmc.log
+new file mode 100644
+index 0000000..9264e4e
+--- /dev/null
++++ b/build-support/jetpack-7.2-blacksail/deployment/evidence/device-logs-failed-attempt/erase-mmc.log
+@@ -0,0 +1 @@
++/dev/mmcblk0 does not exist, skipping
+diff --git a/build-support/jetpack-7.2-blacksail/deployment/evidence/device-logs-failed-attempt/export-nvme0n1.log b/build-support/jetpack-7.2-blacksail/deployment/evidence/device-logs-failed-attempt/export-nvme0n1.log
+new file mode 100644
+index 0000000..494ca2c
+--- /dev/null
++++ b/build-support/jetpack-7.2-blacksail/deployment/evidence/device-logs-failed-attempt/export-nvme0n1.log
+@@ -0,0 +1,36 @@
++Found /dev/nvme0n1
++Exported /dev/nvme0n1 as nvme0n1
++Waiting for host to connect...[connected]
++Waiting for host to disconnect.....[disconnected]
++/dev/nvme0n1:
++No errors detected.
++Header version: 1.0
++Using 16 out of 128 partitions.
++A total of 370003757 free sectors is available in 9 segments (the largest is 176.4 GiB).
++Disk /dev/nvme0n1: 232.89 GiB, 250059350016 bytes, 488397168 sectors
++Disk model: HP SSD EX900 250GB                      
++Units: sectors of 1 * 512 = 512 bytes
++Sector size (logical/physical): 512 bytes / 512 bytes
++I/O size (minimum/optimal): 512 bytes / 512 bytes
++Disklabel type: gpt
++Disk identifier: 67294D18-7528-41A7-BB0F-80AA26EA2C5E
++
++Device             Start       End  Sectors   Size Type
++/dev/nvme0n1p1   3057664  60729343 57671680  27.5G Microsoft basic data
++/dev/nvme0n1p2  60729344 118401023 57671680  27.5G Microsoft basic data
++/dev/nvme0n1p3      2048    264191   262144   128M Microsoft basic data
++/dev/nvme0n1p4    264192    265727     1536   768K Microsoft basic data
++/dev/nvme0n1p5    266240    331007    64768  31.6M Microsoft basic data
++/dev/nvme0n1p6    331776    593919   262144   128M Microsoft basic data
++/dev/nvme0n1p7    593920    595455     1536   768K Microsoft basic data
++/dev/nvme0n1p8    595968    660735    64768  31.6M Microsoft basic data
++/dev/nvme0n1p9    661504    825343   163840    80M Microsoft basic data
++/dev/nvme0n1p10   825344    826367     1024   512K Microsoft basic data
++/dev/nvme0n1p11   827392    958463   131072    64M EFI System
++/dev/nvme0n1p12   958464   1122303   163840    80M Microsoft basic data
++/dev/nvme0n1p13  1122304   1123327     1024   512K Microsoft basic data
++/dev/nvme0n1p14  1124352   1255423   131072    64M Microsoft basic data
++/dev/nvme0n1p15  1255424   2074623   819200   400M Microsoft basic data
++/dev/nvme0n1p16  2074624   3056639   982016 479.5M Microsoft basic data
++
++Partition table entries are not in disk order.
+diff --git a/build-support/jetpack-7.2-blacksail/deployment/evidence/device-logs-failed-attempt/status b/build-support/jetpack-7.2-blacksail/deployment/evidence/device-logs-failed-attempt/status
+new file mode 100644
+index 0000000..ff43ca4
+--- /dev/null
++++ b/build-support/jetpack-7.2-blacksail/deployment/evidence/device-logs-failed-attempt/status
+@@ -0,0 +1 @@
++SUCCESS
+diff --git a/build-support/jetpack-7.2-blacksail/deployment/flash-failure-report.txt b/build-support/jetpack-7.2-blacksail/deployment/flash-failure-report.txt
+new file mode 100644
+index 0000000..8778d23
+--- /dev/null
++++ b/build-support/jetpack-7.2-blacksail/deployment/flash-failure-report.txt
+@@ -0,0 +1,57 @@
++Edge-AI deployment failure and prepared retry - 2026-10-03
++
++Result: deployment incomplete. Correct target profile is edge-ai-nx-16g
++(P3767-0000, FAB 303, revision B.1, Orin NX 16GB).
++
++Evidence and likely cause
++- Host failed at partprobe after creating the NVMe GPT at 18:47:53 +0300.
++- Host desktop mounted the old rootfs at 18:47:42 and EFI at 18:47:43.
++- make-sdcard had no unmount check before rewriting GPT and discarded
++  partprobe stderr. Mounted old partitions likely prevented the kernel
++  from rereading the table. The precise partprobe error was not retained.
++- Target export-nvme0n1.log confirms valid GPT, 16 partitions, and the
++  actual 488397168-sector HP SSD EX900 250GB disk. Reported start=0 values
++  mean automatic placement; the target log shows valid nonzero starts.
++- Target bootloader.log and status confirm QSPI commands succeeded.
++  Device-side SUCCESS does not mean that host-side rootfs flashing succeeded.
++- Rootfs copying did not begin. The old NVMe partition layout was replaced,
++  so complete a recovery flash before attempting normal boot.
++- USB disconnect followed the flasher's release/cleanup path; the available
++  evidence does not establish a cable or NVMe hardware fault.
++
++Changes applied to the extracted deployment workspace
++- Launcher installs a temporary UDisks automount rule for this board's
++  exact USB serial, vendor and product. It removes the rule when it exits.
++- Before GPT writes, verify USB ancestry, serial, NVMe export name and
++  capacity, verify the automount guard, unmount target partitions, settle
++  udev, and recheck identity and mounts. Fail before GPT if any check fails.
++- Preserve partprobe stderr. Keep nonzero return fatal; do not ignore it.
++- Record launcher exit status and hold a lock against concurrent flashes.
++- Original archive, kernel/firmware payloads and rootfs were not changed.
++
++Validation and remaining work
++- Bash syntax and launcher ShellCheck passed.
++- Simulated checks passed: old rootfs/EFI unmount, wrong USB rejection,
++  missing guard rejection, and busy unmount rejection before GPT writes.
++- Saved target status, command sequence and five logs in
++  device-logs-failed-attempt/. Hardware retry has not yet been run.
++- Board currently exports the final-status flashpkg, not an APX recovery
++  device. Power off and re-enter force-recovery, then run from repo root:
++  bash .deploy-jetpack-7.2-blacksail/deploy-edge-ai.sh
++  Enter the sudo password in the local terminal.
++- After successful flashing, verify normal boot, SSH, L4T R39.2.1,
++  root filesystem and NVMe partition/mount state.
++
++Upstream script improvements
++- Add pre-GPT target identity and unmount checks to make-sdcard, with a
++  scoped desktop automount guard active for the whole flash session.
++- Retain detailed stderr for partprobe and other partitioning failures.
++- Retrieve device logs even after host storage failure and report host
++  and device status separately; firmware success cannot cover rootfs failure.
++- Replace the detect-only empty numeric SKU test with sequential tests:
++  first check CHECK_BOARDSKU is nonempty, then perform numeric comparison.
++  The line-482 warning was separate from this partitioning failure and the
++  dispatcher independently matched BOARDID=3767 and BOARDSKU=0000.
++
++UDisks rule semantics: UDISKS_IGNORE and UDISKS_AUTO set device hints.
++https://storaged.org/doc/udisks2-api/latest/udisks.8.html
+diff --git a/build-support/jetpack-7.2-blacksail/deployment/make-sdcard-automount-fix.patch b/build-support/jetpack-7.2-blacksail/deployment/make-sdcard-automount-fix.patch
+new file mode 100644
+index 0000000..c2df85d
+--- /dev/null
++++ b/build-support/jetpack-7.2-blacksail/deployment/make-sdcard-automount-fix.patch
+@@ -0,0 +1,25 @@
++--- a/profiles/edge-ai-nx-16g/make-sdcard
+++++ b/profiles/edge-ai-nx-16g/make-sdcard
++@@ -460,6 +460,13 @@
++     exit 1
++ fi
++ 
+++# The desktop can mount the old NVMe partitions as soon as the Jetson
+++# exposes USB storage. Refuse GPT writes until the exact board disk is
+++# identified, the scoped automount guard is active, and all mounts are gone.
+++if [ -b "$output" ]; then
+++    python3 "$here/clab-prepare-flash-target.py" "$output" || exit 1
+++fi
+++
++ echo  "Creating partitions"
++ if ! command -v sgdisk >/dev/null 2>&1; then
++     echo "ERR: 'sgdisk' command not found. Please install the 'gdisk' package." >&2
++@@ -485,7 +492,7 @@
++ fi
++ if [ -b "$output" ]; then
++     sleep 1
++-    if ! $SUDO partprobe "$output" >/dev/null 2>&1; then
+++    if ! $SUDO partprobe "$output"; then
++ 	echo "ERR: partprobe failed after partitioning $output" >&2
++ 	exit 1
++     fi
+diff --git a/build-support/jetpack-7.2-blacksail/deployment/prepare-flash-target.py b/build-support/jetpack-7.2-blacksail/deployment/prepare-flash-target.py
+new file mode 100644
+index 0000000..c36be62
+--- /dev/null
++++ b/build-support/jetpack-7.2-blacksail/deployment/prepare-flash-target.py
+@@ -0,0 +1,100 @@
++#!/usr/bin/env python3
++"""Verify the selected Jetson USB disk and unmount it before GPT writes."""
++from pathlib import Path
++import json
++import os
++import stat
++import subprocess
++import sys
++
++
++def run(arguments):
++    return subprocess.run(arguments, check=True, text=True, capture_output=True)
++
++
++def identify_target(device, expected, sys_root=Path('/sys')):
++    name = Path(device).name
++    block = sys_root / 'class/block' / name
++    if not block.exists() or (block / 'partition').exists():
++        raise RuntimeError('Expected a whole USB disk: ' + str(device))
++    ancestry = (block / 'device').resolve()
++    usb = next((parent for parent in (ancestry, *ancestry.parents)
++                if (parent / 'idVendor').is_file() and (parent / 'idProduct').is_file()), None)
++    if usb is None:
++        raise RuntimeError('Refusing a disk without a USB parent: ' + str(device))
++    values = {key: (usb / key).read_text().strip()
++              for key in ('idVendor', 'idProduct', 'serial')}
++    if values != {'idVendor': '1d6b', 'idProduct': '0104', 'serial': expected['usb_serial']}:
++        raise RuntimeError('USB disk identity does not match the checked Edge-AI: ' + str(values))
++    vendor = (block / 'device/vendor').read_text().strip()
++    if vendor != 'nvme0n1':
++        raise RuntimeError('Expected the board NVMe export, found: ' + vendor)
++    sectors = int((block / 'size').read_text().strip())
++    if sectors != expected['disk_sectors']:
++        raise RuntimeError(f'Board NVMe capacity changed: {sectors} sectors')
++    return block
++
++
++def properties(output):
++    return dict(line.split('=', 1) for line in output.splitlines() if '=' in line)
++
++
++def mounts_for(device, runner=run):
++    result = runner(['findmnt', '--json', '--list', '--source', device, '--output', 'TARGET'])
++    return [entry['target'] for entry in json.loads(result.stdout).get('filesystems', [])]
++
++
++def prepare(device, expected, sys_root=Path('/sys'), runner=run):
++    identify_target(device, expected, sys_root)
++    identity = runner(['udevadm', 'info', '--query=property', '--name=' + str(device)])
++    props = properties(identity.stdout)
++    if props.get('UDISKS_IGNORE') != '1' or props.get('UDISKS_AUTO') != '0':
++        raise RuntimeError('Scoped automount guard is missing; use deploy-edge-ai.sh')
++    result = runner(['lsblk', '--noheadings', '--raw', '--paths', '--output', 'NAME', str(device)])
++    devices = result.stdout.splitlines()
++    if not devices or devices[0] != str(device):
++        raise RuntimeError('Unexpected lsblk disk tree: ' + result.stdout)
++    for child in reversed(devices):
++        try:
++            targets = mounts_for(child, runner)
++        except subprocess.CalledProcessError as error:
++            if error.returncode != 1 or error.stderr.strip():
++                raise
++            targets = []
++        for target in targets:
++            print(f'Unmounting checked board disk: {child} at {target}', flush=True)
++            runner(['umount', '--', target])
++    runner(['udevadm', 'settle', '--timeout=10'])
++    identify_target(device, expected, sys_root)
++    for child in devices:
++        try:
++            targets = mounts_for(child, runner)
++        except subprocess.CalledProcessError as error:
++            if error.returncode != 1 or error.stderr.strip():
++                raise
++            targets = []
++        if targets:
++            raise RuntimeError(f'Refusing GPT writes while {child} is mounted: {targets}')
++    print(f'Checked Edge-AI NVMe {device}: identity matches, automount blocked, no mounts', flush=True)
++
++
++def main():
++    if len(sys.argv) != 2:
++        raise RuntimeError('Usage: prepare-flash-target.py /dev/USB_DISK')
++    device = str(Path(sys.argv[1]).resolve())
++    if os.geteuid() != 0:
++        raise RuntimeError('Flash target preparation must run as root')
++    if not stat.S_ISBLK(os.stat(device).st_mode):
++        raise RuntimeError('Expected a block device: ' + device)
++    expected = json.loads(Path(__file__).with_name('clab-flash-target.json').read_text())
++    prepare(device, expected)
++
++
++if __name__ == '__main__':
++    try:
++        main()
++    except (RuntimeError, OSError, subprocess.CalledProcessError, ValueError) as error:
++        print('ERR: flash target preparation failed: ' + str(error), file=sys.stderr)
++        if isinstance(error, subprocess.CalledProcessError) and error.stderr:
++            print(error.stderr.strip(), file=sys.stderr)
++        raise SystemExit(1)
+diff --git a/build-support/jetpack-7.2-blacksail/evidence/build-report.txt b/build-support/jetpack-7.2-blacksail/evidence/build-report.txt
+new file mode 100644
+index 0000000..55267da
+--- /dev/null
++++ b/build-support/jetpack-7.2-blacksail/evidence/build-report.txt
+@@ -0,0 +1,51 @@
++CompuLab Edge-AI Yocto build report — 2026-10-03
++
++SUCCESS: JetPack 7.2 / L4T R39.2.1 universal image.
++Branch: jetpack-7.2-blacksail @ a4acce6fa6d06c047c367bb5f8546583f7434a85.
++Final integration: all 33,949 tasks succeeded; no failed tasks.
++Shared image: all 11,581 tasks succeeded, including filesystem/image QA.
++Supports NX 16GB/8GB and Nano 8GB/4GB, with twelve UEFI logo capsules.
++
++Artifact: /home/igor/prj/meta-tegra-compulab/.build-jetpack-7.2-blacksail/tegra-demo-distro/build-edge-ai-nx-16g/tmp/deploy/images/edge-ai-nx-16g/demo-image-weston-edge-ai-universal-6.1+snapshot-f94ae3d6ba49aef86f497998c0e0232a5039510a.tar.zst
++Size: 2069656983 bytes (2.07 GB).
++SHA256: cb1e3e540c3aaec5ff0861b7126611bf80b1f3e09746cb27aedeabe0719c1c2b
++
++Build issues, causes and resolutions
++
++1. Downloads: A crates.io HTTP 500 blocked a pinned wasm-tools dependency.
++   Used its alternate official static URL and verified the recipe SHA256.
++   Other rsync/kernel-cache fetch warnings recovered through retries/mirrors.
++2. Node.js host compiler: GCC 11 lacked the required C++20 constexpr string
++   support. Selected workspace-local GCC 12.3 for nodejs-native; Firefox passed.
++3. Clang/libcxx host linking: An incomplete GCC 12 installation lacked C++
++   development headers/libraries. Added matching workspace files and selected
++   that installation explicitly. GCC/Clang C++20 checks and libcxx passed.
++4. Build configuration: Inherited BBMULTICONFIG appends defeated a narrow
++   override; unset it before assigning scopes. Profiles require the runtime
++   config. A Python integration hook in .conf was rejected and moved to a
++   build-local .bbclass. Original tracked sources remain unchanged.
++5. BitBake scheduling: The large multiconfig graph caused substantial cache
++   scheduling delays. Final integration logged 675 deferred-task deadlocks
++   between configurations; BitBake automatically unblocked every one. Built
++   components separately and reused verified capsule/GUID inputs with 24
++   content checksums. These scheduling warnings remain an upstream issue.
++6. Disk space: rm_work excludes kernels, leaving large completed work trees.
++   Cleaned only completed capsule kernels through BitBake, preserving sstate
++   and capsule outputs. Relocated the 34 GB download cache to /tmp with the
++   original downloads path retained as a symlink.
++7. Execution/recovery: BitBake required approved access to Unix sockets and
++   network outside the sandbox. Interrupted sessions left orphan parsers and
++   a hash daemon holding stale sockets. Process/socket checks proved their
++   identities before cleanup and successful restart. Stack profiling was
++   limited by host permissions; logs and CPU counters supported diagnosis.
++8. Remaining metadata warnings: Old SPDX syntax, absent default S directories
++   in generator-only capsule recipes, and bb.fetch2 deprecation are nonblocking
++   cleanup items. The distro README says R39.2.0; actual pinned code is R39.2.1.
++
++Validation passed: archive SHA256 and decompression; bundled/deployed rootfs
++identity; four SKU checks and shared rootfs links; twelve installed capsule
++hashes matching successful producer outputs; flash/update script syntax;
++Firefox, CUDA and universal runtime packages in the image manifest.
++
++No hardware was flashed or boot-tested.
++Detailed logs and verification evidence are under .build-jetpack-7.2-blacksail/logs.
+diff --git a/build-support/jetpack-7.2-blacksail/evidence/build-state.json b/build-support/jetpack-7.2-blacksail/evidence/build-state.json
+new file mode 100644
+index 0000000..0b02126
+--- /dev/null
++++ b/build-support/jetpack-7.2-blacksail/evidence/build-state.json
+@@ -0,0 +1,68 @@
++{
++  "requested_branch": "jetpack-7.2-blacksail",
++  "compulab_revision": "a4acce6fa6d06c047c367bb5f8546583f7434a85",
++  "final_target": "edge-ai-universal-bundle",
++  "l4t_version": "39.2.1",
++  "active_phase": "Complete: universal image built and release verification passed",
++  "active_exec_session": null,
++  "active_log": ".build-jetpack-7.2-blacksail/logs/build.log",
++  "completed": [
++    "metadata validation",
++    "all four kernel image and module compilations",
++    "Rust and GCC toolchains",
++    "wasm-tools-native",
++    "clang-native",
++    "WASI SDK toolchain and sysroot",
++    "nodejs-native with GCC 12 fix",
++    "libcxx-native with GCC installation fix",
++    "Firefox build and packaging: all 7229 tasks succeeded",
++    "NX 16GB capsule batch: 17532 tasks succeeded; three logo variants deployed",
++    "NX 8GB capsule batch: all 17532 tasks succeeded; three logo variants deployed",
++    "Nano 8GB capsule batch: all 17532 tasks succeeded; three logo variants deployed",
++    "Nano 4GB capsule batch: all 17532 tasks succeeded; all twelve firmware capsules deployed",
++    "Remaining runtime package batch: all 11463 tasks succeeded",
++    "Shared runtime image: all 11581 tasks succeeded, including rootfs/image QA",
++    "Four flash profiles and universal bundle: all 33949 tasks succeeded",
++    "Archive SHA256, shared rootfs identity, four SKU profiles, twelve capsule hashes and helper syntax verified"
++  ],
++  "pending": [],
++  "scope_override": "Completed capsule producer dependencies are replaced by 24 do_install file checksums in prebuilt-capsules.conf. Runtime batch uses two configs; final release-integration.conf includes runtime and all four profiles.",
++  "cache_space_plan": "Download cache relocated to /tmp through the original downloads symlink; all generated outputs remain in the workspace.",
++  "requested_report": "After finishing and verifying the image, provide a brief analysis of all build issues, root causes, fixes, and remaining limitations.",
++  "final_command": "bash .build-jetpack-7.2-blacksail/build-batch.sh -R /home/igor/prj/meta-tegra-compulab/.build-jetpack-7.2-blacksail/batch-configs/release-integration.conf -c deploy edge-ai-universal-bundle",
++  "scheduler_stop": "Full graph stopped gracefully after 31149 tasks, 31108 reused, all succeeded. No compilation failure; CPU-bound scheduling overhead.",
++  "interruption_recovery": "Confirmed main server exited, parser workers were reparented to systemd and remaining Cooker was the hash daemon. Terminated only those leftovers after approval review accepted the evidence.",
++  "active_driver_pid": null,
++  "release": {
++    "archive": "/home/igor/prj/meta-tegra-compulab/.build-jetpack-7.2-blacksail/tegra-demo-distro/build-edge-ai-nx-16g/tmp/deploy/images/edge-ai-nx-16g/demo-image-weston-edge-ai-universal-6.1+snapshot-f94ae3d6ba49aef86f497998c0e0232a5039510a.tar.zst",
++    "archive_bytes": 2069656983,
++    "sha256": "cb1e3e540c3aaec5ff0861b7126611bf80b1f3e09746cb27aedeabe0719c1c2b",
++    "rootfs_sha256": "b48bed134b067a87eb371287b90076b8cd2ec5636c157fb1eb261f148818890b",
++    "archive_members": 2890,
++    "profiles": {
++      "edge-ai-nx-16g": "0000",
++      "edge-ai-nx-8g": "0001",
++      "edge-ai-nano-8g": "0003",
++      "edge-ai-nano-4g": "0004"
++    },
++    "capsules": 12,
++    "l4t": "39.2.1",
++    "selected_manifest_packages": [
++      "cuda-cudart aarch64-tegra 13.2.86-1-r0",
++      "edge-ai-uefi-update-capsules edge-ai-nx-16g 1.0-r0",
++      "edge-ai-universal-runtime edge-ai-nx-16g 1.0-r0",
++      "firefox aarch64 153.0-r0",
++      "nvidia-kernel-oot edge-ai-nx-16g 39.2.1-r0",
++      "nvidia-kernel-oot-alsa edge-ai-nx-16g 39.2.1-r0",
++      "nvidia-kernel-oot-base edge-ai-nx-16g 39.2.1-r0",
++      "nvidia-kernel-oot-cameras edge-ai-nx-16g 39.2.1-r0",
++      "nvidia-kernel-oot-canbus edge-ai-nx-16g 39.2.1-r0",
++      "nvidia-kernel-oot-compute-nvgpu edge-ai-nx-16g 39.2.1-r0",
++      "nvidia-kernel-oot-display edge-ai-nx-16g 39.2.1-r0",
++      "nvidia-kernel-oot-dtb edge-ai-nx-16g 39.2.1-r0",
++      "nvidia-kernel-oot-extra edge-ai-nx-16g 39.2.1-r0"
++    ],
++    "hardware_boot_tested": false
++  },
++  "remaining_warnings": "675 recovered deferred-task scheduling deadlocks, old SPDX license syntax; prior capsule S-path and bb.fetch2 deprecation warnings"
++}
+diff --git a/build-support/jetpack-7.2-blacksail/evidence/captured-files.json b/build-support/jetpack-7.2-blacksail/evidence/captured-files.json
+new file mode 100644
+index 0000000..2cab306
+--- /dev/null
++++ b/build-support/jetpack-7.2-blacksail/evidence/captured-files.json
+@@ -0,0 +1,183 @@
++[
++  {
++    "original_path": ".build-jetpack-7.2-blacksail/build-batch.sh",
++    "packaged_path": "build-batch.sh",
++    "sha256": "d9ec910b733d526c62283712e177954f68e995249cab302a25a5d3209db76a5b",
++    "content": "unchanged"
++  },
++  {
++    "original_path": ".build-jetpack-7.2-blacksail/build-image.sh",
++    "packaged_path": "build-image.sh",
++    "sha256": "47289ba388d3a0281e03a7d1194e93bb3f705ee6ccc32b353ab7dcedbd7f9d23",
++    "content": "unchanged"
++  },
++  {
++    "original_path": ".build-jetpack-7.2-blacksail/build-module-batches.sh",
++    "packaged_path": "build-module-batches.sh",
++    "sha256": "1d244e1b3838868587e0cff367aa9e5c3e8e640f0ee76d449ec24d4140a1d813",
++    "content": "unchanged"
++  },
++  {
++    "original_path": ".build-jetpack-7.2-blacksail/build-runtime-packages.sh",
++    "packaged_path": "build-runtime-packages.sh",
++    "sha256": "9852c5fd8c6e4cde9ab9d5e884b32fd52816fc720ceeade5ff860f676211d86a",
++    "content": "unchanged"
++  },
++  {
++    "original_path": ".build-jetpack-7.2-blacksail/reclaim-completed-capsule-kernels.sh",
++    "packaged_path": "reclaim-completed-capsule-kernels.sh",
++    "sha256": "f6fd5ffc2061e28b24261c5e7e5e907f819d96c4710e1126afe58b4b62d903fe",
++    "content": "unchanged"
++  },
++  {
++    "original_path": ".build-jetpack-7.2-blacksail/resume-build.sh",
++    "packaged_path": "resume-build.sh",
++    "sha256": "1d3476f75fafc5a503c62403ec3bf1416a4509ebcf07aa663a5ca5e37ee7fe56",
++    "content": "unchanged"
++  },
++  {
++    "original_path": ".build-jetpack-7.2-blacksail/launch-release-integration.py",
++    "packaged_path": "launch-release-integration.py",
++    "sha256": "da26b215dfffdc6d661bf5262b951ee89a006c8740b3be69ac4f2b762af4adca",
++    "content": "unchanged"
++  },
++  {
++    "original_path": ".build-jetpack-7.2-blacksail/monitor-build.py",
++    "packaged_path": "monitor-build.py",
++    "sha256": "ef4e8c890e8ccb3a3aa39e7791577d35b5421eb766c404a4e0e9f076c89f3d09",
++    "content": "unchanged"
++  },
++  {
++    "original_path": ".build-jetpack-7.2-blacksail/relocate-download-cache.py",
++    "packaged_path": "relocate-download-cache.py",
++    "sha256": "652e276808af364a29b883a839db1633848d85e535368197a19947ff86c51f6c",
++    "content": "unchanged"
++  },
++  {
++    "original_path": ".build-jetpack-7.2-blacksail/verify-release.py",
++    "packaged_path": "verify-release.py",
++    "sha256": "ff7eec02f1ce0bb9c7869ae67dee2df682106828800a238b97c7ce7c5d2413e3",
++    "content": "unchanged"
++  },
++  {
++    "original_path": ".build-jetpack-7.2-blacksail/batch-configs/browser-corrected.conf",
++    "packaged_path": "batch-configs/browser-corrected.conf",
++    "sha256": "f4b30d4e68e96a7c1223a70ee58a6cb1384b728b5665a40234bf3ec09e190da7",
++    "content": "unchanged"
++  },
++  {
++    "original_path": ".build-jetpack-7.2-blacksail/batch-configs/browser.conf",
++    "packaged_path": "batch-configs/browser.conf",
++    "sha256": "f4b30d4e68e96a7c1223a70ee58a6cb1384b728b5665a40234bf3ec09e190da7",
++    "content": "unchanged"
++  },
++  {
++    "original_path": ".build-jetpack-7.2-blacksail/batch-configs/completed-capsule-kernels.conf",
++    "packaged_path": "batch-configs/completed-capsule-kernels.conf",
++    "sha256": "74f04c5df6d28e2c790032467a7e87752011873c45983b9416357fca04410ae7",
++    "content": "unchanged"
++  },
++  {
++    "original_path": ".build-jetpack-7.2-blacksail/batch-configs/edge-ai-nano-4g.conf",
++    "packaged_path": "batch-configs/edge-ai-nano-4g.conf",
++    "sha256": "74f04c5df6d28e2c790032467a7e87752011873c45983b9416357fca04410ae7",
++    "content": "unchanged"
++  },
++  {
++    "original_path": ".build-jetpack-7.2-blacksail/batch-configs/edge-ai-nano-8g.conf",
++    "packaged_path": "batch-configs/edge-ai-nano-8g.conf",
++    "sha256": "1f4ce77dd197c1b6670b7124bf88dd4735fe6633f6cf44469ea52071564a9176",
++    "content": "unchanged"
++  },
++  {
++    "original_path": ".build-jetpack-7.2-blacksail/batch-configs/edge-ai-nx-16g.conf",
++    "packaged_path": "batch-configs/edge-ai-nx-16g.conf",
++    "sha256": "6560ccafe87edec4b0a8d2ac79503adad443b531d27407c533594f32dc31cd9f",
++    "content": "unchanged"
++  },
++  {
++    "original_path": ".build-jetpack-7.2-blacksail/batch-configs/edge-ai-nx-8g.conf",
++    "packaged_path": "batch-configs/edge-ai-nx-8g.conf",
++    "sha256": "fee19c4788cf5dea7ddefa9e352067b16283a8365c83d12176ad7426eb2f9f7d",
++    "content": "unchanged"
++  },
++  {
++    "original_path": ".build-jetpack-7.2-blacksail/batch-configs/prebuilt-capsules.conf",
++    "packaged_path": "batch-configs/prebuilt-capsules.conf",
++    "sha256": "8de8810da0f59290cbf19e34345b124b049980f8ea49d0a1fcd42b988ff2d6b3",
++    "content": "unchanged"
++  },
++  {
++    "original_path": ".build-jetpack-7.2-blacksail/batch-configs/release-integration.conf",
++    "packaged_path": "batch-configs/release-integration.conf",
++    "sha256": "68178f2c24e8396951b61d2e29ef3487b56f10f1218cada13b3f75883417b93a",
++    "content": "unchanged"
++  },
++  {
++    "original_path": ".build-jetpack-7.2-blacksail/build-metadata/classes/clab-prebuilt-capsules.bbclass",
++    "packaged_path": "build-metadata/classes/clab-prebuilt-capsules.bbclass",
++    "sha256": "5834db545e44b5988d5a8751e329f1fed0d4d2d73c5553bcc9ab207990a82825",
++    "content": "unchanged"
++  },
++  {
++    "original_path": ".build-jetpack-7.2-blacksail/host-tools/bin/g++-12",
++    "packaged_path": "host-tools/bin/g++-12",
++    "sha256": "79250537e442e3b24dc7d8dd7d3896e8e684a0815c6e99f78100d27009284f6b",
++    "content": "unchanged"
++  },
++  {
++    "original_path": ".build-jetpack-7.2-blacksail/host-tools/cxx20-check.cpp",
++    "packaged_path": "host-tools/cxx20-check.cpp",
++    "sha256": "93ee81865d8fb352fea8995bb1056b379d1def2d856bf613c30ae5d3b6e4fddc",
++    "content": "unchanged"
++  },
++  {
++    "original_path": ".build-jetpack-7.2-blacksail/build-report.txt",
++    "packaged_path": "evidence/build-report.txt",
++    "sha256": "cfc2e98f53b35f78a48b9d5736540e60cedc9e2db4913fe02d8ae8f68dce78c1",
++    "content": "unchanged"
++  },
++  {
++    "original_path": ".build-jetpack-7.2-blacksail/build-state.json",
++    "packaged_path": "evidence/build-state.json",
++    "sha256": "9d4f140d471ae76b6e814f9bf6aaa19ac89dce3e074e6533a6cf9a869eddb99b",
++    "content": "unchanged"
++  },
++  {
++    "original_path": ".build-jetpack-7.2-blacksail/logs/revisions.txt",
++    "packaged_path": "evidence/revisions.txt",
++    "sha256": "8cda606c0e04bf2b66aebd90fb293bb86b4a2a0805505356b02a7c993267e3d5",
++    "content": "unchanged"
++  },
++  {
++    "original_path": ".build-jetpack-7.2-blacksail/logs/release-verification.json",
++    "packaged_path": "evidence/release-verification.json",
++    "sha256": "8e3b9564d5d884e201dae44e8752062c374b1c4ee583b6c8d740eb6af11ab86f",
++    "content": "unchanged"
++  },
++  {
++    "original_path": ".build-jetpack-7.2-blacksail/logs/prebuilt-capsule-inputs.json",
++    "packaged_path": "evidence/prebuilt-capsule-inputs.json",
++    "sha256": "9fd13845bd99727470924c5b5bac455b8e11e2ac0616edfd6ea2767bf6aa61db",
++    "content": "unchanged"
++  },
++  {
++    "original_path": ".build-jetpack-7.2-blacksail/logs/download-cache-location.txt",
++    "packaged_path": "evidence/download-cache-location.txt",
++    "sha256": "68df4fb3b532b1593772a84b27217108be0a73c7da5ec88b5446cce1dc0b8d0f",
++    "content": "unchanged"
++  },
++  {
++    "original_path": ".build-jetpack-7.2-blacksail/logs/host-toolchain-packages.sha256",
++    "packaged_path": "evidence/host-toolchain-packages.sha256",
++    "sha256": "c1b988dc2134ee8b10826c5b70e9e8f31a0a26a3992a04f8d96512beee69d192",
++    "content": "unchanged"
++  },
++  {
++    "original_path": ".build-jetpack-7.2-blacksail/tegra-demo-distro/build-edge-ai-nx-16g/conf/local.conf:260-273",
++    "packaged_path": "local-build-overrides.conf",
++    "sha256": "688373ba0a221197e1b9176157c0c395d65c7442b49689714de4461101df40b2",
++    "packaged_sha256": "73d8de837f818b7bb5fd0a4c80cb4149e21c5f1b9e38284c15254ed723f2253f",
++    "content": "same effective configuration; two absolute host-tools paths replaced by ${TOPDIR}/../../host-tools"
++  }
++]
+diff --git a/build-support/jetpack-7.2-blacksail/evidence/download-cache-location.txt b/build-support/jetpack-7.2-blacksail/evidence/download-cache-location.txt
+new file mode 100644
+index 0000000..6242ae5
+--- /dev/null
++++ b/build-support/jetpack-7.2-blacksail/evidence/download-cache-location.txt
+@@ -0,0 +1,2 @@
++/home/igor/prj/meta-tegra-compulab/.build-jetpack-7.2-blacksail/tegra-demo-distro/build-edge-ai-nx-16g/downloads
++/tmp/compulab-jetpack-7.2-downloads-kittovwj/downloads
+diff --git a/build-support/jetpack-7.2-blacksail/evidence/host-toolchain-packages.sha256 b/build-support/jetpack-7.2-blacksail/evidence/host-toolchain-packages.sha256
+new file mode 100644
+index 0000000..f3f9ac2
+--- /dev/null
++++ b/build-support/jetpack-7.2-blacksail/evidence/host-toolchain-packages.sha256
+@@ -0,0 +1,2 @@
++c4123ea47a1d422ec43fb0918f670cfeb7bef1f26e6bf372fe15099fd42bbfcd  .build-jetpack-7.2-blacksail/host-tools/packages/g++-12_12.3.0-1ubuntu1~22.04.3_amd64.deb
++250f538cb3a5dfbbb767e16cb3d840a2b113de1582bec155ea97600740a6ed1e  .build-jetpack-7.2-blacksail/host-tools/packages/libstdc++-12-dev_12.3.0-1ubuntu1~22.04.3_amd64.deb
+diff --git a/build-support/jetpack-7.2-blacksail/evidence/host-toolchain-symlinks.json b/build-support/jetpack-7.2-blacksail/evidence/host-toolchain-symlinks.json
+new file mode 100644
+index 0000000..e753133
+--- /dev/null
++++ b/build-support/jetpack-7.2-blacksail/evidence/host-toolchain-symlinks.json
+@@ -0,0 +1,52 @@
++{
++  "usr/lib/gcc/x86_64-linux-gnu/12/cc1": "/usr/lib/gcc/x86_64-linux-gnu/12/cc1",
++  "usr/lib/gcc/x86_64-linux-gnu/12/collect2": "/usr/lib/gcc/x86_64-linux-gnu/12/collect2",
++  "usr/lib/gcc/x86_64-linux-gnu/12/crtbegin.o": "/usr/lib/gcc/x86_64-linux-gnu/12/crtbegin.o",
++  "usr/lib/gcc/x86_64-linux-gnu/12/crtbeginS.o": "/usr/lib/gcc/x86_64-linux-gnu/12/crtbeginS.o",
++  "usr/lib/gcc/x86_64-linux-gnu/12/crtbeginT.o": "/usr/lib/gcc/x86_64-linux-gnu/12/crtbeginT.o",
++  "usr/lib/gcc/x86_64-linux-gnu/12/crtend.o": "/usr/lib/gcc/x86_64-linux-gnu/12/crtend.o",
++  "usr/lib/gcc/x86_64-linux-gnu/12/crtendS.o": "/usr/lib/gcc/x86_64-linux-gnu/12/crtendS.o",
++  "usr/lib/gcc/x86_64-linux-gnu/12/crtfastmath.o": "/usr/lib/gcc/x86_64-linux-gnu/12/crtfastmath.o",
++  "usr/lib/gcc/x86_64-linux-gnu/12/crtoffloadbegin.o": "/usr/lib/gcc/x86_64-linux-gnu/12/crtoffloadbegin.o",
++  "usr/lib/gcc/x86_64-linux-gnu/12/crtoffloadend.o": "/usr/lib/gcc/x86_64-linux-gnu/12/crtoffloadend.o",
++  "usr/lib/gcc/x86_64-linux-gnu/12/crtoffloadtable.o": "/usr/lib/gcc/x86_64-linux-gnu/12/crtoffloadtable.o",
++  "usr/lib/gcc/x86_64-linux-gnu/12/crtprec32.o": "/usr/lib/gcc/x86_64-linux-gnu/12/crtprec32.o",
++  "usr/lib/gcc/x86_64-linux-gnu/12/crtprec64.o": "/usr/lib/gcc/x86_64-linux-gnu/12/crtprec64.o",
++  "usr/lib/gcc/x86_64-linux-gnu/12/crtprec80.o": "/usr/lib/gcc/x86_64-linux-gnu/12/crtprec80.o",
++  "usr/lib/gcc/x86_64-linux-gnu/12/include": "/usr/lib/gcc/x86_64-linux-gnu/12/include",
++  "usr/lib/gcc/x86_64-linux-gnu/12/libasan.a": "/usr/lib/gcc/x86_64-linux-gnu/12/libasan.a",
++  "usr/lib/gcc/x86_64-linux-gnu/12/libasan.so": "/usr/lib/gcc/x86_64-linux-gnu/12/libasan.so",
++  "usr/lib/gcc/x86_64-linux-gnu/12/libasan_preinit.o": "/usr/lib/gcc/x86_64-linux-gnu/12/libasan_preinit.o",
++  "usr/lib/gcc/x86_64-linux-gnu/12/libatomic.a": "/usr/lib/gcc/x86_64-linux-gnu/12/libatomic.a",
++  "usr/lib/gcc/x86_64-linux-gnu/12/libatomic.so": "/usr/lib/gcc/x86_64-linux-gnu/12/libatomic.so",
++  "usr/lib/gcc/x86_64-linux-gnu/12/libbacktrace.a": "/usr/lib/gcc/x86_64-linux-gnu/12/libbacktrace.a",
++  "usr/lib/gcc/x86_64-linux-gnu/12/libcc1.so": "/usr/lib/gcc/x86_64-linux-gnu/12/libcc1.so",
++  "usr/lib/gcc/x86_64-linux-gnu/12/libgcc.a": "/usr/lib/gcc/x86_64-linux-gnu/12/libgcc.a",
++  "usr/lib/gcc/x86_64-linux-gnu/12/libgcc_eh.a": "/usr/lib/gcc/x86_64-linux-gnu/12/libgcc_eh.a",
++  "usr/lib/gcc/x86_64-linux-gnu/12/libgcc_s.so": "/usr/lib/gcc/x86_64-linux-gnu/12/libgcc_s.so",
++  "usr/lib/gcc/x86_64-linux-gnu/12/libgcov.a": "/usr/lib/gcc/x86_64-linux-gnu/12/libgcov.a",
++  "usr/lib/gcc/x86_64-linux-gnu/12/libgomp.a": "/usr/lib/gcc/x86_64-linux-gnu/12/libgomp.a",
++  "usr/lib/gcc/x86_64-linux-gnu/12/libgomp.so": "/usr/lib/gcc/x86_64-linux-gnu/12/libgomp.so",
++  "usr/lib/gcc/x86_64-linux-gnu/12/libgomp.spec": "/usr/lib/gcc/x86_64-linux-gnu/12/libgomp.spec",
++  "usr/lib/gcc/x86_64-linux-gnu/12/libitm.a": "/usr/lib/gcc/x86_64-linux-gnu/12/libitm.a",
++  "usr/lib/gcc/x86_64-linux-gnu/12/libitm.so": "/usr/lib/gcc/x86_64-linux-gnu/12/libitm.so",
++  "usr/lib/gcc/x86_64-linux-gnu/12/libitm.spec": "/usr/lib/gcc/x86_64-linux-gnu/12/libitm.spec",
++  "usr/lib/gcc/x86_64-linux-gnu/12/liblsan.a": "/usr/lib/gcc/x86_64-linux-gnu/12/liblsan.a",
++  "usr/lib/gcc/x86_64-linux-gnu/12/liblsan.so": "/usr/lib/gcc/x86_64-linux-gnu/12/liblsan.so",
++  "usr/lib/gcc/x86_64-linux-gnu/12/liblsan_preinit.o": "/usr/lib/gcc/x86_64-linux-gnu/12/liblsan_preinit.o",
++  "usr/lib/gcc/x86_64-linux-gnu/12/liblto_plugin.so": "/usr/lib/gcc/x86_64-linux-gnu/12/liblto_plugin.so",
++  "usr/lib/gcc/x86_64-linux-gnu/12/libquadmath.a": "/usr/lib/gcc/x86_64-linux-gnu/12/libquadmath.a",
++  "usr/lib/gcc/x86_64-linux-gnu/12/libquadmath.so": "/usr/lib/gcc/x86_64-linux-gnu/12/libquadmath.so",
++  "usr/lib/gcc/x86_64-linux-gnu/12/libsanitizer.spec": "/usr/lib/gcc/x86_64-linux-gnu/12/libsanitizer.spec",
++  "usr/lib/gcc/x86_64-linux-gnu/12/libssp_nonshared.a": "/usr/lib/gcc/x86_64-linux-gnu/12/libssp_nonshared.a",
++  "usr/lib/gcc/x86_64-linux-gnu/12/libstdc++.so": "../../../x86_64-linux-gnu/libstdc++.so.6",
++  "usr/lib/gcc/x86_64-linux-gnu/12/libtsan.a": "/usr/lib/gcc/x86_64-linux-gnu/12/libtsan.a",
++  "usr/lib/gcc/x86_64-linux-gnu/12/libtsan.so": "/usr/lib/gcc/x86_64-linux-gnu/12/libtsan.so",
++  "usr/lib/gcc/x86_64-linux-gnu/12/libtsan_preinit.o": "/usr/lib/gcc/x86_64-linux-gnu/12/libtsan_preinit.o",
++  "usr/lib/gcc/x86_64-linux-gnu/12/libubsan.a": "/usr/lib/gcc/x86_64-linux-gnu/12/libubsan.a",
++  "usr/lib/gcc/x86_64-linux-gnu/12/libubsan.so": "/usr/lib/gcc/x86_64-linux-gnu/12/libubsan.so",
++  "usr/lib/gcc/x86_64-linux-gnu/12/lto-wrapper": "/usr/lib/gcc/x86_64-linux-gnu/12/lto-wrapper",
++  "usr/lib/gcc/x86_64-linux-gnu/12/lto1": "/usr/lib/gcc/x86_64-linux-gnu/12/lto1",
++  "usr/lib/gcc/x86_64-linux-gnu/12/plugin": "/usr/lib/gcc/x86_64-linux-gnu/12/plugin",
++  "usr/lib/x86_64-linux-gnu/libstdc++.so.6": "/usr/lib/x86_64-linux-gnu/libstdc++.so.6"
++}
+diff --git a/build-support/jetpack-7.2-blacksail/evidence/local.conf.applied-block.txt b/build-support/jetpack-7.2-blacksail/evidence/local.conf.applied-block.txt
+new file mode 100644
+index 0000000..7d3cc52
+--- /dev/null
++++ b/build-support/jetpack-7.2-blacksail/evidence/local.conf.applied-block.txt
+@@ -0,0 +1,14 @@
++# Requested JetPack 7.2 universal Edge-AI build.
++require conf/include/edge-ai-universal-bundle.inc
++BB_NUMBER_THREADS = "16"
++BB_NUMBER_PARSE_THREADS = "32"
++PARALLEL_MAKE = "-j 16"
++INHERIT += "rm_work"
++
++# Node.js 24 requires GCC >= 12.2; use the matching workspace C++ tools.
++BUILD_CC:pn-nodejs-native = "/usr/bin/gcc-12"
++BUILD_CXX:pn-nodejs-native = "/home/igor/prj/meta-tegra-compulab/.build-jetpack-7.2-blacksail/host-tools/bin/g++-12"
++BUILD_CPP:pn-nodejs-native = "/usr/bin/gcc-12 -E"
++
++# Point Clang's libc++ bootstrap at the complete matching GCC 12 installation.
++CXXFLAGS:append:pn-libcxx-native = " --gcc-install-dir=/home/igor/prj/meta-tegra-compulab/.build-jetpack-7.2-blacksail/host-tools/usr/lib/gcc/x86_64-linux-gnu/12"
+diff --git a/build-support/jetpack-7.2-blacksail/evidence/packaging-files.json b/build-support/jetpack-7.2-blacksail/evidence/packaging-files.json
+new file mode 100644
+index 0000000..ee22ed9
+--- /dev/null
++++ b/build-support/jetpack-7.2-blacksail/evidence/packaging-files.json
+@@ -0,0 +1,11 @@
++{
++  "purpose": "Packaging files added to replay manual operations; not modifications made to tracked BSP sources during the build",
++  "sha256": {
++    "replay-host-toolchain.sh": "095077a6dfad680c3e024d8bd6d324cac7e4238d8a2881843a31b4618b855962",
++    "replay-crate-recovery.py": "b40f852ea295bbd7a022b210484efa4798a6239768ce4896f17f4b124d7720ba",
++    "record-capsule-inputs.py": "b7fb3f4672b30dc8f806c5916eef97fd34edf2314f29737758758873f223eadb",
++    "README.txt": "97d198c17c8f1487344d15bddcf87ab70f99e64dc8cbacc26eb10880c5458625",
++    "host-tools/packages.sha256": "b5297f54ec1fa8c8671e02536a2855ca7f2de8554ecbac920b9ef4c8b92453b9",
++    "integration-revisions.json": "c80a5f206f6454ce10f32974fbc6eff915a877f1fbdba817ee5f24121d4a5b3a"
++  }
++}
+diff --git a/build-support/jetpack-7.2-blacksail/evidence/prebuilt-capsule-inputs.json b/build-support/jetpack-7.2-blacksail/evidence/prebuilt-capsule-inputs.json
+new file mode 100644
+index 0000000..18968da
+--- /dev/null
++++ b/build-support/jetpack-7.2-blacksail/evidence/prebuilt-capsule-inputs.json
+@@ -0,0 +1,86 @@
++[
++  {
++    "mc": "edge-ai-uefi-nvidia-logo",
++    "capsule": "/home/igor/prj/meta-tegra-compulab/.build-jetpack-7.2-blacksail/tegra-demo-distro/build-edge-ai-nx-16g/tmp-mc-edge-ai-uefi-nvidia-logo/deploy/images/edge-ai-nx-16g/edge-ai-nx-16g-tegra-bl.cap",
++    "sha256": "c2b4b760fb8cc0af6ed9b26509ce48ecd5980951be453a02d28d13ec846863d7",
++    "guid_file": "/home/igor/prj/meta-tegra-compulab/.build-jetpack-7.2-blacksail/tegra-demo-distro/build-edge-ai-nx-16g/tmp-mc-edge-ai-uefi-nvidia-logo/deploy/images/edge-ai-nx-16g/uefi_t23x_general.fmp-image-type-id",
++    "guid": "bf0d4599-20d4-414e-b2c5-3595b1cda402"
++  },
++  {
++    "mc": "edge-ai-uefi-clab-logo",
++    "capsule": "/home/igor/prj/meta-tegra-compulab/.build-jetpack-7.2-blacksail/tegra-demo-distro/build-edge-ai-nx-16g/tmp-mc-edge-ai-uefi-clab-logo/deploy/images/edge-ai-nx-16g/edge-ai-nx-16g-tegra-bl.cap",
++    "sha256": "979ce74531eb5b38a35a445935dbbb29744ca7bebd9ff1086d58d2244996887f",
++    "guid_file": "/home/igor/prj/meta-tegra-compulab/.build-jetpack-7.2-blacksail/tegra-demo-distro/build-edge-ai-nx-16g/tmp-mc-edge-ai-uefi-clab-logo/deploy/images/edge-ai-nx-16g/uefi_t23x_general.fmp-image-type-id",
++    "guid": "bf0d4599-20d4-414e-b2c5-3595b1cda402"
++  },
++  {
++    "mc": "edge-ai-uefi-no-logo",
++    "capsule": "/home/igor/prj/meta-tegra-compulab/.build-jetpack-7.2-blacksail/tegra-demo-distro/build-edge-ai-nx-16g/tmp-mc-edge-ai-uefi-no-logo/deploy/images/edge-ai-nx-16g/edge-ai-nx-16g-tegra-bl.cap",
++    "sha256": "89f2934969ea8d70738b5ecb3d222b1294a0a0a8928399ef3aa9a21e2d85d99e",
++    "guid_file": "/home/igor/prj/meta-tegra-compulab/.build-jetpack-7.2-blacksail/tegra-demo-distro/build-edge-ai-nx-16g/tmp-mc-edge-ai-uefi-no-logo/deploy/images/edge-ai-nx-16g/uefi_t23x_general.fmp-image-type-id",
++    "guid": "bf0d4599-20d4-414e-b2c5-3595b1cda402"
++  },
++  {
++    "mc": "edge-ai-uefi-nx-8g-nvidia-logo",
++    "capsule": "/home/igor/prj/meta-tegra-compulab/.build-jetpack-7.2-blacksail/tegra-demo-distro/build-edge-ai-nx-16g/tmp-mc-edge-ai-uefi-nx-8g-nvidia-logo/deploy/images/edge-ai-nx-8g/edge-ai-nx-8g-tegra-bl.cap",
++    "sha256": "ae02569defdeddc7a2ebd22dc700b6068629f9a641d897f6f1ac39a8f83b56e2",
++    "guid_file": "/home/igor/prj/meta-tegra-compulab/.build-jetpack-7.2-blacksail/tegra-demo-distro/build-edge-ai-nx-16g/tmp-mc-edge-ai-uefi-nx-8g-nvidia-logo/deploy/images/edge-ai-nx-8g/uefi_t23x_general.fmp-image-type-id",
++    "guid": "bf0d4599-20d4-414e-b2c5-3595b1cda402"
++  },
++  {
++    "mc": "edge-ai-uefi-nx-8g-clab-logo",
++    "capsule": "/home/igor/prj/meta-tegra-compulab/.build-jetpack-7.2-blacksail/tegra-demo-distro/build-edge-ai-nx-16g/tmp-mc-edge-ai-uefi-nx-8g-clab-logo/deploy/images/edge-ai-nx-8g/edge-ai-nx-8g-tegra-bl.cap",
++    "sha256": "7468348d3cf60bddfc5ac1eb5e4a8e7dacc414bba81bdbaed5194a9cca7f1f1e",
++    "guid_file": "/home/igor/prj/meta-tegra-compulab/.build-jetpack-7.2-blacksail/tegra-demo-distro/build-edge-ai-nx-16g/tmp-mc-edge-ai-uefi-nx-8g-clab-logo/deploy/images/edge-ai-nx-8g/uefi_t23x_general.fmp-image-type-id",
++    "guid": "bf0d4599-20d4-414e-b2c5-3595b1cda402"
++  },
++  {
++    "mc": "edge-ai-uefi-nx-8g-no-logo",
++    "capsule": "/home/igor/prj/meta-tegra-compulab/.build-jetpack-7.2-blacksail/tegra-demo-distro/build-edge-ai-nx-16g/tmp-mc-edge-ai-uefi-nx-8g-no-logo/deploy/images/edge-ai-nx-8g/edge-ai-nx-8g-tegra-bl.cap",
++    "sha256": "45ae97e62a155d3c0f113e14c21412d5fe4312abff11d78f96d9b7c8d5c9129f",
++    "guid_file": "/home/igor/prj/meta-tegra-compulab/.build-jetpack-7.2-blacksail/tegra-demo-distro/build-edge-ai-nx-16g/tmp-mc-edge-ai-uefi-nx-8g-no-logo/deploy/images/edge-ai-nx-8g/uefi_t23x_general.fmp-image-type-id",
++    "guid": "bf0d4599-20d4-414e-b2c5-3595b1cda402"
++  },
++  {
++    "mc": "edge-ai-uefi-nano-8g-nvidia-logo",
++    "capsule": "/home/igor/prj/meta-tegra-compulab/.build-jetpack-7.2-blacksail/tegra-demo-distro/build-edge-ai-nx-16g/tmp-mc-edge-ai-uefi-nano-8g-nvidia-logo/deploy/images/edge-ai-nano-8g/edge-ai-nano-8g-tegra-bl.cap",
++    "sha256": "c31698346cf0ac924b79f878ee4dec3a972fd6f69eb6fa3085f2498ff2729b76",
++    "guid_file": "/home/igor/prj/meta-tegra-compulab/.build-jetpack-7.2-blacksail/tegra-demo-distro/build-edge-ai-nx-16g/tmp-mc-edge-ai-uefi-nano-8g-nvidia-logo/deploy/images/edge-ai-nano-8g/uefi_t23x_general.fmp-image-type-id",
++    "guid": "bf0d4599-20d4-414e-b2c5-3595b1cda402"
++  },
++  {
++    "mc": "edge-ai-uefi-nano-8g-clab-logo",
++    "capsule": "/home/igor/prj/meta-tegra-compulab/.build-jetpack-7.2-blacksail/tegra-demo-distro/build-edge-ai-nx-16g/tmp-mc-edge-ai-uefi-nano-8g-clab-logo/deploy/images/edge-ai-nano-8g/edge-ai-nano-8g-tegra-bl.cap",
++    "sha256": "f7ef98e00cdc69059cd78af08b6333216a5af0437b7ea4c60af796cd9962845f",
++    "guid_file": "/home/igor/prj/meta-tegra-compulab/.build-jetpack-7.2-blacksail/tegra-demo-distro/build-edge-ai-nx-16g/tmp-mc-edge-ai-uefi-nano-8g-clab-logo/deploy/images/edge-ai-nano-8g/uefi_t23x_general.fmp-image-type-id",
++    "guid": "bf0d4599-20d4-414e-b2c5-3595b1cda402"
++  },
++  {
++    "mc": "edge-ai-uefi-nano-8g-no-logo",
++    "capsule": "/home/igor/prj/meta-tegra-compulab/.build-jetpack-7.2-blacksail/tegra-demo-distro/build-edge-ai-nx-16g/tmp-mc-edge-ai-uefi-nano-8g-no-logo/deploy/images/edge-ai-nano-8g/edge-ai-nano-8g-tegra-bl.cap",
++    "sha256": "feab86e1e782dbeca1adf84ac81d571fd441d38d0427c7cbf8f37f556a806082",
++    "guid_file": "/home/igor/prj/meta-tegra-compulab/.build-jetpack-7.2-blacksail/tegra-demo-distro/build-edge-ai-nx-16g/tmp-mc-edge-ai-uefi-nano-8g-no-logo/deploy/images/edge-ai-nano-8g/uefi_t23x_general.fmp-image-type-id",
++    "guid": "bf0d4599-20d4-414e-b2c5-3595b1cda402"
++  },
++  {
++    "mc": "edge-ai-uefi-nano-4g-nvidia-logo",
++    "capsule": "/home/igor/prj/meta-tegra-compulab/.build-jetpack-7.2-blacksail/tegra-demo-distro/build-edge-ai-nx-16g/tmp-mc-edge-ai-uefi-nano-4g-nvidia-logo/deploy/images/edge-ai-nano-4g/edge-ai-nano-4g-tegra-bl.cap",
++    "sha256": "17eb3cc748b83025a268b828c2d3e779727e4404c33afcb3d9320ad6a3ab7b8a",
++    "guid_file": "/home/igor/prj/meta-tegra-compulab/.build-jetpack-7.2-blacksail/tegra-demo-distro/build-edge-ai-nx-16g/tmp-mc-edge-ai-uefi-nano-4g-nvidia-logo/deploy/images/edge-ai-nano-4g/uefi_t23x_general.fmp-image-type-id",
++    "guid": "bf0d4599-20d4-414e-b2c5-3595b1cda402"
++  },
++  {
++    "mc": "edge-ai-uefi-nano-4g-clab-logo",
++    "capsule": "/home/igor/prj/meta-tegra-compulab/.build-jetpack-7.2-blacksail/tegra-demo-distro/build-edge-ai-nx-16g/tmp-mc-edge-ai-uefi-nano-4g-clab-logo/deploy/images/edge-ai-nano-4g/edge-ai-nano-4g-tegra-bl.cap",
++    "sha256": "09bdcaf3590ec1934a15ff1664085311e59c43571f1498a76f2b72c9ae6bfe53",
++    "guid_file": "/home/igor/prj/meta-tegra-compulab/.build-jetpack-7.2-blacksail/tegra-demo-distro/build-edge-ai-nx-16g/tmp-mc-edge-ai-uefi-nano-4g-clab-logo/deploy/images/edge-ai-nano-4g/uefi_t23x_general.fmp-image-type-id",
++    "guid": "bf0d4599-20d4-414e-b2c5-3595b1cda402"
++  },
++  {
++    "mc": "edge-ai-uefi-nano-4g-no-logo",
++    "capsule": "/home/igor/prj/meta-tegra-compulab/.build-jetpack-7.2-blacksail/tegra-demo-distro/build-edge-ai-nx-16g/tmp-mc-edge-ai-uefi-nano-4g-no-logo/deploy/images/edge-ai-nano-4g/edge-ai-nano-4g-tegra-bl.cap",
++    "sha256": "f6d4d09b4b2426b017f6b6912b7003d1efc1f344ec65124cfb20b1bd85ef6bb0",
++    "guid_file": "/home/igor/prj/meta-tegra-compulab/.build-jetpack-7.2-blacksail/tegra-demo-distro/build-edge-ai-nx-16g/tmp-mc-edge-ai-uefi-nano-4g-no-logo/deploy/images/edge-ai-nano-4g/uefi_t23x_general.fmp-image-type-id",
++    "guid": "bf0d4599-20d4-414e-b2c5-3595b1cda402"
++  }
++]
+diff --git a/build-support/jetpack-7.2-blacksail/evidence/release-verification.json b/build-support/jetpack-7.2-blacksail/evidence/release-verification.json
+new file mode 100644
+index 0000000..6fff082
+--- /dev/null
++++ b/build-support/jetpack-7.2-blacksail/evidence/release-verification.json
+@@ -0,0 +1,31 @@
++{
++  "archive": "/home/igor/prj/meta-tegra-compulab/.build-jetpack-7.2-blacksail/tegra-demo-distro/build-edge-ai-nx-16g/tmp/deploy/images/edge-ai-nx-16g/demo-image-weston-edge-ai-universal-6.1+snapshot-f94ae3d6ba49aef86f497998c0e0232a5039510a.tar.zst",
++  "archive_bytes": 2069656983,
++  "sha256": "cb1e3e540c3aaec5ff0861b7126611bf80b1f3e09746cb27aedeabe0719c1c2b",
++  "rootfs_sha256": "b48bed134b067a87eb371287b90076b8cd2ec5636c157fb1eb261f148818890b",
++  "archive_members": 2890,
++  "profiles": {
++    "edge-ai-nx-16g": "0000",
++    "edge-ai-nx-8g": "0001",
++    "edge-ai-nano-8g": "0003",
++    "edge-ai-nano-4g": "0004"
++  },
++  "capsules": 12,
++  "l4t": "39.2.1",
++  "selected_manifest_packages": [
++    "cuda-cudart aarch64-tegra 13.2.86-1-r0",
++    "edge-ai-uefi-update-capsules edge-ai-nx-16g 1.0-r0",
++    "edge-ai-universal-runtime edge-ai-nx-16g 1.0-r0",
++    "firefox aarch64 153.0-r0",
++    "nvidia-kernel-oot edge-ai-nx-16g 39.2.1-r0",
++    "nvidia-kernel-oot-alsa edge-ai-nx-16g 39.2.1-r0",
++    "nvidia-kernel-oot-base edge-ai-nx-16g 39.2.1-r0",
++    "nvidia-kernel-oot-cameras edge-ai-nx-16g 39.2.1-r0",
++    "nvidia-kernel-oot-canbus edge-ai-nx-16g 39.2.1-r0",
++    "nvidia-kernel-oot-compute-nvgpu edge-ai-nx-16g 39.2.1-r0",
++    "nvidia-kernel-oot-display edge-ai-nx-16g 39.2.1-r0",
++    "nvidia-kernel-oot-dtb edge-ai-nx-16g 39.2.1-r0",
++    "nvidia-kernel-oot-extra edge-ai-nx-16g 39.2.1-r0"
++  ],
++  "hardware_boot_tested": false
++}
+diff --git a/build-support/jetpack-7.2-blacksail/evidence/revisions.txt b/build-support/jetpack-7.2-blacksail/evidence/revisions.txt
+new file mode 100644
+index 0000000..f13ab9d
+--- /dev/null
++++ b/build-support/jetpack-7.2-blacksail/evidence/revisions.txt
+@@ -0,0 +1,10 @@
++8ca9f4a8aa08e46bac501a483b7c4ffb2f3a61c3
++ 046a90b0e9b7b914b7a95aec579cdc3fc9c7617a repos/bitbake (yocto-6.1_M3)
++ 43b79d8e372c4f69ebab6c85b39d97b41522080f repos/meta-openembedded (43b79d8e37)
++ 5e069ecc5c5d3567186880748a3a5480f7235dde repos/meta-swupdate (remotes/origin/daisy-434-g5e069ec)
++ 494088711d2e8a86771f1435cdcb1d280b3cd5c8 repos/meta-tegra (krogoth-r23.2-3084-g49408871)
++ 92dea1513e64508c047bdd823c7f5febd82384cd repos/meta-tegra-community (heads/master)
++ 7d19b922621d6210ebf0a183dcdf638c5b3829b6 repos/meta-virtualization (remotes/origin/fido-3216-g7d19b922)
++ f94ae3d6ba49aef86f497998c0e0232a5039510a repos/openembedded-core (yocto-6.1_M3-50-gf94ae3d6ba)
++a4acce6fa6d06c047c367bb5f8546583f7434a85
++886bde2eb0e36ab2b062f563ff0192f9471a1150
+diff --git a/build-support/jetpack-7.2-blacksail/host-tools/bin/g++-12 b/build-support/jetpack-7.2-blacksail/host-tools/bin/g++-12
+new file mode 100755
+index 0000000..a9a9c6b
+--- /dev/null
++++ b/build-support/jetpack-7.2-blacksail/host-tools/bin/g++-12
+@@ -0,0 +1,3 @@
++#!/usr/bin/env bash
++clab_host_tools=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
++exec "$clab_host_tools/usr/bin/g++-12" -B/usr/lib/gcc/x86_64-linux-gnu/12/ "$@"
+diff --git a/build-support/jetpack-7.2-blacksail/host-tools/cxx20-check.cpp b/build-support/jetpack-7.2-blacksail/host-tools/cxx20-check.cpp
+new file mode 100644
+index 0000000..29f1bad
+--- /dev/null
++++ b/build-support/jetpack-7.2-blacksail/host-tools/cxx20-check.cpp
+@@ -0,0 +1,8 @@
++#include <string>
++#include <string_view>
++struct Url {
++    std::string path;
++    constexpr std::string_view view() const { return path; }
++};
++static_assert([] { Url u{"edge-ai"}; return u.view() == "edge-ai"; }());
++int main() { Url u{"edge-ai"}; return u.view() == "edge-ai" ? 0 : 1; }
+diff --git a/build-support/jetpack-7.2-blacksail/host-tools/packages.sha256 b/build-support/jetpack-7.2-blacksail/host-tools/packages.sha256
+new file mode 100644
+index 0000000..4689b20
+--- /dev/null
++++ b/build-support/jetpack-7.2-blacksail/host-tools/packages.sha256
+@@ -0,0 +1,2 @@
++c4123ea47a1d422ec43fb0918f670cfeb7bef1f26e6bf372fe15099fd42bbfcd  g++-12_12.3.0-1ubuntu1~22.04.3_amd64.deb
++250f538cb3a5dfbbb767e16cb3d840a2b113de1582bec155ea97600740a6ed1e  libstdc++-12-dev_12.3.0-1ubuntu1~22.04.3_amd64.deb
+diff --git a/build-support/jetpack-7.2-blacksail/integration-revisions.json b/build-support/jetpack-7.2-blacksail/integration-revisions.json
+new file mode 100644
+index 0000000..d470bb4
+--- /dev/null
++++ b/build-support/jetpack-7.2-blacksail/integration-revisions.json
+@@ -0,0 +1,12 @@
++{
++  "meta-tegra-compulab": "a4acce6fa6d06c047c367bb5f8546583f7434a85",
++  "tegra-demo-distro": "8ca9f4a8aa08e46bac501a483b7c4ffb2f3a61c3",
++  "meta-browser": "886bde2eb0e36ab2b062f563ff0192f9471a1150",
++  "bitbake": "046a90b0e9b7b914b7a95aec579cdc3fc9c7617a",
++  "meta-openembedded": "43b79d8e372c4f69ebab6c85b39d97b41522080f",
++  "meta-swupdate": "5e069ecc5c5d3567186880748a3a5480f7235dde",
++  "meta-tegra": "494088711d2e8a86771f1435cdcb1d280b3cd5c8",
++  "meta-tegra-community": "92dea1513e64508c047bdd823c7f5febd82384cd",
++  "meta-virtualization": "7d19b922621d6210ebf0a183dcdf638c5b3829b6",
++  "openembedded-core": "f94ae3d6ba49aef86f497998c0e0232a5039510a"
++}
+diff --git a/build-support/jetpack-7.2-blacksail/launch-release-integration.py b/build-support/jetpack-7.2-blacksail/launch-release-integration.py
+new file mode 100644
+index 0000000..32e1a4b
+--- /dev/null
++++ b/build-support/jetpack-7.2-blacksail/launch-release-integration.py
+@@ -0,0 +1,23 @@
++#!/usr/bin/env python3
++"""Run final release assembly independently of the interactive tool session."""
++from pathlib import Path
++import json
++import subprocess
++
++root = Path(__file__).resolve().parent
++assert (root / 'logs/runtime-image.exit').read_text().strip() == '0'
++command = ['bash', str(root / 'build-batch.sh'), '-R',
++           str(root / 'batch-configs/release-integration.conf'),
++           '-c', 'deploy', 'edge-ai-universal-bundle']
++with (root / 'logs/release-driver.log').open('wb') as output:
++    process = subprocess.Popen(command, cwd=root.parent, stdin=subprocess.DEVNULL,
++                               stdout=output, stderr=subprocess.STDOUT,
++                               start_new_session=True)
++(root / 'logs/release-driver.pid').write_text(str(process.pid) + '\n')
++state_path = root / 'build-state.json'
++state = json.loads(state_path.read_text())
++state['active_exec_session'] = None
++state['active_driver_pid'] = process.pid
++state['active_phase'] = 'Four flash profiles and universal bundle integration'
++state_path.write_text(json.dumps(state, indent=2) + '\n')
++print('Release integration started; driver PID:', process.pid)
+diff --git a/build-support/jetpack-7.2-blacksail/local-build-overrides.conf b/build-support/jetpack-7.2-blacksail/local-build-overrides.conf
+new file mode 100644
+index 0000000..7c9190a
+--- /dev/null
++++ b/build-support/jetpack-7.2-blacksail/local-build-overrides.conf
+@@ -0,0 +1,14 @@
++# Requested JetPack 7.2 universal Edge-AI build.
++require conf/include/edge-ai-universal-bundle.inc
++BB_NUMBER_THREADS = "16"
++BB_NUMBER_PARSE_THREADS = "32"
++PARALLEL_MAKE = "-j 16"
++INHERIT += "rm_work"
++
++# Node.js 24 requires GCC >= 12.2; use the matching workspace C++ tools.
++BUILD_CC:pn-nodejs-native = "/usr/bin/gcc-12"
++BUILD_CXX:pn-nodejs-native = "${TOPDIR}/../../host-tools/bin/g++-12"
++BUILD_CPP:pn-nodejs-native = "/usr/bin/gcc-12 -E"
++
++# Point Clang's libc++ bootstrap at the complete matching GCC 12 installation.
++CXXFLAGS:append:pn-libcxx-native = " --gcc-install-dir=${TOPDIR}/../../host-tools/usr/lib/gcc/x86_64-linux-gnu/12"
+diff --git a/build-support/jetpack-7.2-blacksail/monitor-build.py b/build-support/jetpack-7.2-blacksail/monitor-build.py
+new file mode 100644
+index 0000000..6e473ba
+--- /dev/null
++++ b/build-support/jetpack-7.2-blacksail/monitor-build.py
+@@ -0,0 +1,33 @@
++#!/usr/bin/env python3
++from pathlib import Path
++from collections import Counter
++import re
++import sys
++
++root = Path(__file__).resolve().parent
++log = root / 'logs/build.log'
++if not log.exists():
++    print('Task log pending.')
++    raise SystemExit(0)
++lines = log.read_text(errors='replace').splitlines()
++active = Counter()
++for line in lines:
++    match = re.match(r'NOTE: recipe (.+): task ([^:]+): (Started|Succeeded|Failed)$', line)
++    if match:
++        active[match.group(1) + ':' + match.group(2)] += 1 if match.group(3) == 'Started' else -1
++for key, count in active.items():
++    if count > 0 and not key.endswith('_setscene'):
++        print('Active:', key, count)
++work = root / 'tegra-demo-distro/build-edge-ai-nx-16g/tmp-mc-edge-ai-runtime/work/x86_64-linux'
++for recipe in sys.argv[1:]:
++    for task_log in work.glob(f'{recipe}/*/temp/log.do_compile'):
++        matches = re.findall(r'^\[(\d+)/(\d+)\]', task_log.read_text(errors='replace'), re.M)
++        if matches:
++            print(recipe, 'build units:', '/'.join(matches[-1]))
++failed = [line for line in lines if line.startswith('ERROR: Task ')]
++print('Failed task count:', len(failed))
++for line in failed[-3:]:
++    print(line)
++status_lines = [line for line in lines if not line.startswith('WARNING:')]
++print('\n'.join(status_lines[-3:]))
++print('Warning messages:', sum(line.startswith('WARNING:') for line in lines))
+diff --git a/build-support/jetpack-7.2-blacksail/reclaim-completed-capsule-kernels.sh b/build-support/jetpack-7.2-blacksail/reclaim-completed-capsule-kernels.sh
+new file mode 100644
+index 0000000..9563454
+--- /dev/null
++++ b/build-support/jetpack-7.2-blacksail/reclaim-completed-capsule-kernels.sh
+@@ -0,0 +1,45 @@
++#!/usr/bin/env bash
++set -eo pipefail
++clab_build_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
++clab_free_bytes=$(df --output=avail -B1 "$clab_build_root" | tail -1 | tr -d ' ')
++if (( clab_free_bytes >= 90 * 1024 * 1024 * 1024 )); then
++    exit 0
++fi
++clab_mcs=()
++clab_kernel_targets=()
++clab_completed_machines=()
++clab_capsule_files=()
++for clab_machine in edge-ai-nx-16g edge-ai-nx-8g edge-ai-nano-8g edge-ai-nano-4g; do
++    clab_receipt="$clab_build_root/logs/$clab_machine-batch.exit"
++    if [[ ! -f "$clab_receipt" || -f "$clab_build_root/logs/$clab_machine-capsule-kernels.cleaned" ]]; then
++        continue
++    fi
++    [[ $(cat "$clab_receipt") == 0 ]] || continue
++    clab_completed_machines+=("$clab_machine")
++    if [[ "$clab_machine" == edge-ai-nx-16g ]]; then
++        clab_prefix=edge-ai-uefi
++    else
++        clab_prefix=${clab_machine/edge-ai-/edge-ai-uefi-}
++    fi
++    for clab_variant in nvidia-logo clab-logo no-logo; do
++        clab_mc="$clab_prefix-$clab_variant"
++        clab_mcs+=("$clab_mc")
++        clab_kernel_targets+=("mc:$clab_mc:linux-yocto")
++        clab_capsule_files+=("$clab_build_root/tegra-demo-distro/build-edge-ai-nx-16g/tmp-mc-$clab_mc/deploy/images/$clab_machine/$clab_machine-tegra-bl.cap")
++    done
++done
++(( ${#clab_kernel_targets[@]} > 0 )) || exit 0
++clab_scope="$clab_build_root/batch-configs/completed-capsule-kernels.conf"
++printf 'unset BBMULTICONFIG\nBBMULTICONFIG = "%s"\n' "${clab_mcs[*]}" > "$clab_scope"
++clab_cleanup_log="$clab_build_root/logs/capsule-kernel-clean-$(date +%s).log"
++printf 'Reclaiming retained kernel work from completed capsule batches: %s\n' "${clab_completed_machines[*]}"
++# clean keeps the sstate cache and download cache. Capsule deploy files are
++# produced by a separate recipe and remain available for runtime assembly.
++bitbake -T 600 -R "$clab_scope" -c clean "${clab_kernel_targets[@]}" > "$clab_cleanup_log" 2>&1
++for clab_capsule in "${clab_capsule_files[@]}"; do
++    [[ -s "$clab_capsule" ]] || { printf 'Completed capsule is missing: %s\n' "$clab_capsule" >&2; exit 2; }
++done
++for clab_machine in "${clab_completed_machines[@]}"; do
++    printf '%s\n' "$clab_cleanup_log" > "$clab_build_root/logs/$clab_machine-capsule-kernels.cleaned"
++done
++df -h "$clab_build_root"
+diff --git a/build-support/jetpack-7.2-blacksail/record-capsule-inputs.py b/build-support/jetpack-7.2-blacksail/record-capsule-inputs.py
+new file mode 100755
+index 0000000..5ef62b1
+--- /dev/null
++++ b/build-support/jetpack-7.2-blacksail/record-capsule-inputs.py
+@@ -0,0 +1,49 @@
++#!/usr/bin/env python3
++"""Record freshly built capsule/GUID inputs without recording build success."""
++from pathlib import Path
++import hashlib
++import json
++import re
++
++
++root = Path(__file__).resolve().parent
++build = root / "tegra-demo-distro/build-edge-ai-nx-16g"
++expected_guid = "bf0d4599-20d4-414e-b2c5-3595b1cda402"
++variants = ("nvidia-logo", "clab-logo", "no-logo")
++producers = (
++    ("edge-ai-uefi", "edge-ai-nx-16g"),
++    ("edge-ai-uefi-nx-8g", "edge-ai-nx-8g"),
++    ("edge-ai-uefi-nano-8g", "edge-ai-nano-8g"),
++    ("edge-ai-uefi-nano-4g", "edge-ai-nano-4g"),
++)
++records = []
++for prefix, machine in producers:
++    for variant in variants:
++        mc = prefix + "-" + variant
++        deploy = build / ("tmp-mc-" + mc) / "deploy/images" / machine
++        capsule = deploy / (machine + "-tegra-bl.cap")
++        guid_file = deploy / "uefi_t23x_general.fmp-image-type-id"
++        for path in (capsule, guid_file):
++            if not path.is_file() or path.stat().st_size == 0:
++                raise SystemExit("Missing or empty capsule input: " + str(path))
++        guid = guid_file.read_text().strip().lower()
++        if not re.fullmatch(r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}", guid):
++            raise SystemExit("Invalid GUID in " + str(guid_file))
++        if guid != expected_guid:
++            raise SystemExit("Unexpected GUID in " + str(guid_file) + ": " + guid)
++        sha = hashlib.sha256()
++        with capsule.open("rb") as stream:
++            while chunk := stream.read(1024 * 1024):
++                sha.update(chunk)
++        records.append({
++            "mc": mc,
++            "capsule": str(capsule),
++            "sha256": sha.hexdigest(),
++            "guid_file": str(guid_file),
++            "guid": guid,
++        })
++
++receipt = root / "logs/prebuilt-capsule-inputs.json"
++receipt.parent.mkdir(parents=True, exist_ok=True)
++receipt.write_text(json.dumps(records, indent=2) + "\n")
++print("Recorded twelve current capsule/GUID inputs:", receipt)
+diff --git a/build-support/jetpack-7.2-blacksail/relocate-download-cache.py b/build-support/jetpack-7.2-blacksail/relocate-download-cache.py
+new file mode 100644
+index 0000000..d5bb319
+--- /dev/null
++++ b/build-support/jetpack-7.2-blacksail/relocate-download-cache.py
+@@ -0,0 +1,22 @@
++#!/usr/bin/env python3
++"""Relocate this build's download cache while BitBake is idle."""
++from pathlib import Path
++import subprocess
++import tempfile
++
++root = Path(__file__).resolve().parent
++source = root / 'tegra-demo-distro/build-edge-ai-nx-16g/downloads'
++if source.is_symlink():
++    print('Download cache is already at', source.resolve())
++else:
++    if not source.is_dir():
++        raise SystemExit(f'Download cache does not exist: {source}')
++    destination = Path(tempfile.mkdtemp(prefix='compulab-jetpack-7.2-downloads-', dir='/tmp')) / 'downloads'
++    subprocess.run(['mv', '--', str(source), str(destination)], check=True)
++    try:
++        source.symlink_to(destination, target_is_directory=True)
++    except BaseException:
++        subprocess.run(['mv', '--', str(destination), str(source)], check=True)
++        raise
++    (root / 'logs/download-cache-location.txt').write_text(f'{source}\n{destination}\n')
++    print('Download cache relocated to', destination)
+diff --git a/build-support/jetpack-7.2-blacksail/replay-crate-recovery.py b/build-support/jetpack-7.2-blacksail/replay-crate-recovery.py
+new file mode 100755
+index 0000000..83d708b
+--- /dev/null
++++ b/build-support/jetpack-7.2-blacksail/replay-crate-recovery.py
+@@ -0,0 +1,60 @@
++#!/usr/bin/env python3
++"""Replay the checksum-verified alternate static.crates.io download recovery.
++
++Packaging of a manual build operation, not a change to BitBake's fetcher.
++Run only while the build is idle. --list-only does not access the network.
++"""
++from pathlib import Path
++import argparse
++import hashlib
++import re
++import urllib.request
++
++root = Path(__file__).resolve().parent
++parser = argparse.ArgumentParser(description=__doc__)
++parser.add_argument('--list-only', action='store_true')
++parser.add_argument('--crate', help='Recover only this name-version entry')
++args = parser.parse_args()
++recipe = root / 'tegra-demo-distro/layers/meta-browser/meta-firefox/recipes-devtools/wasm-tools/wasm-tools-crates.inc'
++text = recipe.read_text()
++urls = re.findall(r'crate://crates\.io/([A-Za-z0-9_-]+)/([A-Za-z0-9.+_-]+)', text)
++checksums = dict(re.findall(r'SRC_URI\[([^\]]+)\.sha256sum\]\s*=\s*"([0-9a-f]{64})"', text))
++selected = [(name, version) for name, version in urls
++            if args.crate is None or f'{name}-{version}' == args.crate]
++if not selected:
++    raise SystemExit('No matching crate in the pinned wasm-tools recipe')
++downloads = root / 'tegra-demo-distro/build-edge-ai-nx-16g/downloads'
++if not args.list_only:
++    downloads.mkdir(parents=True, exist_ok=True)
++
++def sha256(path):
++    digest = hashlib.sha256()
++    with path.open('rb') as stream:
++        while chunk := stream.read(1024 * 1024):
++            digest.update(chunk)
++    return digest.hexdigest()
++
++for name, version in selected:
++    key = f'{name}-{version}'
++    expected = checksums[key]
++    url = f'https://static.crates.io/crates/{name}/{key}.crate'
++    if args.list_only:
++        print(key, expected, url)
++        continue
++    target = downloads / (key + '.crate')
++    if target.exists():
++        if sha256(target) != expected:
++            raise SystemExit(f'Existing crate checksum mismatch: {target}')
++        print('Already verified:', target.name)
++        continue
++    temporary = downloads / (key + '.crate.recovery-part')
++    try:
++        with urllib.request.urlopen(url, timeout=180) as response, temporary.open('wb') as output:
++            while chunk := response.read(1024 * 1024):
++                output.write(chunk)
++        if sha256(temporary) != expected:
++            raise SystemExit(f'Downloaded crate checksum mismatch: {key}')
++        temporary.replace(target)
++    finally:
++        temporary.unlink(missing_ok=True)
++    print('Recovered and verified:', target.name)
+diff --git a/build-support/jetpack-7.2-blacksail/replay-host-toolchain.sh b/build-support/jetpack-7.2-blacksail/replay-host-toolchain.sh
+new file mode 100755
+index 0000000..dae1417
+--- /dev/null
++++ b/build-support/jetpack-7.2-blacksail/replay-host-toolchain.sh
+@@ -0,0 +1,65 @@
++#!/usr/bin/env bash
++# Reproduce the workspace-local GCC 12 C++ files used by the completed build.
++# This downloads and extracts packages; it does not install system packages.
++set -euo pipefail
++
++clab_build_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
++clab_host_tools="$clab_build_root/host-tools"
++clab_package_dir="$clab_host_tools/packages"
++clab_version='12.3.0-1ubuntu1~22.04.3'
++clab_system_gcc='/usr/lib/gcc/x86_64-linux-gnu/12'
++clab_workspace_gcc="$clab_host_tools/usr/lib/gcc/x86_64-linux-gnu/12"
++
++[[ $(dpkg --print-architecture) == amd64 ]] || {
++    printf '%s\n' 'This captured host-toolchain fix requires an amd64 Ubuntu host.' >&2
++    exit 1
++}
++for clab_package in gcc-12 libgcc-12-dev libstdc++6; do
++    clab_installed=$(dpkg-query -W -f='${Version}' "$clab_package")
++    [[ "$clab_installed" == "$clab_version" ]] || {
++        printf 'Expected installed %s=%s; found %s. No system packages were changed.\n' \
++            "$clab_package" "$clab_version" "$clab_installed" >&2
++        exit 1
++    }
++done
++[[ -x /usr/bin/gcc-12 && -d "$clab_system_gcc" ]]
++[[ -f /usr/lib/x86_64-linux-gnu/libstdc++.so.6 ]]
++[[ -f "$clab_host_tools/bin/g++-12" && -f "$clab_host_tools/cxx20-check.cpp" ]]
++
++mkdir -p "$clab_package_dir"
++for clab_package in g++-12 libstdc++-12-dev; do
++    clab_deb="$clab_package_dir/${clab_package}_${clab_version}_amd64.deb"
++    if [[ ! -f "$clab_deb" ]]; then
++        (cd -- "$clab_package_dir" && apt-get download "$clab_package=$clab_version")
++    fi
++done
++
++(
++    cd -- "$clab_package_dir"
++    printf '%s  %s\n' \
++        'c4123ea47a1d422ec43fb0918f670cfeb7bef1f26e6bf372fe15099fd42bbfcd' \
++        "g++-12_${clab_version}_amd64.deb" \
++        '250f538cb3a5dfbbb767e16cb3d840a2b113de1582bec155ea97600740a6ed1e' \
++        "libstdc++-12-dev_${clab_version}_amd64.deb" \
++        | sha256sum --check --strict
++)
++for clab_package in g++-12 libstdc++-12-dev; do
++    dpkg-deb --extract "$clab_package_dir/${clab_package}_${clab_version}_amd64.deb" "$clab_host_tools"
++done
++
++# The development package's libstdc++.so link uses the installed matching runtime.
++mkdir -p "$clab_host_tools/usr/lib/x86_64-linux-gnu"
++ln -sfn -- /usr/lib/x86_64-linux-gnu/libstdc++.so.6 \
++    "$clab_host_tools/usr/lib/x86_64-linux-gnu/libstdc++.so.6"
++# Supply the GCC support files that were already installed on the build host.
++for clab_support in "$clab_system_gcc"/*; do
++    clab_destination="$clab_workspace_gcc/${clab_support##*/}"
++    if [[ ! -e "$clab_destination" && ! -L "$clab_destination" ]]; then
++        ln -s -- "$clab_support" "$clab_destination"
++    fi
++done
++chmod +x "$clab_host_tools/bin/g++-12"
++"$clab_host_tools/bin/g++-12" -std=c++20 "$clab_host_tools/cxx20-check.cpp" \
++    -o "$clab_host_tools/cxx20-check"
++"$clab_host_tools/cxx20-check"
++printf '%s\n' 'Workspace GCC 12 C++ files and constexpr-string check are ready.'
+diff --git a/build-support/jetpack-7.2-blacksail/resume-build.sh b/build-support/jetpack-7.2-blacksail/resume-build.sh
+new file mode 100644
+index 0000000..2539537
+--- /dev/null
++++ b/build-support/jetpack-7.2-blacksail/resume-build.sh
+@@ -0,0 +1,11 @@
++#!/usr/bin/env bash
++set -eo pipefail
++clab_build_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
++clab_build_target=${1:-edge-ai-universal-bundle}
++trap 'clab_build_rc=$?; printf "%s\n" "$clab_build_rc" > "$clab_build_root/logs/build.exit"' EXIT
++cd "$clab_build_root/tegra-demo-distro"
++export MACHINE=edge-ai-nx-16g DISTRO=tegrademo
++source ./compulab-setup-env build-edge-ai-nx-16g
++printf 'Resuming %s...\n' "$clab_build_target"
++bitbake -k "$clab_build_target" > "$clab_build_root/logs/build.log" 2>&1
++printf '%s\n' 'Build completed successfully.'
+diff --git a/build-support/jetpack-7.2-blacksail/verify-release.py b/build-support/jetpack-7.2-blacksail/verify-release.py
+new file mode 100644
+index 0000000..74fe17e
+--- /dev/null
++++ b/build-support/jetpack-7.2-blacksail/verify-release.py
+@@ -0,0 +1,125 @@
++#!/usr/bin/env python3
++"""Read-only checks of the release archive and its shared root filesystem."""
++from pathlib import Path
++import hashlib
++import json
++import re
++import subprocess
++import tarfile
++import tempfile
++
++root = Path(__file__).resolve().parent
++build = root / 'tegra-demo-distro/build-edge-ai-nx-16g'
++deploy = build / 'tmp/deploy/images/edge-ai-nx-16g'
++archives = list(deploy.glob('demo-image-weston-edge-ai-universal-*.tar.zst'))
++assert len(archives) == 1, archives
++archive = archives[0]
++checksum_file = Path(str(archive) + '.sha256')
++expected_hash, expected_name = checksum_file.read_text().strip().split(maxsplit=1)
++assert expected_name.lstrip('*') == archive.name
++
++def digest(stream):
++    h = hashlib.sha256()
++    while chunk := stream.read(16 * 1024 * 1024):
++        h.update(chunk)
++    return h.hexdigest()
++
++with archive.open('rb') as stream:
++    archive_hash = digest(stream)
++assert archive_hash == expected_hash, 'Archive checksum mismatch'
++print('Archive SHA256 verified.', flush=True)
++
++prefix = archive.name.removesuffix('.tar.zst')
++skus = {'edge-ai-nx-16g': '0000', 'edge-ai-nx-8g': '0001',
++        'edge-ai-nano-8g': '0003', 'edge-ai-nano-4g': '0004'}
++flashvars = {}
++links = {}
++runtime_hash = None
++launcher = False
++members = 0
++proc = subprocess.Popen(['zstd', '-dc', str(archive)], stdout=subprocess.PIPE)
++try:
++    with tarfile.open(fileobj=proc.stdout, mode='r|') as tar:
++        for member in tar:
++            members += 1
++            if member.name == prefix + '/runtime/demo-image-weston.ext4':
++                assert member.isfile() and member.size > 0
++                runtime_hash = digest(tar.extractfile(member))
++            elif member.name == prefix + '/flash-edge-ai.sh':
++                launcher = member.isfile() and bool(member.mode & 0o111)
++                subprocess.run(['bash', '-n'], input=tar.extractfile(member).read(), check=True)
++            for machine in skus:
++                profile = prefix + '/profiles/' + machine + '/'
++                if member.name == profile + 'flashvars':
++                    flashvars[machine] = tar.extractfile(member).read().decode()
++                elif member.name == profile + 'edge-ai-flash-profile.ext4':
++                    assert member.issym()
++                    links[machine] = member.linkname
++    assert proc.wait() == 0, 'zstd decompression failed'
++finally:
++    proc.stdout.close()
++    if proc.poll() is None:
++        proc.kill()
++        proc.wait()
++assert launcher and runtime_hash
++for machine, sku in skus.items():
++    assert f'CHECK_BOARDSKU="${{CHECK_BOARDSKU-{sku}}}"' in flashvars[machine]
++    assert links[machine] == '../../runtime/demo-image-weston.ext4'
++    subprocess.run(['bash', '-n'], input=flashvars[machine], text=True, check=True)
++print('All four profile SKUs and shared rootfs links verified.', flush=True)
++
++runtime_deploy = build / 'tmp-mc-edge-ai-runtime/deploy/images/edge-ai-nx-16g'
++image = runtime_deploy / 'demo-image-weston-edge-ai-nx-16g.rootfs.ext4'
++with image.open('rb') as stream:
++    assert digest(stream) == runtime_hash, 'Bundled rootfs differs from deployed rootfs'
++
++def debugfs(command):
++    result = subprocess.run(['debugfs', '-R', command, str(image)],
++                            check=True, text=True, capture_output=True)
++    return result.stdout
++
++capsule_dir = '/usr/share/compulab/uefi-update-capsules'
++capsule_readme = debugfs('cat ' + capsule_dir + '/README.txt')
++assert 'Payload L4T release: 39.2.1' in capsule_readme
++sum_lines = debugfs('cat ' + capsule_dir + '/SHA256SUMS').strip().splitlines()
++expected_capsules = {f'{m}-uefi-{v}.cap' for m in skus
++                     for v in ('nvidia-logo', 'clab-logo', 'no-logo')}
++capsule_hashes = {}
++for line in sum_lines:
++    sha, name = line.split(maxsplit=1)
++    assert re.fullmatch('[0-9a-f]{64}', sha)
++    capsule_hashes[name.lstrip('*')] = sha
++assert set(capsule_hashes) == expected_capsules
++for record in json.loads((root / 'logs/prebuilt-capsule-inputs.json').read_text()):
++    machine = Path(record['capsule']).name.removesuffix('-tegra-bl.cap')
++    variant = next(v for v in ('nvidia-logo', 'clab-logo', 'no-logo') if record['mc'].endswith(v))
++    assert capsule_hashes[f'{machine}-uefi-{variant}.cap'] == record['sha256']
++listing = debugfs('ls -l ' + capsule_dir)
++assert len(re.findall(r'\S+\.cap\b', listing)) == 12
++with tempfile.TemporaryDirectory(prefix='compulab-release-check-', dir='/tmp') as temp:
++    for name, sha in capsule_hashes.items():
++        target = Path(temp) / name
++        debugfs(f'dump {capsule_dir}/{name} {target}')
++        with target.open('rb') as stream:
++            assert digest(stream) == sha, name
++helper = debugfs('cat ' + capsule_dir + '/apply-uefi-capsule')
++assert helper.startswith('#!')
++subprocess.run(['bash', '-n'], input=helper, text=True, check=True)
++assert re.search(r'Mode:\s+0755', debugfs('stat /usr/sbin/edge-ai-uefi-update'))
++subprocess.run(['bash', '-n'], input=debugfs('cat /usr/sbin/edge-ai-uefi-update'), text=True, check=True)
++print('Twelve installed capsules, their SHA256 sums and updater verified.', flush=True)
++
++manifest = runtime_deploy / 'demo-image-weston-edge-ai-nx-16g.rootfs.manifest'
++packages = manifest.read_text().splitlines()
++selected = [p for p in packages if re.match(r'(firefox|cuda-cudart|nvidia-kernel-oot|kernel-image|edge-ai-universal-runtime|edge-ai-uefi-update-capsules)( |-|$)', p)]
++assert any(p.startswith('firefox ') for p in selected)
++assert any(p.startswith('cuda-cudart ') for p in selected)
++assert any(p.startswith('edge-ai-universal-runtime ') for p in selected)
++assert any(p.startswith('edge-ai-uefi-update-capsules ') for p in selected)
++report = {'archive': str(archive), 'archive_bytes': archive.stat().st_size,
++          'sha256': archive_hash, 'rootfs_sha256': runtime_hash,
++          'archive_members': members, 'profiles': skus,
++          'capsules': len(capsule_hashes), 'l4t': '39.2.1',
++          'selected_manifest_packages': selected, 'hardware_boot_tested': False}
++(root / 'logs/release-verification.json').write_text(json.dumps(report, indent=2) + '\n')
++print(json.dumps(report, indent=2))
