@@ -1,0 +1,67 @@
+Noble kernel build and deployment report — 2026-10-04
+Completed: 2026-10-04T18:18:45+03:00 (Asia/Jerusalem)
+
+SUCCESS: root@192.168.122.250 runs 6.8.12-l4t-r39.2.1-1021.21.
+The extlinux default is noble; primary retains the working 6.18 kernel.
+Yocto userspace and UEFI/L4T 39.2.1 remain in place. No full image rebuild,
+QSPI flash or cold power cycle was needed.
+
+Build and validation
+- Final build: all 5,373 tasks succeeded. Initial cache reuse was 97%.
+- Kernel source: NVIDIA Noble revision 78272943bba3a47e633b28963b0cda60de503500.
+- Built matching kernel, NVIDIA OOT drivers, CompuLab NX16 DTB/DTBOs and initramfs.
+- Verified vermagic for 1,551 runtime modules and 13 initramfs modules.
+- One warm boot into Noble passed: NVMe root rw, GPT verification, Ethernet
+  1 Gbps/SSH, CUDA 13.2 actual PTX execution returning 42, and Weston.
+  The user confirmed the desktop displays normally. No failed services,
+  module ABI errors, missing firmware, storage errors or kernel faults.
+- Fresh FDT received firmware overlays/fixups; its applied marker is present.
+- Original Image/initrd, NVIDIA configuration and both raw kernel/DTB slots
+  match their prior hashes. Both bootloader/rootfs slots remain normal.
+  The temporary trial guard is removed after committing the new default.
+
+Issues and fixes
+1. Kernel export wrote directly into DEPLOY_DIR_IMAGE before it existed.
+   Changed linux.inc to install into the proper DEPLOYDIR staging directory.
+2. The first retry used an unchanged copied layer. Synchronized the fix into
+   the active snapshot; added preflight assertions for provider, machine,
+   source pin and matching content of 20 active kernel/machine files.
+3. Staging initially included debug-only ELF files. Excluded debug/dev/source
+   packages. Host modinfo could substitute host built-in metadata; selecting
+   the candidate kernel with -k fixed the ABI checks.
+4. Target lacks the install command, so transfer setup used Python. Its /tmp
+   clears on reboot; commit/rollback helper is now saved under /var/lib.
+5. Audit regexes falsely matched DEBUG and ramoops; tightened the expressions
+   and reran validation. These were diagnostic false positives.
+
+Remaining findings and improvements
+- Nonfatal compile warnings: 8 kernel and 14 NVIDIA OOT occurrences, plus
+  LOCALVERSION reassignment. Final release/configuration is correct.
+- Browser-layer license syntax and shared hash-database warnings are benign.
+  Use a common BB_HASHSERVE_DB_DIR consistently for future shared-cache builds.
+- Existing DCE errors and auxiliary PCIe missing-PHY warnings persist.
+  IVC camera channels, missing gpio group/TPM helper, duplicate NVIDIA device
+  creation, NVMe SUBNQN and an IOMMU mapping warning also remain in logs.
+  Core GPU/display/network/storage checks passed; other peripherals were not tested.
+- Noble's default config omits Open vSwitch although the existing rootfs
+  requests its autoload. Enable CONFIG_OPENVSWITCH=m in a future matching
+  stack build if that optional feature is required.
+- This is a manual versioned development deployment. The original full flash
+  archive/package database remains the 6.18 release; include Noble in the next
+  complete release image/package update for reproducible production deployment.
+
+Artifacts
+Bundle: /home/igor/prj/meta-tegra-compulab/.build-jetpack-7.2-blacksail/noble-kernel/noble-kernel-deployment.tar.gz
+SHA256: 4e47d184691d8e0d6d80a9a2612898a13601319505828d9e1e913fae584ccd40
+Patch: /home/igor/prj/meta-tegra-compulab/jetpack-7.2-blacksail-noble-kernel-deployment.patch
+SHA256: 76fd9133dbd23c70615a9b126b5fb97a8ab42bd219ff0ad627a71e6b7a945e90
+The patch contains 15 source/configuration/workflow files, including the exact
+boot configuration and its recorded diff. Apply from the repository root of
+an existing pre-upgrade build workspace. Clean application, reverse check,
+whitespace check and byte comparison passed. Binaries/logs are separate.
+
+Rollback: select primary in the 10-second boot menu, or run on the board:
+python3 /var/lib/edge-ai-kernel-upgrade/6.8.12-l4t-r39.2.1-1021.21/install-on-device.py --rollback 6.8.12-l4t-r39.2.1-1021.21
+Then reboot. Kernel source/build configuration was not globally switched;
+use .build-jetpack-7.2-blacksail/noble-kernel/build-noble.sh to repeat this build.
+Detailed evidence: /home/igor/prj/meta-tegra-compulab/.build-jetpack-7.2-blacksail/noble-kernel/logs/

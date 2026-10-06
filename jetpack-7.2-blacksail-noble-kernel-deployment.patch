@@ -1,0 +1,1041 @@
+diff --git a/recipes-kernel/linux/linux.inc b/recipes-kernel/linux/linux.inc
+index 5a123cc..fa0f183 100644
+--- a/recipes-kernel/linux/linux.inc
++++ b/recipes-kernel/linux/linux.inc
+@@ -3,5 +3,5 @@ FILESEXTRAPATHS:prepend := "${THISDIR}/files:"
+ SRC_URI += "file://compulab.cfg"
+ 
+ do_deploy:append() {
+-    cp ${B}/.config ${DEPLOY_DIR_IMAGE}/config-${KERNEL_VERSION}
++    install -m 0644 ${B}/.config ${DEPLOYDIR}/config-${KERNEL_VERSION}
+ }
+diff --git a/.build-jetpack-7.2-blacksail/tegra-demo-distro/layers/meta-tegra-compulab/recipes-kernel/linux/linux.inc b/.build-jetpack-7.2-blacksail/tegra-demo-distro/layers/meta-tegra-compulab/recipes-kernel/linux/linux.inc
+--- a/.build-jetpack-7.2-blacksail/tegra-demo-distro/layers/meta-tegra-compulab/recipes-kernel/linux/linux.inc
++++ b/.build-jetpack-7.2-blacksail/tegra-demo-distro/layers/meta-tegra-compulab/recipes-kernel/linux/linux.inc
+@@ -3,5 +3,5 @@
+ SRC_URI += "file://compulab.cfg"
+ 
+ do_deploy:append() {
+-    cp ${B}/.config ${DEPLOY_DIR_IMAGE}/config-${KERNEL_VERSION}
++    install -m 0644 ${B}/.config ${DEPLOYDIR}/config-${KERNEL_VERSION}
+ }
+diff --git a/.build-jetpack-7.2-blacksail/noble-kernel/build-noble.sh b/.build-jetpack-7.2-blacksail/noble-kernel/build-noble.sh
+new file mode 100755
+--- /dev/null
++++ b/.build-jetpack-7.2-blacksail/noble-kernel/build-noble.sh
+@@ -0,0 +1,12 @@
++#!/usr/bin/env bash
++set -eo pipefail
++clab_noble_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
++clab_distro_root=$(cd -- "$clab_noble_root/../tegra-demo-distro" && pwd)
++mkdir -p "$clab_noble_root/logs"
++trap 'clab_noble_rc=$?; printf "%s\n" "$clab_noble_rc" > "$clab_noble_root/logs/build.exit"' EXIT
++cd "$clab_distro_root"
++export MACHINE=edge-ai-nx-16g DISTRO=tegrademo
++source ./setup-env build-edge-ai-nx-16g-noble > "$clab_noble_root/logs/setup.log" 2>&1
++bitbake -T 600 -e virtual/kernel > "$clab_noble_root/logs/kernel-environment.log" 2>&1
++python3 "$clab_noble_root/preflight-build.py" "$clab_noble_root/logs/kernel-environment.log" > "$clab_noble_root/logs/preflight.log" 2>&1
++bitbake -T 600 virtual/kernel nvidia-kernel-oot nvidia-kernel-oot-dtb nvidia-kernel-oot-dtbo tegra-minimal-initramfs l4t-launcher-extlinux > "$clab_noble_root/logs/build.log" 2>&1
+diff --git a/.build-jetpack-7.2-blacksail/noble-kernel/preflight-build.py b/.build-jetpack-7.2-blacksail/noble-kernel/preflight-build.py
+new file mode 100644
+--- /dev/null
++++ b/.build-jetpack-7.2-blacksail/noble-kernel/preflight-build.py
+@@ -0,0 +1,46 @@
++#!/usr/bin/env python3
++"""Check the effective kernel selection and the active CompuLab snapshot."""
++import hashlib
++import json
++from pathlib import Path
++import re
++import sys
++
++ROOT = Path(__file__).resolve().parent
++SOURCE = ROOT.parents[1]
++EXPECT = {
++    'PN': 'linux-noble-nvidia-tegra', 'MACHINE': 'edge-ai-nx-16g',
++    'PREFERRED_PROVIDER_virtual/kernel': 'linux-noble-nvidia-tegra',
++    'TEGRA_DEFAULT_KERNEL': 'linux-noble-nvidia-tegra', 'TEGRA_USING_VENDOR_KERNEL': '1',
++    'SRCREV': '78272943bba3a47e633b28963b0cda60de503500',
++    'SRCBRANCH': 'l4t/l4t-r39.2.1-Ubuntu-nvidia-tegra-6.8.0-1021.21',
++    'PV': '6.8.12', 'BBMULTICONFIG': '',
++}
++
++
++def main():
++    env = Path(sys.argv[1]).read_text()
++    values = {}
++    for name, expected in EXPECT.items():
++        match = re.search(r'^' + re.escape(name) + r'="(.*)"$', env, re.M)
++        assert match and match.group(1) == expected, f'Unexpected {name}'
++        values[name] = match.group(1)
++    layers = re.search(r'^BBLAYERS="(.*)"$', env, re.M).group(1).split()
++    active = [Path(p) for p in layers if Path(p).name == 'meta-tegra-compulab']
++    assert len(active) == 1, f'Unexpected active CompuLab layers: {active}'
++    inventory = {}
++    for base in ['recipes-kernel', 'conf/machine']:
++        for path in sorted((SOURCE / base).rglob('*')):
++            if path.is_file():
++                relative = path.relative_to(SOURCE)
++                copy = active[0] / relative
++                assert copy.is_file() and copy.read_bytes() == path.read_bytes(), f'Active layer differs: {relative}'
++                inventory[str(relative)] = hashlib.sha256(path.read_bytes()).hexdigest()
++    result = {'effective_kernel': values, 'source_root': str(SOURCE),
++              'active_compulab_layer': str(active[0]), 'source_files': inventory}
++    (ROOT / 'logs/build-preflight.json').write_text(json.dumps(result, indent=2) + '\n')
++    print(f'Preflight passed: provider/source pin and {len(inventory)} active layer files checked')
++
++
++if __name__ == '__main__':
++    main()
+diff --git a/.build-jetpack-7.2-blacksail/noble-kernel/capture-boot-files.py b/.build-jetpack-7.2-blacksail/noble-kernel/capture-boot-files.py
+new file mode 100644
+--- /dev/null
++++ b/.build-jetpack-7.2-blacksail/noble-kernel/capture-boot-files.py
+@@ -0,0 +1,21 @@
++#!/usr/bin/env python3
++"""Capture working boot-file checksums before an Edge-AI kernel upgrade."""
++import hashlib
++import json
++import os
++from pathlib import Path
++
++out = {'kernel_release': os.uname().release,
++       'boot_id': Path('/proc/sys/kernel/random/boot_id').read_text().strip(),
++       'cmdline': Path('/proc/cmdline').read_text().strip(), 'files': {}}
++for name in ['/boot/Image', '/boot/initrd', '/boot/extlinux/extlinux.conf',
++             '/etc/depmod.d/nv-display.conf', '/etc/modprobe.d/nv-display.conf']:
++    path = Path(name)
++    info = {'exists': path.exists(), 'symlink': path.is_symlink()}
++    if path.exists():
++        data = path.read_bytes()
++        info.update(size=len(data), sha256=hashlib.sha256(data).hexdigest())
++        if name.endswith('.conf'):
++            info['content'] = data.decode()
++    out['files'][name] = info
++print(json.dumps(out, indent=2))
+diff --git a/.build-jetpack-7.2-blacksail/noble-kernel/stage-noble.py b/.build-jetpack-7.2-blacksail/noble-kernel/stage-noble.py
+new file mode 100644
+--- /dev/null
++++ b/.build-jetpack-7.2-blacksail/noble-kernel/stage-noble.py
+@@ -0,0 +1,153 @@
++#!/usr/bin/env python3
++"""Stage an isolated Noble build for a versioned SSH kernel deployment."""
++import gzip
++import hashlib
++import json
++from pathlib import Path
++import shutil
++import subprocess
++import tarfile
++import tempfile
++
++
++ROOT = Path(__file__).resolve().parent
++TMP = Path('/tmp/compulab-edge-ai-noble-build/tmp')
++DEPLOY = TMP / 'deploy/images/edge-ai-nx-16g'
++WORK = TMP / 'work/edge_ai_nx_16g-oe4t-linux'
++DTB_NAME = 'tegra234-p3768-0000+p3767-0000-nv-super.dtb'
++
++
++def digest(path):
++    h = hashlib.sha256()
++    with path.open('rb') as stream:
++        for chunk in iter(lambda: stream.read(1024 * 1024), b''):
++            h.update(chunk)
++    return h.hexdigest()
++
++
++def merge_modules(recipe, destination):
++    versions = sorted((WORK / recipe).glob('*/packages-split'))
++    if len(versions) != 1:
++        raise RuntimeError(f'Expected one packages-split for {recipe}, got {versions}')
++    count = 0
++    for package in sorted(versions[0].iterdir()):
++        if package.name.endswith(('-dbg', '-dev', '-src', '-staticdev')):
++            continue
++        for prefix in ['lib/modules', 'usr/lib/modules']:
++            source = package / prefix
++            if source.is_dir():
++                shutil.copytree(source, destination, dirs_exist_ok=True, symlinks=True)
++                count += 1
++    if not count:
++        raise RuntimeError(f'No module packages from {recipe}')
++    return count
++
++
++def check_vermagic(path, release):
++    proc = subprocess.run(['modinfo', '-k', release, '-F', 'vermagic', str(path)], text=True, capture_output=True, check=True)
++    words = proc.stdout.split()
++    assert words and words[0] == release, f'Module ABI mismatch: {path}: {proc.stdout}'
++
++
++def initramfs_modules(data):
++    offset = 0
++    while offset + 110 <= len(data):
++        header = data[offset:offset + 110]
++        assert header[:6] in [b'070701', b'070702'], f'Invalid newc header at {offset}'
++        fields = [int(header[6 + i * 8:14 + i * 8], 16) for i in range(13)]
++        size, name_size = fields[6], fields[11]
++        name = data[offset + 110:offset + 110 + name_size - 1].decode()
++        offset = (offset + 110 + name_size + 3) & ~3
++        content = data[offset:offset + size]
++        assert len(content) == size, f'Truncated initramfs file: {name}'
++        offset = (offset + size + 3) & ~3
++        if name == 'TRAILER!!!':
++            return
++        if name.endswith('.ko'):
++            yield name, content
++    raise RuntimeError('Initramfs trailer not found')
++
++
++def main():
++    assert (ROOT / 'logs/build.exit').read_text().strip() == '0', 'Build must pass first'
++    out = ROOT / 'payload'
++    if out.exists():
++        raise RuntimeError(f'Refusing to replace an existing payload: {out}')
++    modules = out / 'lib/modules'
++    modules.mkdir(parents=True)
++    counts = {name: merge_modules(name, modules) for name in ['linux-noble-nvidia-tegra', 'nvidia-kernel-oot']}
++    releases = sorted(p.name for p in modules.iterdir())
++    assert len(releases) == 1 and releases[0].startswith('6.8.'), releases
++    release = releases[0]
++    module_root = modules / release
++    for name in ['modules.order', 'modules.builtin', 'modules.builtin.modinfo']:
++        assert (module_root / name).is_file(), f'Missing {name}'
++    for name in ['nvme.ko', 'r8169.ko', 'nvgpu.ko', 'nvidia.ko', 'nvidia-drm.ko', 'host1x.ko']:
++        builtin = any(line.endswith('/' + name) for line in (module_root / 'modules.builtin').read_text().splitlines())
++        assert list(module_root.rglob(name)) or builtin, f'Missing {name}'
++    for p in module_root.rglob('*'):
++        if p.is_symlink():
++            raise RuntimeError(f'Unexpected module symlink: {p}')
++    module_files = sorted(module_root.rglob('*.ko'))
++    for p in module_files:
++        check_vermagic(p, release)
++
++    boot = out / 'boot/noble' / release
++    boot.mkdir(parents=True)
++    files = {
++        'Image': DEPLOY / 'Image-edge-ai-nx-16g.bin',
++        'initrd': DEPLOY / 'tegra-minimal-initramfs-edge-ai-nx-16g.cpio.gz',
++        DTB_NAME: DEPLOY / 'devicetree' / DTB_NAME,
++    }
++    if not files[DTB_NAME].is_file():
++        files[DTB_NAME] = DEPLOY / DTB_NAME
++    for name, source in files.items():
++        assert source.is_file() and source.stat().st_size, source
++        shutil.copyfile(source, boot / name)
++        (boot / name).chmod(0o644)
++    assert (boot / 'Image').read_bytes()[56:60] == b'ARM\x64', 'Not an ARM64 Image'
++    assert (boot / DTB_NAME).read_bytes()[:4] == b'\xd0\x0d\xfe\xed', 'Not a DTB'
++    with gzip.open(boot / 'initrd', 'rb') as stream:
++        initrd = stream.read()
++    assert initrd[:6] in [b'070701', b'070702'], 'Not a newc initramfs'
++    initrd_count = 0
++    with tempfile.TemporaryDirectory(prefix='edge-ai-noble-initrd-', dir='/tmp') as temp:
++        for name, content in initramfs_modules(initrd):
++            assert '/modules/' + release + '/' in name, f'Wrong initramfs module directory: {name}'
++            p = Path(temp) / Path(name).name
++            p.write_bytes(content)
++            check_vermagic(p, release)
++            initrd_count += 1
++    assert initrd_count, 'Initramfs lacks matching modules'
++    # The installed kernel DTB must identify the CompuLab carrier.
++    assert b'compulab,edgeai-orn\x00' in (boot / DTB_NAME).read_bytes(), 'Missing CompuLab DTB patch'
++
++    old = json.loads((ROOT / 'logs/pre-deployment-boot-files.json').read_text())
++    kernel_build = WORK / 'linux-noble-nvidia-tegra/6.8.12/linux-edge_ai_nx_16g-standard-build'
++    shutil.copyfile(kernel_build / '.config', ROOT / 'kernel.config')
++    compiler_header = (kernel_build / 'include/generated/compile.h').read_text()
++    inventory = {}
++    for p in sorted(out.rglob('*')):
++        if p.is_file():
++            inventory[p.relative_to(out).as_posix()] = {'bytes': p.stat().st_size, 'sha256': digest(p)}
++    manifest = {
++        'machine': 'edge-ai-nx-16g', 'kernel_recipe': 'linux-noble-nvidia-tegra',
++        'kernel_release': release, 'kernel_srcrev': '78272943bba3a47e633b28963b0cda60de503500',
++        'l4t_version': '39.2.1', 'dtb': DTB_NAME, 'module_package_counts': counts,
++        'module_vermagic_checks': len(module_files), 'initramfs_module_vermagic_checks': initrd_count,
++        'kernel_config_sha256': digest(ROOT / 'kernel.config'), 'compiler_header': compiler_header,
++        'original_boot': old, 'files': inventory,
++    }
++    (out / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
++    bundle = ROOT / 'noble-kernel-deployment.tar.gz'
++    with tarfile.open(bundle, 'w:gz') as archive:
++        for p in sorted(out.rglob('*')):
++            archive.add(p, arcname=p.relative_to(out), recursive=False)
++    summary = {'bundle': str(bundle), 'bytes': bundle.stat().st_size,
++               'sha256': digest(bundle), 'kernel_release': release, 'file_count': len(inventory)}
++    (ROOT / 'deployment-bundle.json').write_text(json.dumps(summary, indent=2) + '\n')
++    print(json.dumps(summary, indent=2))
++
++
++if __name__ == '__main__':
++    main()
+diff --git a/.build-jetpack-7.2-blacksail/noble-kernel/install-on-device.py b/.build-jetpack-7.2-blacksail/noble-kernel/install-on-device.py
+new file mode 100644
+--- /dev/null
++++ b/.build-jetpack-7.2-blacksail/noble-kernel/install-on-device.py
+@@ -0,0 +1,200 @@
++#!/usr/bin/env python3
++"""Install versioned Noble boot files/modules without replacing the 6.18 image.
++
++Run on the target as root: install-on-device.py BUNDLE SHA256
++The trial guard restores the next-boot default to primary early in userspace.
++After validation, run install-on-device.py --commit KERNEL_RELEASE.
++For rollback, run install-on-device.py --rollback KERNEL_RELEASE.
++"""
++import hashlib
++import json
++import os
++from pathlib import Path
++import re
++import shutil
++import subprocess
++import sys
++import tarfile
++
++
++CONFIG = Path('/boot/extlinux/extlinux.conf')
++STATE_ROOT = Path('/var/lib/edge-ai-kernel-upgrade')
++SERVICE = Path('/etc/systemd/system/edge-ai-noble-trial.service')
++WANTS = Path('/etc/systemd/system/multi-user.target.wants/edge-ai-noble-trial.service')
++
++
++def digest(path):
++    h = hashlib.sha256()
++    with path.open('rb') as stream:
++        for chunk in iter(lambda: stream.read(1024 * 1024), b''):
++            h.update(chunk)
++    return h.hexdigest()
++
++
++def atomic(path, data, mode=0o644):
++    temporary = path.with_name(path.name + '.noble-new')
++    with temporary.open('wb') as stream:
++        stream.write(data)
++        stream.flush()
++        os.fsync(stream.fileno())
++    temporary.chmod(mode)
++    os.replace(temporary, path)
++    fd = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
++    try:
++        os.fsync(fd)
++    finally:
++        os.close(fd)
++
++
++def set_default(text, label):
++    text, count = re.subn(r'^DEFAULT[ \t]+\S+[ \t]*$', 'DEFAULT ' + label, text, flags=re.M)
++    assert count == 1, 'Expected one DEFAULT directive'
++    return text
++
++
++def run(args):
++    p = subprocess.run(args, text=True, capture_output=True, timeout=90)
++    if p.returncode:
++        raise RuntimeError(f'{args}: {p.returncode}\n{p.stdout}\n{p.stderr}')
++    return {'command': args, 'stdout': p.stdout, 'stderr': p.stderr}
++
++
++def finish(action, release):
++    state = STATE_ROOT / release
++    manifest = json.loads((state / 'manifest.json').read_text())
++    assert manifest['kernel_release'] == release
++    if action == '--commit':
++        assert os.uname().release == release, 'Must validate the running candidate first'
++        assert set_default(CONFIG.read_text(), 'noble') == (state / 'candidate.conf').read_text(), 'Boot configuration changed during trial'
++        for path, expected in manifest['original_boot']['files'].items():
++            if expected['exists'] and path != str(CONFIG):
++                assert digest(Path(path)) == expected['sha256'], f'Working rollback file changed: {path}'
++        for name, expected in manifest['files'].items():
++            assert digest(Path('/') / name) == expected['sha256'], name
++        label = 'noble'
++    else:
++        label = 'primary'
++    atomic(CONFIG, set_default(CONFIG.read_text(), label).encode())
++    (state / 'trial-armed').unlink(missing_ok=True)
++    WANTS.unlink(missing_ok=True)
++    SERVICE.unlink(missing_ok=True)
++    run(['systemctl', 'daemon-reload'])
++    atomic(state / 'status.json', (json.dumps({'status': 'committed' if label == 'noble' else 'rollback-selected',
++           'kernel_release': release, 'default': label}) + '\n').encode())
++    os.sync()
++    print(json.dumps({'status': 'committed' if label == 'noble' else 'rollback-selected', 'default': label}))
++
++
++def install(bundle, expected_sha):
++    assert os.geteuid() == 0, 'Root is required'
++    assert digest(bundle) == expected_sha, 'Transfer checksum mismatch'
++    assert os.uname().release == '6.18.48-yocto-standard', 'Unexpected starting kernel'
++    assert 'compulab,edgeai-orn' in Path('/sys/firmware/devicetree/base/compatible').read_bytes().decode(errors='replace')
++    assert Path('/sys/class/dmi/id/bios_version').read_text().strip() == 'v39.2.1'
++    mode = Path('/sys/firmware/efi/efivars/L4TDefaultBootMode-781e084c-a330-417c-b678-38e696380cb9').read_bytes()
++    secure = Path('/sys/firmware/efi/efivars/SecureBoot-8be4df61-93ca-11d2-aa0d-00e098032b8c').read_bytes()
++    assert int.from_bytes(mode[4:], 'little') == 1 and int.from_bytes(secure[4:], 'little') == 0
++    assert shutil.disk_usage('/').free > 3 * 1024 ** 3, 'Insufficient target space'
++    with tarfile.open(bundle, 'r:gz') as archive:
++        manifest = json.load(archive.extractfile('manifest.json'))
++        release = manifest['kernel_release']
++        assert re.fullmatch(r'6\.8\.[A-Za-z0-9.+_-]+', release), release
++        state = STATE_ROOT / release
++        assert not state.exists(), f'Refusing to replace prior deployment state: {state}'
++        for path, expected in manifest['original_boot']['files'].items():
++            if expected['exists']:
++                assert digest(Path(path)) == expected['sha256'], f'Working file changed: {path}'
++        assert not (Path('/lib/modules') / release).exists(), 'Candidate modules already exist'
++        assert not (Path('/boot/noble') / release).exists(), 'Candidate boot files already exist'
++        assert not SERVICE.exists() and not WANTS.exists(), 'Another trial is configured'
++        state.mkdir(parents=True)
++        staged = state / 'staged'
++        staged.mkdir()
++        for member in archive.getmembers():
++            path = Path(member.name)
++            assert not path.is_absolute() and '..' not in path.parts, member.name
++            assert member.isdir() or member.isfile(), f'Unsupported archive member: {member.name}'
++            assert path.parts[0] in ['boot', 'lib', 'manifest.json'], member.name
++            member.uid = member.gid = 0
++            member.uname = member.gname = 'root'
++        archive.extractall(staged, filter='data')
++    for name, expected in manifest['files'].items():
++        p = staged / name
++        assert p.stat().st_size == expected['bytes'] and digest(p) == expected['sha256'], name
++    shutil.copy2(staged / 'manifest.json', state / 'manifest.json')
++    shutil.copyfile(__file__, state / 'install-on-device.py')
++    backup = state / 'original-boot'
++    backup.mkdir()
++    for path in ['/boot/Image', '/boot/initrd', str(CONFIG)]:
++        shutil.copy2(path, backup / Path(path).name)
++    candidate = staged / 'boot/noble' / release
++    Path('/boot/noble').mkdir(exist_ok=True)
++    shutil.move(str(candidate), str(Path('/boot/noble') / release))
++    shutil.move(str(staged / 'lib/modules' / release), str(Path('/lib/modules') / release))
++    checks = [run(['depmod', '-a', release])]
++    for module in ['nvme', 'r8169', 'nvgpu', 'nvidia-drm', 'host1x']:
++        checks.append(run(['modprobe', '--set-version', release, '-n', '-v', module]))
++        info = run(['modinfo', '-k', release, module])
++        vermagic = re.search(r'^vermagic:\s*(\S+)', info['stdout'], re.M)
++        assert not vermagic or vermagic.group(1) == release, f'Wrong module ABI: {module}'
++        checks.append(info)
++    original = CONFIG.read_text()
++    assert re.search(r'^LABEL primary$', original, re.M), 'Missing rollback entry'
++    assert not re.search(r'^LABEL noble$', original, re.M), 'Candidate label already present'
++    boot = '/boot/noble/' + release
++    append = re.search(r'^\s*APPEND\s+(.+)$', original, re.M).group(1)
++    text = original.rstrip() + f'\n\nLABEL noble\n\tMENU LABEL NVIDIA Noble {release}\n\tLINUX {boot}/Image\n\tINITRD {boot}/initrd\n\tFDT {boot}/{manifest["dtb"]}\n\tAPPEND {append}\n'
++    if not re.search(r'^TIMEOUT\s+', text, re.M):
++        text = re.sub(r'^(MENU TITLE .+)$', r'\1\nTIMEOUT 100', text, count=1, flags=re.M)
++    rollback = set_default(text, 'primary')
++    candidate_config = set_default(text, 'noble')
++    atomic(state / 'rollback.conf', rollback.encode())
++    atomic(state / 'candidate.conf', candidate_config.encode())
++    guard = '''import os, re
++from pathlib import Path
++release = RELEASE_VALUE
++if os.uname().release == release:
++    p = Path('/boot/extlinux/extlinux.conf')
++    text, count = re.subn(r'^DEFAULT[ \\t]+\\S+[ \\t]*$', 'DEFAULT primary', p.read_text(), flags=re.M)
++    assert count == 1
++    tmp = p.with_name('extlinux.conf.trial-rollback')
++    with tmp.open('w') as f:
++        f.write(text); f.flush(); os.fsync(f.fileno())
++    tmp.chmod(0o644); os.replace(tmp, p); os.sync()
++    print('Noble trial boot: next-boot default restored to primary until validation commits it')
++'''.replace('RELEASE_VALUE', repr(release))
++    atomic(state / 'trial-boot.py', guard.encode())
++    atomic(state / 'trial-armed', b'armed\n')
++    unit = f'''[Unit]
++Description=Preserve the working kernel default during the Noble trial
++DefaultDependencies=no
++After=local-fs.target
++Before=sysinit.target network-pre.target systemd-networkd.service sshd.service ssh.service weston.service
++ConditionPathExists={state}/trial-armed
++
++[Service]
++Type=oneshot
++ExecStart=/usr/bin/python3 {state}/trial-boot.py
++
++[Install]
++WantedBy=multi-user.target
++'''
++    atomic(SERVICE, unit.encode())
++    WANTS.symlink_to(SERVICE)
++    run(['systemctl', 'daemon-reload'])
++    if shutil.which('systemd-analyze'):
++        checks.append(run(['systemd-analyze', 'verify', str(SERVICE)]))
++    atomic(state / 'installation-checks.json', (json.dumps(checks, indent=2) + '\n').encode())
++    atomic(CONFIG, candidate_config.encode())
++    atomic(state / 'status.json', (json.dumps({'status': 'ready-for-trial', 'kernel_release': release}) + '\n').encode())
++    os.sync()
++    print(json.dumps({'status': 'ready-for-trial', 'kernel_release': release, 'default': 'noble',
++                      'rollback_label': 'primary', 'state': str(state), 'checks': checks}, indent=2))
++
++
++if __name__ == '__main__':
++    assert len(sys.argv) == 3, __doc__
++    if sys.argv[1] in ['--commit', '--rollback']:
++        finish(sys.argv[1], sys.argv[2])
++    else:
++        install(Path(sys.argv[1]), sys.argv[2])
+diff --git a/.build-jetpack-7.2-blacksail/noble-kernel/validate-device.py b/.build-jetpack-7.2-blacksail/noble-kernel/validate-device.py
+new file mode 100644
+--- /dev/null
++++ b/.build-jetpack-7.2-blacksail/noble-kernel/validate-device.py
+@@ -0,0 +1,172 @@
++#!/usr/bin/env python3
++"""Read-only Edge-AI kernel deployment audit; accepts execution over stdin.
++
++The CUDA child allocates four bytes and launches one GPU thread. No target
++files, service state, boot configuration, or firmware settings are modified.
++"""
++import argparse
++from collections import Counter
++import glob
++import json
++import platform
++from pathlib import Path
++import re
++import shutil
++import subprocess
++import sys
++
++
++def read(path):
++    try:
++        return Path(path).read_bytes().replace(b"\x00", b"\n").decode(errors="replace").strip()
++    except OSError as exc:
++        return {"error": str(exc)}
++
++
++def command(args, timeout=20, limit=64000):
++    if not shutil.which(args[0]):
++        return {"unavailable": args[0]}
++    try:
++        proc = subprocess.run(args, text=True, capture_output=True, timeout=timeout)
++        result = {"rc": proc.returncode, "stdout": proc.stdout[:limit], "stderr": proc.stderr[:limit]}
++        if len(proc.stdout) > limit or len(proc.stderr) > limit:
++            result["truncated"] = True
++        return result
++    except subprocess.TimeoutExpired as exc:
++        output = exc.stdout or ""
++        if isinstance(output, bytes):
++            output = output.decode(errors="replace")
++        return {"timeout": True, "stdout": output[:limit]}
++    except OSError as exc:
++        return {"error": str(exc)}
++
++
++GPU_SMOKE = r'''
++import ctypes, json
++s={}; context=ctypes.c_void_p(); module=ctypes.c_void_p(); memory=ctypes.c_uint64(); c=None; dev=ctypes.c_int()
++try:
++    c=ctypes.CDLL("libcuda.so.1")
++    def bind(name,args):
++        f=getattr(c,name); f.argtypes=args; f.restype=ctypes.c_int; return f
++    i=ctypes.c_int; vp=ctypes.c_void_p; u=ctypes.c_uint; p64=ctypes.POINTER(ctypes.c_uint64)
++    init=bind("cuInit",[u]); get=bind("cuDeviceGet",[ctypes.POINTER(i),i]); attr=bind("cuDeviceGetAttribute",[ctypes.POINTER(i),i,i])
++    version=bind("cuDriverGetVersion",[ctypes.POINTER(i)]); count=bind("cuDeviceGetCount",[ctypes.POINTER(i)])
++    name=bind("cuDeviceGetName",[ctypes.c_char_p,i,i])
++    retain=bind("cuDevicePrimaryCtxRetain",[ctypes.POINTER(vp),i]); current=bind("cuCtxSetCurrent",[vp])
++    alloc=bind("cuMemAlloc_v2",[p64,ctypes.c_size_t]); free=bind("cuMemFree_v2",[ctypes.c_uint64])
++    load=bind("cuModuleLoadData",[ctypes.POINTER(vp),vp]); unload=bind("cuModuleUnload",[vp]); function=bind("cuModuleGetFunction",[ctypes.POINTER(vp),vp,ctypes.c_char_p])
++    launch=bind("cuLaunchKernel",[vp,u,u,u,u,u,u,u,vp,ctypes.POINTER(vp),ctypes.POINTER(vp)])
++    sync=bind("cuCtxSynchronize",[]); dtoh=bind("cuMemcpyDtoH_v2",[vp,ctypes.c_uint64,ctypes.c_size_t])
++    def check(k,rc):
++        s[k]=rc
++        if rc: raise RuntimeError(k+" failed, CUDA code "+str(rc))
++    check("init",init(0)); v=i(); check("driver_version_rc",version(ctypes.byref(v))); s["driver_version"]=v.value
++    n=i(); check("device_count_rc",count(ctypes.byref(n))); s["device_count"]=n.value
++    check("device",get(ctypes.byref(dev),0)); buf=ctypes.create_string_buffer(256); check("device_name_rc",name(buf,256,dev)); s["device_name"]=buf.value.decode(errors="replace")
++    major=i(); minor=i(); check("major",attr(ctypes.byref(major),75,dev)); check("minor",attr(ctypes.byref(minor),76,dev)); s["compute_capability"]=f"{major.value}.{minor.value}"
++    check("retain_context",retain(ctypes.byref(context),dev)); check("set_context",current(context)); check("allocate",alloc(ctypes.byref(memory),4))
++    ptx=chr(10).join([".version 8.0",f".target sm_{major.value}{minor.value}",".address_size 64",".visible .entry write_value(.param .u64 output) { .reg .b64 rd; .reg .b32 r; ld.param.u64 rd, [output]; mov.u32 r, 42; st.global.u32 [rd], r; ret; }", ""]).encode()
++    code=ctypes.create_string_buffer(ptx); check("load_ptx",load(ctypes.byref(module),ctypes.cast(code,vp)))
++    kernel=vp(); check("get_kernel",function(ctypes.byref(kernel),module,b"write_value"))
++    argument=ctypes.c_uint64(memory.value); args=(vp*1)(ctypes.cast(ctypes.byref(argument),vp)); check("launch",launch(kernel,1,1,1,1,1,1,0,None,args,None)); check("synchronize",sync())
++    result=ctypes.c_uint32(); check("copy_result",dtoh(ctypes.byref(result),memory,4)); s["result"]=result.value; s["passed"]=result.value==42
++except Exception as exc:
++    s["error"]=str(exc); s["passed"]=False
++finally:
++    if c:
++        if memory.value: s["free_rc"]=free(memory)
++        if module.value: s["unload_rc"]=unload(module)
++        if context.value:
++            release=getattr(c,"cuDevicePrimaryCtxRelease_v2",None) or getattr(c,"cuDevicePrimaryCtxRelease")
++            release.argtypes=[ctypes.c_int]; release.restype=ctypes.c_int; s["release_context_rc"]=release(dev)
++print(json.dumps(s))
++'''
++
++
++def main():
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument("--expected-kernel")
++    args = parser.parse_args()
++    kernel = platform.release()
++    out = {"kernel": kernel, "boot_id": read("/proc/sys/kernel/random/boot_id"),
++           "expected_kernel": args.expected_kernel, "files": {}, "commands": {},
++           "modules": {}, "drm": {}, "efi_variables": {}}
++    if args.expected_kernel:
++        out["kernel_matches_expected"] = kernel == args.expected_kernel
++    paths = ["/proc/cmdline", "/proc/uptime", "/etc/os-release", "/etc/nv_tegra_release",
++             "/etc/nv_boot_control.conf", "/boot/extlinux/extlinux.conf",
++             "/sys/class/dmi/id/bios_vendor", "/sys/class/dmi/id/bios_version",
++             "/sys/class/dmi/id/bios_date", "/sys/firmware/devicetree/base/model",
++             "/sys/firmware/devicetree/base/compatible", "/sys/firmware/devicetree/base/serial-number",
++             "/sys/firmware/devicetree/base/nvidia,dtsfilename"]
++    for path in paths:
++        if Path(path).is_file():
++            out["files"][path] = read(path)
++    for name in ["L4TDefaultBootMode", "SecureBoot", "BootChainOsCurrent"]:
++        for path in glob.glob("/sys/firmware/efi/efivars/" + name + "-*"):
++            try:
++                data = Path(path).read_bytes()
++                out["efi_variables"][Path(path).name] = {
++                    "attributes": int.from_bytes(data[:4], "little"),
++                    "data_hex": data[4:].hex(), "value": int.from_bytes(data[4:], "little")}
++            except OSError as exc:
++                out["efi_variables"][Path(path).name] = {"error": str(exc)}
++    cmds = {
++        "identity": ["uname", "-a"],
++        "root": ["findmnt", "--json", "--output", "SOURCE,TARGET,FSTYPE,OPTIONS", "/"],
++        "storage": ["lsblk", "--json", "--bytes", "--output", "NAME,SIZE,FSTYPE,LABEL,UUID,MOUNTPOINTS,RO,MODEL,SERIAL"],
++        "disk_space": ["df", "-hT", "/", "/boot"],
++        "gpt_verify": ["sfdisk", "--verify", "/dev/nvme0n1"],
++        "system_state": ["systemctl", "is-system-running"],
++        "failed_services": ["systemctl", "--failed", "--no-legend", "--no-pager"],
++        "weston": ["systemctl", "show", "weston.service", "--property=ActiveState,SubState,Result,ExecMainStatus"],
++        "weston_log": ["journalctl", "-b", "-u", "weston.service", "--no-pager", "-n", "100", "-o", "short-monotonic"],
++        "modules_load": ["journalctl", "-b", "-u", "systemd-modules-load.service", "--no-pager", "-n", "80", "-o", "short-monotonic"],
++        "loaded_modules": ["lsmod"],
++        "network_addresses": ["ip", "-j", "address"],
++        "network_routes": ["ip", "-j", "route"],
++        "network_eth0": ["networkctl", "status", "eth0", "--no-pager"],
++        "ethernet_driver": ["ethtool", "-i", "eth0"],
++        "network_log": ["journalctl", "-b", "-u", "systemd-networkd", "--no-pager", "-n", "80", "-o", "short-monotonic"],
++        "boot_slots": ["nvbootctrl", "dump-slots-info"],
++        "rootfs_slots": ["nvbootctrl", "-t", "rootfs", "dump-slots-info"],
++    }
++    for key, values in cmds.items():
++        out["commands"][key] = command(values)
++    for module in ["nvme", "r8169", "host1x", "nvmap", "nvgpu", "nvidia", "nvidia-drm", "tegra-dce", "tegra-bpmp-thermal", "tegra-xudc"]:
++        out["modules"][module] = {
++            "info": command(["modinfo", "-k", kernel, module]),
++            "dependency_dry_run": command(["modprobe", "-n", "-v", "--set-version", kernel, module]),
++        }
++    for path in glob.glob("/sys/class/drm/*/status") + glob.glob("/sys/class/drm/*/modes") + glob.glob("/sys/class/drm/*/enabled"):
++        out["drm"][path] = read(path)
++    out["device_nodes"] = sorted(glob.glob("/dev/nvhost*") + glob.glob("/dev/nvgpu*") + glob.glob("/dev/nvidia*"))
++    warning_result = command(["journalctl", "-b", "-p", "warning", "--no-pager", "-o", "cat"], limit=2000000)
++    text = warning_result.pop("stdout", "")
++    warnings = Counter(line.strip() for line in text.splitlines() if line.strip())
++    out["warnings"] = {"journal_result": warning_result, "total_lines": sum(warnings.values()),
++                       "unique_messages": len(warnings), "messages": [{"count": n, "message": line} for line, n in warnings.most_common()]}
++    kernel_result = command(["journalctl", "-k", "-b", "--no-pager", "-o", "cat"], limit=2000000)
++    kernel_text = kernel_result.pop("stdout", "")
++    patterns = {
++        "missing_firmware": r"(?:failed|failure|not found|error|missing).*firmware|firmware.*(?:failed|failure|not found|error|missing)|Direct firmware load .* failed",
++        "module_errors": r"Unknown symbol|invalid module format|version magic|disagrees about version|module verification failed|Exec format error",
++        "storage_errors": r"I/O error|Buffer I/O|EXT4-fs error|nvme.*(?:timeout|reset controller|critical)|blk_update_request.*error",
++        "kernel_faults": r"Kernel panic|\bOops:|(?:^|\s)BUG:|Call trace:|Unable to handle kernel|soft lockup|hard LOCKUP|watchdog.*lockup",
++    }
++    out["kernel_log_result"] = kernel_result
++    out["kernel_error_matches"] = {}
++    for kind, pattern in patterns.items():
++        matches = Counter(line.strip() for line in kernel_text.splitlines() if re.search(pattern, line, re.I))
++        out["kernel_error_matches"][kind] = [{"count": n, "message": line} for line, n in matches.most_common()]
++    gpu = command([sys.executable, "-c", GPU_SMOKE], timeout=60)
++    try:
++        out["gpu_smoke"] = json.loads(gpu.pop("stdout", ""))
++        out["gpu_smoke_process"] = gpu
++    except (ValueError, TypeError):
++        out["gpu_smoke"] = {"passed": False, "process": gpu}
++    print(json.dumps(out, indent=2))
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/.build-jetpack-7.2-blacksail/noble-kernel/deployed-extlinux.conf b/.build-jetpack-7.2-blacksail/noble-kernel/deployed-extlinux.conf
+new file mode 100644
+--- /dev/null
++++ b/.build-jetpack-7.2-blacksail/noble-kernel/deployed-extlinux.conf
+@@ -0,0 +1,16 @@
++# L4TLauncher configuration file generated by OE4T
++MENU TITLE L4T boot options
++TIMEOUT 100
++DEFAULT noble
++LABEL primary
++	MENU LABEL primary
++	LINUX /boot/Image
++	INITRD /boot/initrd
++	APPEND ${cbootargs} mminit_loglevel=4 console=ttyTCU0,115200 firmware_class.path=/etc/firmware fbcon=map:0 video=efifb:off console=tty0 efi=runtime nvme.use_threaded_interrupts=1 pci=pcie_bus_perf iomem=relaxed pci=realloc pcie_aspm=off
++
++LABEL noble
++	MENU LABEL NVIDIA Noble 6.8.12-l4t-r39.2.1-1021.21
++	LINUX /boot/noble/6.8.12-l4t-r39.2.1-1021.21/Image
++	INITRD /boot/noble/6.8.12-l4t-r39.2.1-1021.21/initrd
++	FDT /boot/noble/6.8.12-l4t-r39.2.1-1021.21/tegra234-p3768-0000+p3767-0000-nv-super.dtb
++	APPEND ${cbootargs} mminit_loglevel=4 console=ttyTCU0,115200 firmware_class.path=/etc/firmware fbcon=map:0 video=efifb:off console=tty0 efi=runtime nvme.use_threaded_interrupts=1 pci=pcie_bus_perf iomem=relaxed pci=realloc pcie_aspm=off
+diff --git a/.build-jetpack-7.2-blacksail/noble-kernel/target-extlinux-change.json b/.build-jetpack-7.2-blacksail/noble-kernel/target-extlinux-change.json
+new file mode 100644
+--- /dev/null
++++ b/.build-jetpack-7.2-blacksail/noble-kernel/target-extlinux-change.json
+@@ -0,0 +1,6 @@
++{
++  "target_file": "/boot/extlinux/extlinux.conf",
++  "original_sha256": "bdf31852e56d0b838060055585bbf617bbd1e4255f707eca185de5b89c6ef203",
++  "deployed_sha256": "0330d8f3b23baeab320cf3d308b001dfeef94697a2e338d7be681de7376ec572",
++  "unified_diff": "--- a/boot/extlinux/extlinux.conf\n+++ b/boot/extlinux/extlinux.conf\n@@ -1,17 +1,16 @@\n # L4TLauncher configuration file generated by OE4T\n MENU TITLE L4T boot options\n-DEFAULT primary\n+TIMEOUT 100\n+DEFAULT noble\n LABEL primary\n \tMENU LABEL primary\n \tLINUX /boot/Image\n \tINITRD /boot/initrd\n \tAPPEND ${cbootargs} mminit_loglevel=4 console=ttyTCU0,115200 firmware_class.path=/etc/firmware fbcon=map:0 video=efifb:off console=tty0 efi=runtime nvme.use_threaded_interrupts=1 pci=pcie_bus_perf iomem=relaxed pci=realloc pcie_aspm=off\n \n-\n-\n-\n-\n-\n-\n-\n-\n+LABEL noble\n+\tMENU LABEL NVIDIA Noble 6.8.12-l4t-r39.2.1-1021.21\n+\tLINUX /boot/noble/6.8.12-l4t-r39.2.1-1021.21/Image\n+\tINITRD /boot/noble/6.8.12-l4t-r39.2.1-1021.21/initrd\n+\tFDT /boot/noble/6.8.12-l4t-r39.2.1-1021.21/tegra234-p3768-0000+p3767-0000-nv-super.dtb\n+\tAPPEND ${cbootargs} mminit_loglevel=4 console=ttyTCU0,115200 firmware_class.path=/etc/firmware fbcon=map:0 video=efifb:off console=tty0 efi=runtime nvme.use_threaded_interrupts=1 pci=pcie_bus_perf iomem=relaxed pci=realloc pcie_aspm=off\n"
++}
+diff --git a/.build-jetpack-7.2-blacksail/noble-kernel/deployment-state.json b/.build-jetpack-7.2-blacksail/noble-kernel/deployment-state.json
+new file mode 100644
+--- /dev/null
++++ b/.build-jetpack-7.2-blacksail/noble-kernel/deployment-state.json
+@@ -0,0 +1,16 @@
++{
++  "status": "deployed_and_validated",
++  "host": "root@192.168.122.250",
++  "kernel": "6.8.12-l4t-r39.2.1-1021.21",
++  "default_label": "noble",
++  "rollback_label": "primary",
++  "firmware": "39.2.1",
++  "hdmi_desktop_confirmed_by_user": true,
++  "build_final_tasks": 5373,
++  "kernel_modules_vermagic_checked": 1551,
++  "initramfs_modules_vermagic_checked": 13,
++  "full_image_rebuild": false,
++  "raw_boot_partitions_changed": false,
++  "trial_guard_removed": true,
++  "optional_compatibility_gap": "Noble default config omits Open vSwitch although existing rootfs requests its autoload"
++}
+diff --git a/.build-jetpack-7.2-blacksail/tegra-demo-distro/build-edge-ai-nx-16g-noble/conf/local.conf b/.build-jetpack-7.2-blacksail/tegra-demo-distro/build-edge-ai-nx-16g-noble/conf/local.conf
+new file mode 100644
+--- /dev/null
++++ b/.build-jetpack-7.2-blacksail/tegra-demo-distro/build-edge-ai-nx-16g-noble/conf/local.conf
+@@ -0,0 +1,285 @@
++# This file is your local configuration file and is where all local user settings
++# are placed. The comments in this file give some guide to the options a new user
++# to the system might want to change but pretty much any configuration option can
++# be set in this file.
++
++#
++# Machine Selection
++#
++# You need to select a specific machine to target the build with.
++# The following machines are avilable in the meta-tegra layer:
++#
++#MACHINE ?= "jetson-agx-orin-devkit"
++#MACHINE ?= "jetson-orin-nano-devkit"
++MACHINE ?= "edge-ai-nx-16g"
++#
++# This sets the default machine to be qemux86-64 if no other machine is selected:
++MACHINE ??= "qemux86-64"
++
++#
++# Where to place downloads
++#
++# During a first build the system will download many different source code tarballs
++# from various upstream projects. This can take a while, particularly if your network
++# connection is slow. These are all stored in DL_DIR. When wiping and rebuilding you
++# can preserve this directory to speed up this part of subsequent builds. This directory
++# is safe to share between multiple builds on the same machine too.
++#
++# The default is a downloads directory under TOPDIR which is the build directory.
++#
++#DL_DIR ?= "${TOPDIR}/downloads"
++
++#
++# Where to place shared-state files
++#
++# BitBake has the capability to accelerate builds based on previously built output.
++# This is done using "shared state" files which can be thought of as cache objects
++# and this option determines where those files are placed.
++#
++# You can wipe out TMPDIR leaving this directory intact and the build would regenerate
++# from these files if no changes were made to the configuration. If changes were made
++# to the configuration, only shared state files where the state was still valid would
++# be used (done using checksums).
++#
++# The default is a sstate-cache directory under TOPDIR.
++#
++#SSTATE_DIR ?= "${TOPDIR}/sstate-cache"
++
++#
++# Where to place the build output
++#
++# This option specifies where the bulk of the building work should be done and
++# where BitBake should place its temporary files and output. Keep in mind that
++# this includes the extraction and compilation of many applications and the toolchain
++# which can use Gigabytes of hard disk space.
++#
++# The default is a tmp directory under TOPDIR.
++#
++#TMPDIR = "${TOPDIR}/tmp"
++
++#
++# Default policy (distro) config
++#
++DISTRO ?= "tegrademo"
++# Base distro for meta-tegra
++#DISTRO ?= "tegrademo"
++
++#
++# Package Management configuration
++#
++# This variable lists which packaging formats to enable. Multiple package backends
++# can be enabled at once and the first item listed in the variable will be used
++# to generate the root filesystems.
++# Options are:
++#  - 'package_deb' for debian style deb files
++#  - 'package_ipk' for ipk files are used by opkg (a debian style embedded package manager)
++#  - 'package_rpm' for rpm style packages
++# E.g.: PACKAGE_CLASSES ?= "package_rpm package_deb package_ipk"
++# The tegrademo distro defaults to rpm:
++#PACKAGE_CLASSES ?= "package_rpm"
++
++#
++# SDK target architecture
++#
++# This variable specifies the architecture to build SDK items for and means
++# you can build the SDK packages for architectures other than the machine you are
++# running the build on (i.e. building i686 packages on an x86_64 host).
++# Only x86_64 is supported for the meta-tegra BSP, since some of the NVIDIA-provided
++# host tools are 64-bit only.
++SDKMACHINE ?= "x86_64"
++
++#
++# Extra image configuration defaults
++#
++# The EXTRA_IMAGE_FEATURES variable allows extra packages to be added to the generated
++# images. Some of these options are added to certain image types automatically. Some
++# of the features available are:
++#  "dbg-pkgs"             - add -dbg packages for all installed packages
++#                           (adds symbol information for debugging/profiling)
++#  "src-pkgs"             - add -src packages for all installed packages
++#                           (adds source code for debugging)
++#  "dev-pkgs"             - add -dev packages for all installed packages
++#                           (useful if you want to develop against libs in the image)
++#  "ptest-pkgs"           - add -ptest packages for all ptest-enabled packages
++#                           (useful if you want to run the package test suites)
++#  "tools-sdk"            - add development tools (gcc, make, pkgconfig etc.)
++#  "tools-debug"          - add debugging tools (gdb, strace)
++#  "eclipse-debug"        - add Eclipse remote debugging support
++#  "tools-profile"        - add profiling tools (oprofile, lttng, valgrind)
++#  "tools-testapps"       - add useful testing tools (ts_print, aplay, arecord etc.)
++#  "allow-empty-password" - allow users to have an empty password
++#  "empty-root-password"  - the root user has no password set
++#  "allow-root-login      - the root user can login
++# There are other features that can be used here too, see
++# meta/classes-recipe/image.bbclass and
++# meta/classes-recipe/core-image.bbclass for more details.
++# We default to allowing root login without a password for convenience.
++EXTRA_IMAGE_FEATURES ?= "allow-empty-password empty-root-password allow-root-login"
++
++#
++# Additional image features
++#
++# The following is a list of additional classes to use when building images which
++# enable extra features. Some available options which can be included in this variable
++# are:
++#   - 'buildstats' collect build statistics
++USER_CLASSES ?= "buildstats"
++
++#
++# Runtime testing of images
++#
++# The build system can test booting virtual machine images under qemu (an emulator)
++# after any root filesystems are created and run tests against those images. It can also
++# run tests against any SDK that are built. To enable this uncomment these lines.
++# See classes/test{image,sdk}.bbclass for further details.
++#IMAGE_CLASSES += "testimage testsdk"
++#TESTIMAGE_AUTO:qemuall = "1"
++
++#
++# Interactive shell configuration
++#
++# Under certain circumstances the system may need input from you and to do this it
++# can launch an interactive shell. It needs to do this since the build is
++# multithreaded and needs to be able to handle the case where more than one parallel
++# process may require the user's attention. The default is iterate over the available
++# terminal types to find one that works.
++#
++# Examples of the occasions this may happen are when resolving patches which cannot
++# be applied, to use the devshell or the kernel menuconfig
++#
++# Supported values are auto, gnome, xfce, rxvt, screen, konsole (KDE 3.x only), none
++# Note: currently, Konsole support only works for KDE 3.x due to the way
++# newer Konsole versions behave
++#OE_TERMINAL = "auto"
++# By default disable interactive patch resolution (tasks will just fail instead):
++PATCHRESOLVE = "noop"
++
++#
++# Disk Space Monitoring during the build
++#
++# Monitor the disk space during the build. If there is less than 1GB of space or less
++# than 100K inodes in any key build location (TMPDIR, DL_DIR, SSTATE_DIR), gracefully
++# shutdown the build. If there is less than 100MB or 1K inodes, perform a hard halt
++# of the build. The reason for this is that running completely out of space can corrupt
++# files and damages the build in ways which may not be easily recoverable.
++# It's necessary to monitor /tmp, if there is no space left the build will fail
++# with very exotic errors.
++BB_DISKMON_DIRS ??= "\
++    STOPTASKS,${TMPDIR},1G,100K \
++    STOPTASKS,${DL_DIR},1G,100K \
++    STOPTASKS,${SSTATE_DIR},1G,100K \
++    STOPTASKS,/tmp,100M,100K \
++    HALT,${TMPDIR},100M,1K \
++    HALT,${DL_DIR},100M,1K \
++    HALT,${SSTATE_DIR},100M,1K \
++    HALT,/tmp,10M,1K"
++
++#
++# Shared-state files from other locations
++#
++# As mentioned above, shared state files are prebuilt cache data objects which can be
++# used to accelerate build time. This variable can be used to configure the system
++# to search other mirror locations for these objects before it builds the data itself.
++#
++# This can be a filesystem directory, or a remote url such as https or ftp. These
++# would contain the sstate-cache results from previous builds (possibly from other
++# machines). This variable works like fetcher MIRRORS/PREMIRRORS and points to the
++# cache locations to check for the shared objects.
++# NOTE: if the mirror uses the same structure as SSTATE_DIR, you need to add PATH
++# at the end as shown in the examples below. This will be substituted with the
++# correct path within the directory structure.
++#SSTATE_MIRRORS ?= "\
++#file://.* https://someserver.tld/share/sstate/PATH;downloadfilename=PATH \
++#file://.* file:///some/local/dir/sstate/PATH"
++
++#
++# Yocto Project SState Mirror
++#
++# The Yocto Project has prebuilt artefacts available for its releases, you can enable
++# use of these by uncommenting the following lines. This will mean the build uses
++# the network to check for artefacts at the start of builds, which does slow it down
++# equally, it will also speed up the builds by not having to build things if they are
++# present in the cache. It assumes you can download something faster than you can build it
++# which will depend on your network.
++# Note: For this to work you also need hash-equivalence passthrough to the matching server
++# Also note that for the tegrademo distro, sstate maintained by the Yocto Project sstate
++# is probably not very helpful.
++#
++#BB_HASHSERVE_UPSTREAM = 'wss://hashserv.yoctoproject.org/ws'
++#SSTATE_MIRRORS ?= "file://.* http://sstate.yoctoproject.org/all/PATH;downloadfilename=PATH"
++
++#
++# Qemu configuration
++#
++# By default native qemu will build with a builtin VNC server where graphical output can be
++# seen. The line below enables the SDL UI frontend too.
++PACKAGECONFIG:append:pn-qemu-system-native = " sdl"
++# By default libsdl2-native will be built, if you want to use your host's libSDL instead of
++# the minimal libsdl built by libsdl2-native then uncomment the ASSUME_PROVIDED line below.
++#ASSUME_PROVIDED += "libsdl2-native"
++
++# You can also enable the Gtk UI frontend, which takes somewhat longer to build, but adds
++# a handy set of menus for controlling the emulator.
++#PACKAGECONFIG:append:pn-qemu-system-native = " gtk+"
++
++#
++# Hash Equivalence
++#
++# Enable support for automatically running a local hash equivalence server and
++# instruct bitbake to use a hash equivalence aware signature generator. Hash
++# equivalence improves reuse of sstate by detecting when a given sstate
++# artifact can be reused as equivalent, even if the current task hash doesn't
++# match the one that generated the artifact.
++#
++# A shared hash equivalent server can be set with "<HOSTNAME>:<PORT>" format
++#
++#BB_HASHSERVE = "auto"
++#BB_SIGNATURE_HANDLER = "OEEquivHash"
++
++#
++# Memory Resident Bitbake
++#
++# Bitbake's server component can stay in memory after the UI for the current command
++# has completed. This means subsequent commands can run faster since there is no need
++# for bitbake to reload cache files and so on. Number is in seconds, after which the
++# server will shut down.
++#
++#BB_SERVER_TIMEOUT = "60"
++
++# CONF_VERSION is increased each time build/conf/ changes incompatibly and is used to
++# track the version of this file when it was generated. This can safely be ignored if
++# this doesn't mean anything to you.
++CONF_VERSION = "2"
++# Included from ../layers/meta-tegra-compulab/templates/local.conf/local.conf.append
++PACKAGE_CLASSES = " package_deb "
++EXTRA_IMAGE_FEATURES += " package-management "
++
++# Uncomment to enable the shared-runtime/four-profile release bundle:
++#
++
++# Requested JetPack 7.2 universal Edge-AI build.
++
++BB_NUMBER_THREADS = "16"
++BB_NUMBER_PARSE_THREADS = "32"
++PARALLEL_MAKE = "-j 16"
++INHERIT += "rm_work"
++
++# Node.js 24 requires GCC >= 12.2; use the matching workspace C++ tools.
++BUILD_CC:pn-nodejs-native = "/usr/bin/gcc-12"
++BUILD_CXX:pn-nodejs-native = "/home/igor/prj/meta-tegra-compulab/.build-jetpack-7.2-blacksail/host-tools/bin/g++-12"
++BUILD_CPP:pn-nodejs-native = "/usr/bin/gcc-12 -E"
++
++# Point Clang's libc++ bootstrap at the complete matching GCC 12 installation.
++CXXFLAGS:append:pn-libcxx-native = " --gcc-install-dir=/home/igor/prj/meta-tegra-compulab/.build-jetpack-7.2-blacksail/host-tools/usr/lib/gcc/x86_64-linux-gnu/12"
++
++# Isolated Noble kernel upgrade; keep the original universal image build intact.
++unset BBMULTICONFIG
++BBMULTICONFIG:forcevariable = ""
++TEGRA_DEFAULT_KERNEL:forcevariable = "linux-noble-nvidia-tegra"
++PREFERRED_PROVIDER_virtual/kernel:forcevariable = "linux-noble-nvidia-tegra"
++UBOOT_EXTLINUX_FDT:forcevariable = "tegra234-p3768-0000+p3767-0000-nv-super.dtb"
++DL_DIR = "/home/igor/prj/meta-tegra-compulab/.build-jetpack-7.2-blacksail/tegra-demo-distro/build-edge-ai-nx-16g/downloads"
++SSTATE_DIR = "/home/igor/prj/meta-tegra-compulab/.build-jetpack-7.2-blacksail/tegra-demo-distro/build-edge-ai-nx-16g/sstate-cache"
++TMPDIR = "/tmp/compulab-edge-ai-noble-build/tmp"
++MODULE_TARBALL_DEPLOY = "1"
++RM_WORK_EXCLUDE:append = " linux-noble-nvidia-tegra nvidia-kernel-oot nvidia-kernel-oot-dtb nvidia-kernel-oot-dtbo"
+diff --git a/.build-jetpack-7.2-blacksail/tegra-demo-distro/build-edge-ai-nx-16g-noble/conf/bblayers.conf b/.build-jetpack-7.2-blacksail/tegra-demo-distro/build-edge-ai-nx-16g-noble/conf/bblayers.conf
+new file mode 100644
+--- /dev/null
++++ b/.build-jetpack-7.2-blacksail/tegra-demo-distro/build-edge-ai-nx-16g-noble/conf/bblayers.conf
+@@ -0,0 +1,26 @@
++# Version of layers configuration, specific to
++# each defined distro in the repository.
++# Format: ${DISTRO}-<version>
++TD_BBLAYERS_CONF_VERSION = "tegrademo-7"
++
++BBPATH = "${TOPDIR}"
++BBFILES ?= ""
++
++BBLAYERS ?= " \
++  /home/igor/prj/meta-tegra-compulab/.build-jetpack-7.2-blacksail/tegra-demo-distro/layers/meta \
++  /home/igor/prj/meta-tegra-compulab/.build-jetpack-7.2-blacksail/tegra-demo-distro/layers/meta-tegra \
++  /home/igor/prj/meta-tegra-compulab/.build-jetpack-7.2-blacksail/tegra-demo-distro/layers/meta-oe \
++  /home/igor/prj/meta-tegra-compulab/.build-jetpack-7.2-blacksail/tegra-demo-distro/layers/meta-python \
++  /home/igor/prj/meta-tegra-compulab/.build-jetpack-7.2-blacksail/tegra-demo-distro/layers/meta-networking \
++  /home/igor/prj/meta-tegra-compulab/.build-jetpack-7.2-blacksail/tegra-demo-distro/layers/meta-filesystems \
++  /home/igor/prj/meta-tegra-compulab/.build-jetpack-7.2-blacksail/tegra-demo-distro/layers/meta-virtualization \
++  /home/igor/prj/meta-tegra-compulab/.build-jetpack-7.2-blacksail/tegra-demo-distro/layers/meta-tegra-community \
++  /home/igor/prj/meta-tegra-compulab/.build-jetpack-7.2-blacksail/tegra-demo-distro/layers/meta-tegra-support \
++  /home/igor/prj/meta-tegra-compulab/.build-jetpack-7.2-blacksail/tegra-demo-distro/layers/meta-demo-ci \
++  /home/igor/prj/meta-tegra-compulab/.build-jetpack-7.2-blacksail/tegra-demo-distro/layers/meta-tegrademo \
++  "
++# Included from ../layers/meta-tegra-compulab/templates/bblayers.conf/bblayers.conf.00_append
++BBLAYERS:append = " \
++  /home/igor/prj/meta-tegra-compulab/.build-jetpack-7.2-blacksail/tegra-demo-distro/layers/meta-tegra-compulab \
++  /home/igor/prj/meta-tegra-compulab/.build-jetpack-7.2-blacksail/tegra-demo-distro/layers/meta-browser/meta-firefox \
++  "
+diff --git a/.build-jetpack-7.2-blacksail/tegra-demo-distro/build-edge-ai-nx-16g-noble/conf/distrolayer.cfg b/.build-jetpack-7.2-blacksail/tegra-demo-distro/build-edge-ai-nx-16g-noble/conf/distrolayer.cfg
+new file mode 100644
+--- /dev/null
++++ b/.build-jetpack-7.2-blacksail/tegra-demo-distro/build-edge-ai-nx-16g-noble/conf/distrolayer.cfg
+@@ -0,0 +1 @@
++meta-tegrademo
+diff --git a/.build-jetpack-7.2-blacksail/tegra-demo-distro/build-edge-ai-nx-16g-noble/conf/templateconf.cfg b/.build-jetpack-7.2-blacksail/tegra-demo-distro/build-edge-ai-nx-16g-noble/conf/templateconf.cfg
+new file mode 100644
+--- /dev/null
++++ b/.build-jetpack-7.2-blacksail/tegra-demo-distro/build-edge-ai-nx-16g-noble/conf/templateconf.cfg
+@@ -0,0 +1 @@
++meta-tegrademo/conf/templates/tegrademo
