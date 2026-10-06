@@ -1,0 +1,89 @@
+Shared FRAMOS Argus demo baseline -- NOT factory/production IQ tuning
+
+For IMX678 this package deliberately reuses the byte-identical NITO accepted by the
+previous Edge-AI FRAMOS IMX678 R39.2.0 setup on 2026-09-29. It is a generic ISP
+migration baseline, not sensor/lens-specific FRAMOS calibration. Previous
+capture, AE and AWB success does not qualify a new transport graph or image.
+The R39.2.1 Yocto/ADI graph must be independently capture-tested.
+
+Scope: Edge-AI Orin NX16G/P3767-0000, one DT-selected FRAMOS camera on
+EDGEDES port 0: IMX678 3856x2180 or IMX676 3552x3556, RGGB12 at 10 FPS.
+IMX676 has separately exported native mode data using the same generic template
+and converter; neither profile is factory tuning. See ARGUS-DEMO-VALIDATION.txt
+and IMX676-VALIDATION.txt in the layer for independent sensor results.
+No other modes, HDR, cold-start reliability, factory color accuracy,
+lens shading, or production use are qualified.
+
+IMX678 packaged SHA-256:
+fbbe09af35b1fe561b2f0c0995cdd2b916915284bf770ce8500456fb186e5f2f
+Size: 958476 bytes.
+Original file: imx678_front_framos-uncalibrated.nito
+Runtime file: /var/nvidia/nvcam/settings/edgedes-imx678-demo.nito
+The distinct runtime name preserves any legacy/vendor NITO unchanged.
+
+IMX676 packaged SHA-256:
+61ddaf20d9a6d639fa34d3e368d0c7d86fc469b1602fa2c4f86d591d736d41e3
+Size: 958476 bytes.
+Runtime file: /var/nvidia/nvcam/settings/edgedes-imx676-demo.nito
+Input: imx676-generic.cfg, 383108 bytes, exported on the R39.2.1 Yocto target
+on 2026-10-06 with NVCAMERA_NITO_PATH=CONFIG and an isolated diagnostic
+NVCAMERA_NITO_DUMP_PATH. Export succeeds although capture in CONFIG mode is
+rejected by this runtime; manual official conversion was therefore used.
+Input SHA-256:
+d516af6d2f7637393e724052fbbf45ccd5d4a142eb8c1628e79c2fd4b4eb8ccd
+Native mode metadata: 3552x3556 RGGB12, 10 FPS, knobset 0.
+The converter, library, template, agreement and UUID below are the same as
+for IMX678. No binary patching or proprietary runtime-library replacement.
+
+Generation provenance:
+- Input: previous target's generic-migration-only.cfg, exported through the
+  NVIDIA legacy CONFIG migration path.
+- Input SHA-256:
+  76d8f39aa311376e85adea190e756ae7462ff00b4f2eb501f31d6bf6418c75d7
+- Converter: unmodified official NVIDIA nvcfg2nito v1.0.1, native AArch64
+  executable, run under existing host QEMU and official BSP rootfs.
+- Converter SHA-256:
+  6675a3022373d9f13ea3de0f60dfa5569a8b0db9e3f770ab08da738c818b6a8c
+- Conversion library SHA-256:
+  04b5db05eb54dc9ff6b55270b5ffe99634aaa36ebe168f3bf4b98a401e5b5dd9
+- Missing parameters came only from NVIDIA's nonspecific template.nito;
+  no other sensor's tuned NITO was substituted.
+- Template SHA-256:
+  ff6a2d1a4ef707f6e5034249e466530043e65dbdf439cadfac0729c703839757
+- Official migration archive SHA-256:
+  15976d2e1cdd78d042436c50d743233e101a647b1515ec04517398c5a5b2118c
+- Archive targets R39.2.1 / JetPack 7.2.1; original capture target was R39.2.0.
+- Knobset 0; parameter UUID c8278e24-0e47-44e2-9691-36-3b-df-f4-1a-08.
+- Converter validation succeeded; dataSize 383108.
+- The bundled hotfix installer was NOT used and no core NVIDIA runtime
+  shared library was replaced to create or validate this baseline.
+
+Official sources:
+https://developer.nvidia.com/embedded/jetpack/downloads/archive-7.2.1
+https://developer.nvidia.com/downloads/embedded/l4t/r39_release_v2.1/jetson_customer_iq_migration_tools_r39.2.1_jp_7.2.1_ga.zip
+
+License and notices:
+The unchanged NVIDIA Driver License Agreement accompanying the official
+migration package is retained as
+Tegra_Software_License_Agreement-Tegra-Linux.txt. The profile contains generic
+NVIDIA-template data and is treated as proprietary, not relicensed as open
+source. Selecting this demo is a project build opt-in, not a new NVIDIA license
+grant or a statement that generated-output redistribution rights are settled.
+Use and any distribution remain subject to applicable NVIDIA terms. Retain
+the licenses/notices supplied by the existing NVIDIA runtime/application
+recipes as well. Do not distribute the converter, hotfix, or vendor archive
+as part of this package.
+
+Integration and rollback:
+The existing tegra-libraries-camera and tegra-argus-daemon recipes supply
+proprietary runtime binaries; argus-samples and nvarguscamerasrc are built from
+their existing source recipes. The demo never rebuilds proprietary Argus core.
+The service drop-in uses an ExecCondition and a small shell launcher. The
+same helper requires exactly one active module0 with badge imx678_port0_framos
+or imx676_port0_framos, sets that sensor's explicit NVCAMERA_NITO_PATH and execs
+the unchanged vendor daemon. Other or mixed profiles skip the service with a
+clear message. One argus_camera, argus_oneshot and nvarguscamerasrc serve both.
+The service guard selects the DT profile, not a probed sensor silicon ID.
+To restore generic Argus, remove the demo package/drop-in, reload systemd and
+restart nvargus-daemon when no capture process is running. Existing legacy
+NITO files and all driver/DTS/boot settings remain untouched by this package.
