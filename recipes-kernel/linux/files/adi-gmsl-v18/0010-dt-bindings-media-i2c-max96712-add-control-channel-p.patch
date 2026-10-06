@@ -1,0 +1,39 @@
+From 2710e45a7959e817a99ee0123127b232f09f8e75 Mon Sep 17 00:00:00 2001
+From: Dumitru Ceclan <dumitru.ceclan@analog.com>
+Date: Wed, 30 Sep 2026 01:41:44 +0300
+Subject: [PATCH 10/23] dt-bindings: media: i2c: max96712: add
+ control-channel-port property
+Upstream-Status: Submitted [https://lore.kernel.org/r/20260930-gmsl2-3_serdes-v18-0-43117818f499@analog.com]
+
+Add maxim,control-channel-port property to allow platforms choose which
+control-channel port MAX96724 exposes to the upstream I2C host.
+
+Suggested-by: Vivekananda Dayananda <vivekana@amd.com>
+Signed-off-by: Dumitru Ceclan <dumitru.ceclan@analog.com>
+Acked-by: Rob Herring (Arm) <robh@kernel.org>
+Tested-by: Martin Hecht <mhecht73@gmail.com>
+Tested-by: Tomi Valkeinen <tomi.valkeinen@ideasonboard.com>
+---
+ .../devicetree/bindings/media/i2c/maxim,max96712.yaml    | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/Documentation/devicetree/bindings/media/i2c/maxim,max96712.yaml b/Documentation/devicetree/bindings/media/i2c/maxim,max96712.yaml
+index 161d40a..ab1dcd8 100644
+--- a/Documentation/devicetree/bindings/media/i2c/maxim,max96712.yaml
++++ b/Documentation/devicetree/bindings/media/i2c/maxim,max96712.yaml
+@@ -41,6 +41,15 @@ properties:
+ 
+   enable-gpios: true
+ 
++  maxim,control-channel-port:
++    description:
++      Selects which deserializer control-channel port is connected to the
++      upstream I2C segment when the device resets. 0 selects port 0, 1 selects
++      port 1. Defaults to 0 when omitted.
++    $ref: /schemas/types.yaml#/definitions/uint32
++    enum: [0, 1]
++    default: 0
++
+   i2c-alias-pool:
+     maxItems: 4
+ 

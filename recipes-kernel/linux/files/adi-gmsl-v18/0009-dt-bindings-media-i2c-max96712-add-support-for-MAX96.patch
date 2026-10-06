@@ -1,0 +1,44 @@
+From 86f60b4c8a603925146608d8550e7009accc5349 Mon Sep 17 00:00:00 2001
+From: Cosmin Tanislav <demonsingur@gmail.com>
+Date: Wed, 30 Sep 2026 01:41:43 +0300
+Subject: [PATCH 09/23] dt-bindings: media: i2c: max96712: add support for
+ MAX96724F/R
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+Upstream-Status: Submitted [https://lore.kernel.org/r/20260930-gmsl2-3_serdes-v18-0-43117818f499@analog.com]
+
+MAX96724F/MAX96724R are a lower capability variant of the MAX96724 which
+only support a fixed rate of 3Gbps in the forward direction.
+
+Signed-off-by: Cosmin Tanislav <demonsingur@gmail.com>
+Acked-by: Rob Herring (Arm) <robh@kernel.org>
+Reviewed-by: Niklas Söderlund <niklas.soderlund+renesas@ragnatech.se>
+Tested-by: Martin Hecht <mhecht73@gmail.com>
+Tested-by: Tomi Valkeinen <tomi.valkeinen@ideasonboard.com>
+---
+ .../devicetree/bindings/media/i2c/maxim,max96712.yaml        | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/Documentation/devicetree/bindings/media/i2c/maxim,max96712.yaml b/Documentation/devicetree/bindings/media/i2c/maxim,max96712.yaml
+index d2dd72f..161d40a 100644
+--- a/Documentation/devicetree/bindings/media/i2c/maxim,max96712.yaml
++++ b/Documentation/devicetree/bindings/media/i2c/maxim,max96712.yaml
+@@ -23,12 +23,17 @@ description: |
+   MAX96712 can be paired with first-generation 3.12Gbps or 1.5Gbps GMSL1
+   serializers or operate up to 3.12Gbps with GMSL2 serializers in GMSL1 mode.
+ 
++  MAX96724F and MAX96724R only support a fixed rate of 3Gbps in the forward
++  direction.
++
+ properties:
+   compatible:
+     items:
+       - enum:
+           - maxim,max96712
+           - maxim,max96724
++          - maxim,max96724f
++          - maxim,max96724r
+ 
+   reg:
+     description: I2C device address
