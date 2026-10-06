@@ -1,5 +1,13 @@
 # Tegra CompuLab meta layer
 
+## EDGEDES camera demo
+
+See the [FRAMOS IMX676/IMX678 demo guide](recipes-multimedia/argus/README.md) for
+GStreamer preview/test pipelines, Argus JPEG/viewer examples, and the explicit
+demo-only Yocto option. It covers one IMX678 (3856x2180) or IMX676 (3552x3556)
+on EDGEDES port 0, using the same Argus applications at 10 FPS;
+other camera profiles are not qualified by that guide.
+
 ## NVidia resources:
 * NVidia [tegra-demo-distro](https://github.com/OE4T/tegra-demo-distro) Yocto repository.
 

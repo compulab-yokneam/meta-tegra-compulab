@@ -21,7 +21,8 @@ Source organization
 
 The NVIDIA OOT bbappend conditionally adds 0100 (stream-aware bridge graph,
 format propagation, sensor metadata/control registration) and 0101 (TEVS and
-native FRAMOS IMX678 sensor modules). NVIDIA interfaces remain the leaf-sensor
+native FRAMOS IMX678 sensor modules), followed by 0102 (native FRAMOS IMX676).
+NVIDIA interfaces remain the leaf-sensor
 API; ADI owns serializer/deserializer routing and nested I2C address translation.
 
 The edgedes-adi-v18-devicetree recipe builds the modified CompuLab/NVIDIA base,
@@ -93,6 +94,8 @@ before capture; NVIDIA's initial V4L2 exposure control was 30 us on this target.
 Do not assume the DT's default_exp_time is automatically selected by every app.
 
 Current raw capture commands (terminate externally if no frame arrives):
+Stop all Argus clients and nvargus-daemon first. Set bypass_mode=0 when
+switching back from Argus to direct V4L2; Argus leaves this control enabled.
 
     v4l2-ctl -d /dev/video0 \
       --set-fmt-video=width=640,height=480,pixelformat=UYVY \
@@ -100,15 +103,31 @@ Current raw capture commands (terminate externally if no frame arrives):
 
     v4l2-ctl -d /dev/video0 \
       --set-fmt-video=width=3856,height=2180,pixelformat=RG12 \
-      --set-ctrl=exposure=10000,gain=0 \
+      --set-ctrl=bypass_mode=0,exposure=10000,gain=0 \
       --stream-mmap=4 --stream-count=5 --stream-poll --stream-to=imx678.raw
+
+IMX676 uses its separate edgedes-adi-v18-framos-imx676-port0.dtb profile:
+
+    v4l2-ctl -d /dev/video0 \
+      --set-fmt-video=width=3552,height=3556,pixelformat=RG12 \
+      --set-ctrl=bypass_mode=0,exposure=10000,gain=0 \
+      --stream-mmap=4 --stream-count=5 --stream-poll --stream-to=imx676.raw
+
+The leaf preserves 200 ms XCLR reset and native 720-Mb/s/lane RAW12 output.
+MAX96724 PHY2 -> CSI-C lane order, VC0 and 2.5-Gb/s output remain unchanged.
+See recipes-multimedia/argus/IMX676-VALIDATION.txt for the separate qualification.
 
 Limits and follow-up
 -------------------
 Only one camera is enabled per profile. Mixed simultaneous capture, dynamic
-routing, other TEVS models/modes and IMX676 are not qualified by these tests.
-Argus/NITO/ISP integration is not validated on this Yocto graph; NVIDIA firmware
-direct-I2C metadata must not assume an ATR alias allocation order.
+routing and other TEVS models/modes are not qualified by these tests.
+An explicit internal IMX678 Argus/ISP demo was validated on this Yocto graph
+on 2026-10-06: native JPEG, 100 frames at 10 FPS with AE/AWB convergence,
+native Wayland GStreamer preview and GTK/Xwayland preview. See
+recipes-multimedia/argus/README.md and ARGUS-DEMO-VALIDATION.txt. Its reused
+NITO is an uncalibrated migration baseline, not factory sensor/lens tuning.
+NVIDIA firmware direct-I2C metadata must not assume an ATR alias order;
+this sensor uses the normal Linux control/regmap path through ATR.
 MAX96793 pixel-only advertisement is a conservative EDGEDES qualification
 policy, not a claim that the hardware lacks tunnel support.
 All target validation so far uses warm reboot, not cold-power startup. 0025

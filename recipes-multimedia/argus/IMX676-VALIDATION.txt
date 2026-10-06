@@ -1,0 +1,161 @@
+EDGEDES IMX676 support -- validation, 2026-10-06
+==============================================
+
+Scope
+-----
+Edge-AI Orin NX16G, root@192.168.122.250, Linux
+6.18.48-yocto-standard-adi-v18, NVIDIA R39.2.1, Yocto Blacksail.
+One FRAMOS ISB_IMX676_SG11 + F-CON_08/MAX96793 on EDGEDES port 0.
+Qualified mode: 3552x3556 RGGB RAW12 at 10 FPS, sensor mode 0.
+This matches the single-native-mode support level of the IMX678 profile.
+No other resolutions, rates, HDR, sync or simultaneous cameras are claimed.
+
+Implementation
+--------------
+0102-media-edgedes-add-framos-imx676.patch adds fr_imx676.c and its native
+mode-table subset to nvidia-kernel-oot. It is a sensor leaf, not a fork of
+the ADI transport. It uses the previously qualified FRAMOS/CompuLab tables:
+internal timing clock 74.25 MHz, HMAX 1256, VMAX 5912, CSI 720 Mb/s/lane.
+Gain (0.3 dB steps), exposure, fixed 10-FPS frame rate and group hold use
+standard tegracam controls. Sensor identity is selected by DT, not chip ID.
+
+edgedes-adi-v18-framos-imx676-port0.dtso produces an overlay and complete DTB.
+Priority lane order is unchanged: sensor/serializer four identity lanes,
+MAX96724 PHY2/source pad 6 -> Edge-AI CSI-C/port-index 2, VC0, no inversion.
+Deserializer output stays 2.5 Gb/s/lane. Sensor endpoint link frequency
+360 MHz represents 720 Mb/s/lane, not the deserializer output frequency.
+GPIO consumers preserve MFP0=XCLR, MFP6=TENABLE low, MFP8=PW_EN.
+Power-on: XCLR low, PW_EN low 5 ms/high, INCK 37.125 MHz enabled,
+msleep(200), release XCLR, wait 40 ms. No new analyzer measurement was made.
+
+One shared Argus package
+------------------------
+edge-ai-argus-framos-demo replaces edge-ai-argus-imx678-demo.
+The old build include remains a compatibility alias to the shared include.
+Both sensors use exactly the SAME argus_camera, argus_oneshot and
+nvarguscamerasrc binaries. There is no sensor-specific Argus application,
+second proprietary runtime, core-library replacement or converter installer.
+
+The shared service guard accepts exactly one supported live module0 badge.
+Its shell launcher chooses sensor-specific NITO mode data and execs the
+unchanged NVIDIA nvargus-daemon. Switching sensors requires selecting the
+matching DTB; it is not automatic silicon detection or mixed-camera support.
+Guard fixtures pass for IMX676, IMX678 and an additional disabled module;
+TEVS and mixed active modules return 1. Both launcher profile paths pass.
+
+IMX678's NITO remains byte-identical. IMX676 needs different native mode
+metadata: the IMX678 NITO correctly failed to initialize a 3552x3556 mode.
+The current runtime exports binary CFG with CONFIG but rejects capture in
+that migration mode. The exported CFG was manually converted with NVIDIA's
+unmodified official nvcfg2nito v1.0.1, the same template and conversion library
+used previously, via existing host QEMU/rootfs. NVIDIA's migration guide
+provided this workflow. No blind binary editing or tuned-other-sensor NITO.
+These are generic, UNCALIBRATED demo profiles, not FRAMOS factory IQ tuning.
+Provenance, input/output hashes and unchanged agreement: files/PROVENANCE.txt.
+
+Build and deployment
+--------------------
+The OOT package retry completed: 3458 tasks, 3438 cached, 20 rerun.
+DT deploy completed: 950 tasks, 938 cached, 12 rerun.
+Explicit OOT/profile package QA passed with normal checks, no suppression.
+Final shared profile package completed: 3356 tasks, 3344 cached, 12 rerun.
+Final shared package QA passed: 3326 tasks, 3325 cached, one QA task rerun.
+Forced-task/taint warnings are recorded; they are not compile/QA failures.
+An initial Makefile patch-context error was fixed before the successful build.
+A full rootfs/flashable image was not regenerated.
+
+Artifacts under build-edge-ai-nx-16g/tmp-mc-edge-ai-runtime/deploy/:
+  deb/edge_ai_nx_16g/
+    nv-kernel-module-fr-imx676-6.18.48-yocto-standard-adi-v18_39.2.1-r0_arm64.deb
+    edge-ai-argus-framos-demo_1.0-r1_arm64.deb
+  images/edge-ai-nx-16g/devicetree/
+    edgedes-adi-v18-framos-imx676-port0.dtb
+    edgedes-adi-v18-framos-imx676-port0.dtbo
+
+Shared profile .deb SHA256:
+5790cfa19290cc1264d5607b21adc83350d6b213e9441cf9dfce7b51ac68f5ac
+Complete IMX676 DTB SHA256:
+99e6293209610dea3c3538cbaeb545b363339b9ccd4c5312c7f34c664ced7034
+Installed stripped fr_imx676.ko SHA256:
+e3314fe28b6a0f0a64bd839d9a3c825be12d96b807968e3c84829ab76c641d86
+
+This target uses a manually installed ADI bootset, not a dpkg-managed ADI
+kernel. Only the packaged matching IMX676 module was extracted/installed,
+depmod ran for the exact uname, and the new DTB/boot label were added.
+No fake kernel dependency was registered. The shared Argus package was
+installed normally with dpkg; dependency checks passed and --audit is clean.
+Existing boot entries and IMX678 DTB remain available for rollback.
+
+Measured tests
+--------------
+1. Direct V4L2 RAW: five complete frames, 126309120 bytes total,
+   stride 7104, sizeimage 25261824. A separate 100-frame run reports 10 FPS.
+
+2. Installed shared profile Argus metadata: 100/100 native NV12 frames,
+   observed sensor-timestamp rate 9.99939802 FPS. Zero timestamp errors,
+   mailbox skips, invalid automatic states or nonexact requested durations.
+   AWB converged in 71/100 frames and all final 20. AE convergence was 0/100;
+   AE reports TIMEOUT in this ceiling/light scene. This is an outstanding
+   generic IQ limitation, not claimed as a successful AE qualification.
+   Exposure changed from 33.330827 ms to about 7.570 ms; analog gain near 1.
+
+3. nvarguscamerasrc -> identity -> fakesink: exactly 100 actual buffer
+   messages, clean EOS, exit 0, 10.9818 seconds. EOS alone is not evidence.
+
+4. Native Wayland preview as weston: native 3552x3556 NV12 -> nvvidconv ->
+   720x720 system-memory BGRx -> identity -> waylandsink. Exactly 100 actual
+   buffers, clean EOS, exit 0, 10.9721 seconds.
+
+5. Unchanged argus_oneshot saved a native 3552x3556 JPEG with a real ceiling
+   scene, exit 0. Shared argus_camera GTK/Xwayland --still=1 --exit also saved
+   image0000.jpg, exit 0. The lens image is soft; focus/IQ is not qualified.
+
+6. Shared GTK live --kpi=1 ran for 25 seconds near 10 FPS, with zero reported
+   frame drops; 22 display-FPS samples range 9.98-10.02 FPS.
+   Intentional supervisor exit 124 is the duration limit;
+   request flush and device close completed normally.
+
+7. Direct RAW controls: four complete frames per test at 5 ms/0 dB,
+   20 ms/0 dB, and 5 ms/6 dB. Last-frame subsampled 16-bit-container means
+   increased 6405.891 -> 10159.098 with exposure and -> 7784.038 with gain.
+   This proves image response, not linear radiometric calibration. Bright
+   ceiling lights saturate. Switching from Argus requires bypass_mode=0;
+   the first diagnostic omitted it and got no frames, so was not a pass.
+
+8. Final warm reboot: imx676 bound automatically and the shared persistent
+   Argus service started. Unchanged argus_oneshot again saved a native JPEG,
+   exit 0. GTK saved another native JPEG; the following GStreamer checkpoint
+   delivered exactly 10 actual buffers with clean EOS/exit 0. No sensor-specific
+   application reinstall was required. The daemon is active, no clients left.
+
+The stock oneShot sample logs outstanding-object cleanup/Unknown stream
+deleted warnings after a successful JPEG. These are retained observations,
+not reported as a clean daemon log; the service remains active.
+
+Unchanged reference and evidence
+--------------------------------
+IMX678 sensor driver/DT sources were not changed. Rebuilt IMX678 complete DTB
+is byte-identical to the qualified bootset. Existing target Image, initrd,
+IMX678 DTB and shared application/plugin SHA256 checks all still pass.
+IMX678 is physically disconnected, so it was NOT recaptured during this task.
+
+Local logs/data:
+  .deploy-jetpack-7.2-blacksail/imx676-support-20261006.gJvGBw/
+  .deploy-jetpack-7.2-blacksail/imx676-build-retry.log
+  .deploy-jetpack-7.2-blacksail/imx676-dt-build.log
+  .deploy-jetpack-7.2-blacksail/imx676-package-qa.log
+  .deploy-jetpack-7.2-blacksail/imx676-shared-profile-build.log
+  .deploy-jetpack-7.2-blacksail/imx676-shared-profile-qa.log
+Target backups/logs/RAW:
+  /root/edgedes-imx676-20261006.jreP8t/
+GTK test JPEG:
+  /root/edgedes-imx676-20261006.jreP8t/gtk-image0000.jpg
+The first GTK test used /tmp, which was cleared by the final reboot.
+The post-reboot GTK checkpoint is copied to the persistent evidence above.
+
+Warm-state capture only; cold-power reliability is not qualified. No factory
+color/lens shading, external sync, other rates/modes or mixed cameras tested.
+NVIDIA generic LSC warning remains; see retained proprietary terms/provenance.
+No diagnostic capture client is intended to remain running. See README.md
+for shared build/use and package rollback; restore the saved extlinux file
+to undo the target's IMX676 boot selection when the matching camera is fitted.
