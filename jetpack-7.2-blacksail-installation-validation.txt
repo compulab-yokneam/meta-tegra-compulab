@@ -1,0 +1,59 @@
+Edge-AI installation validation - 2026-10-04T14:20:00+03:00
+Host: root@192.168.122.250
+
+Result: the built image was successfully flashed and is installed/running.
+Core boot, NVMe, SSH, GPU compute and desktop checks passed. The image has
+BSP warnings and a historical network-online timeout to address separately.
+
+Verified
+- Correct board: EdgeAI-ORN / Compulab device-tree compatible; Orin NX
+  P3767-0000 / FAB 303 / B.1. Serial 1422825101600 maps to checked USB 46fc1920.
+- Installed OS exactly matches the built OE4Tegra 6.1+snapshot-f94ae3d6...
+  release. Running kernel: 6.18.48-yocto-standard, aarch64.
+- Firmware is L4T 39.2.1. Bootloader/rootfs slot A active; both slots report
+  normal status. Slot B was not independently boot-tested.
+- Retry completed both APP/APP_b writes with host/device SUCCESS at
+  2026-10-03 19:30:54 Asia/Jerusalem and launcher exit code 0.
+- Root is /dev/nvme0n1p1, ext4 read-write, with about 21.7GiB available.
+  NVMe GPT verifies without errors; both rootfs partitions are present.
+- Both kernel and DTB partition payloads exactly match staged SHA256s.
+  EFI partition matches all bytes except FAT32 state byte 65 (0 -> 1),
+  consistent with its live read-write mount; no EFI payload mismatch.
+- CUDA driver reports 13.2 and one Orin GPU. A tiny PTX kernel allocated
+  memory, wrote 42, synchronized and returned 42; all CUDA calls succeeded.
+- Weston is active/running. User confirms the connected display works.
+- Ethernet is currently routable/online at 1Gbps; SSH works.
+
+Remaining issues
+1. systemd is degraded only by systemd-networkd-wait-online.service.
+   Its 120-second boot wait expired without Ethernet carrier. Carrier was
+   acquired approximately 15.9 hours later. This explains the old failure;
+   current networking works. Review wait-online policy for offline boots.
+2. NVIDIA DCE/display-control RPC errors recur. Desktop and compute tests
+   pass, but investigate driver/firmware display-control integration and
+   hotplug/suspend behavior rather than treating the logs as clean.
+3. PCIe controllers 140c0000 and 140e0000 fail to probe due to missing PHY
+   entries. NVMe and Ethernet use working controllers. Check the carrier
+   device tree; disable genuinely unused ports or supply proper bindings.
+4. GPIO udev references a nonexistent gpio group. TPM self-test reports
+   an error, and tpm2_id is absent. Camera/debug IVC channels lack drivers.
+   Align packages/groups/modules with the hardware features required.
+5. Other notices include NVMe SUBNQN/namespace quirks, out-of-tree module
+   taint, missing sysctl option, syslog/TEE optional environment variables,
+   and martian multicast packets. No ongoing ext4/NVMe I/O failure was seen;
+   boot-time ext4 orphan recovery completed successfully.
+
+No additional permission or cold power cycle was needed. Target firmware,
+configuration and boot state were not changed. Camera, CAN, GPIO, TPM and
+application inference workloads remain outside this installation check.
+
+Evidence: .deploy-jetpack-7.2-blacksail/post-deployment-validation/
+boot-audit.json, followup-audit.json, display-audit.json, warning-summary.json,
+expected-boot-payloads.json and esp-sector-diff.json. Successful flash logs
+are in the NX 16GB profile's device-logs-2026-10-03-19.05.34 directory.
+
+FAT interpretation is based on Linux mount-state handling:
+[Linux v6.18 FAT state handling](https://github.com/torvalds/linux/blob/v6.18/fs/fat/inode.c)
+[Linux FAT_STATE_DIRTY definition](https://github.com/torvalds/linux/blob/v6.18/include/uapi/linux/msdos_fs.h)
+GPU test uses documented module loading and execution APIs:
+[NVIDIA CUDA Driver API module loading](https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MODULE.html)

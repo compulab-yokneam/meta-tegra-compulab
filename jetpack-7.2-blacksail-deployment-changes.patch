@@ -1,0 +1,391 @@
+Subject: [PATCH] Fix Edge-AI NX 16GB deployment automount race
+
+Scope: local deployment fixes only; original image/rootfs and BSP sources
+are unchanged. The latest hardware retry passed GPT/partprobe and started
+rootfs copying; final flash completion and normal boot are not yet verified.
+
+Apply from the prepared deployment workspace (.deploy-jetpack-7.2-blacksail),
+containing the extracted bundle named demo-image-weston-edge-ai-universal-6.1+snapshot-f94ae3d6ba49aef86f497998c0e0232a5039510a, the original
+pre-fix deploy-edge-ai.sh, and deployment-readiness.json from the checked
+hardware probe. Paths below are relative to that workspace, not repo root.
+The changes are already installed in the active workspace; this patch is
+for review/replay. Verify with git apply --check before applying to a copy.
+
+The readiness hunk adds only flash_target configuration; dynamic statuses,
+logs and historical probe evidence are deliberately not changed. The target
+is the checked board (USB serial 46fc1920, 488397168 sectors, P3767-0000).
+Existing deployment_directory remains an absolute path to its extraction;
+update it and recheck hardware if reproducing on another host or board.
+The canonical helper and profile helper are identical copies.
+
+Original launcher SHA256: e88350572f13b37bba57ca99e36fdbf2395e9ae8ae50e69f9585013f13943c22
+Original make-sdcard SHA256: 88a256622c676751b2e9de8d92f390c127c10a8e2c41ed26b9da9d9919d1d762
+
+---
+ .../profiles/edge-ai-nx-16g/clab-flash-target.json |   7 ++
+ .../edge-ai-nx-16g/clab-prepare-flash-target.py    | 100 +++++++++++++++++++++
+ .../profiles/edge-ai-nx-16g/make-sdcard            |   9 +-
+ deploy-edge-ai.sh                                  |  75 ++++++++++++++--
+ deployment-readiness.json                          |   7 ++
+ prepare-flash-target.py                            | 100 +++++++++++++++++++++
+ 6 files changed, 292 insertions(+), 6 deletions(-)
+
+diff --git a/demo-image-weston-edge-ai-universal-6.1+snapshot-f94ae3d6ba49aef86f497998c0e0232a5039510a/profiles/edge-ai-nx-16g/clab-flash-target.json b/demo-image-weston-edge-ai-universal-6.1+snapshot-f94ae3d6ba49aef86f497998c0e0232a5039510a/profiles/edge-ai-nx-16g/clab-flash-target.json
+new file mode 100644
+index 0000000..798289d
+--- /dev/null
++++ b/demo-image-weston-edge-ai-universal-6.1+snapshot-f94ae3d6ba49aef86f497998c0e0232a5039510a/profiles/edge-ai-nx-16g/clab-flash-target.json
+@@ -0,0 +1,7 @@
++{
++  "usb_serial": "46fc1920",
++  "disk_sectors": 488397168,
++  "board_id": "3767",
++  "board_sku": "0000",
++  "machine": "edge-ai-nx-16g"
++}
+diff --git a/demo-image-weston-edge-ai-universal-6.1+snapshot-f94ae3d6ba49aef86f497998c0e0232a5039510a/profiles/edge-ai-nx-16g/clab-prepare-flash-target.py b/demo-image-weston-edge-ai-universal-6.1+snapshot-f94ae3d6ba49aef86f497998c0e0232a5039510a/profiles/edge-ai-nx-16g/clab-prepare-flash-target.py
+new file mode 100644
+index 0000000..c36be62
+--- /dev/null
++++ b/demo-image-weston-edge-ai-universal-6.1+snapshot-f94ae3d6ba49aef86f497998c0e0232a5039510a/profiles/edge-ai-nx-16g/clab-prepare-flash-target.py
+@@ -0,0 +1,100 @@
++#!/usr/bin/env python3
++"""Verify the selected Jetson USB disk and unmount it before GPT writes."""
++from pathlib import Path
++import json
++import os
++import stat
++import subprocess
++import sys
++
++
++def run(arguments):
++    return subprocess.run(arguments, check=True, text=True, capture_output=True)
++
++
++def identify_target(device, expected, sys_root=Path('/sys')):
++    name = Path(device).name
++    block = sys_root / 'class/block' / name
++    if not block.exists() or (block / 'partition').exists():
++        raise RuntimeError('Expected a whole USB disk: ' + str(device))
++    ancestry = (block / 'device').resolve()
++    usb = next((parent for parent in (ancestry, *ancestry.parents)
++                if (parent / 'idVendor').is_file() and (parent / 'idProduct').is_file()), None)
++    if usb is None:
++        raise RuntimeError('Refusing a disk without a USB parent: ' + str(device))
++    values = {key: (usb / key).read_text().strip()
++              for key in ('idVendor', 'idProduct', 'serial')}
++    if values != {'idVendor': '1d6b', 'idProduct': '0104', 'serial': expected['usb_serial']}:
++        raise RuntimeError('USB disk identity does not match the checked Edge-AI: ' + str(values))
++    vendor = (block / 'device/vendor').read_text().strip()
++    if vendor != 'nvme0n1':
++        raise RuntimeError('Expected the board NVMe export, found: ' + vendor)
++    sectors = int((block / 'size').read_text().strip())
++    if sectors != expected['disk_sectors']:
++        raise RuntimeError(f'Board NVMe capacity changed: {sectors} sectors')
++    return block
++
++
++def properties(output):
++    return dict(line.split('=', 1) for line in output.splitlines() if '=' in line)
++
++
++def mounts_for(device, runner=run):
++    result = runner(['findmnt', '--json', '--list', '--source', device, '--output', 'TARGET'])
++    return [entry['target'] for entry in json.loads(result.stdout).get('filesystems', [])]
++
++
++def prepare(device, expected, sys_root=Path('/sys'), runner=run):
++    identify_target(device, expected, sys_root)
++    identity = runner(['udevadm', 'info', '--query=property', '--name=' + str(device)])
++    props = properties(identity.stdout)
++    if props.get('UDISKS_IGNORE') != '1' or props.get('UDISKS_AUTO') != '0':
++        raise RuntimeError('Scoped automount guard is missing; use deploy-edge-ai.sh')
++    result = runner(['lsblk', '--noheadings', '--raw', '--paths', '--output', 'NAME', str(device)])
++    devices = result.stdout.splitlines()
++    if not devices or devices[0] != str(device):
++        raise RuntimeError('Unexpected lsblk disk tree: ' + result.stdout)
++    for child in reversed(devices):
++        try:
++            targets = mounts_for(child, runner)
++        except subprocess.CalledProcessError as error:
++            if error.returncode != 1 or error.stderr.strip():
++                raise
++            targets = []
++        for target in targets:
++            print(f'Unmounting checked board disk: {child} at {target}', flush=True)
++            runner(['umount', '--', target])
++    runner(['udevadm', 'settle', '--timeout=10'])
++    identify_target(device, expected, sys_root)
++    for child in devices:
++        try:
++            targets = mounts_for(child, runner)
++        except subprocess.CalledProcessError as error:
++            if error.returncode != 1 or error.stderr.strip():
++                raise
++            targets = []
++        if targets:
++            raise RuntimeError(f'Refusing GPT writes while {child} is mounted: {targets}')
++    print(f'Checked Edge-AI NVMe {device}: identity matches, automount blocked, no mounts', flush=True)
++
++
++def main():
++    if len(sys.argv) != 2:
++        raise RuntimeError('Usage: prepare-flash-target.py /dev/USB_DISK')
++    device = str(Path(sys.argv[1]).resolve())
++    if os.geteuid() != 0:
++        raise RuntimeError('Flash target preparation must run as root')
++    if not stat.S_ISBLK(os.stat(device).st_mode):
++        raise RuntimeError('Expected a block device: ' + device)
++    expected = json.loads(Path(__file__).with_name('clab-flash-target.json').read_text())
++    prepare(device, expected)
++
++
++if __name__ == '__main__':
++    try:
++        main()
++    except (RuntimeError, OSError, subprocess.CalledProcessError, ValueError) as error:
++        print('ERR: flash target preparation failed: ' + str(error), file=sys.stderr)
++        if isinstance(error, subprocess.CalledProcessError) and error.stderr:
++            print(error.stderr.strip(), file=sys.stderr)
++        raise SystemExit(1)
+diff --git a/demo-image-weston-edge-ai-universal-6.1+snapshot-f94ae3d6ba49aef86f497998c0e0232a5039510a/profiles/edge-ai-nx-16g/make-sdcard b/demo-image-weston-edge-ai-universal-6.1+snapshot-f94ae3d6ba49aef86f497998c0e0232a5039510a/profiles/edge-ai-nx-16g/make-sdcard
+index 54900d7..0a07c6d 100755
+--- a/demo-image-weston-edge-ai-universal-6.1+snapshot-f94ae3d6ba49aef86f497998c0e0232a5039510a/profiles/edge-ai-nx-16g/make-sdcard
++++ b/demo-image-weston-edge-ai-universal-6.1+snapshot-f94ae3d6ba49aef86f497998c0e0232a5039510a/profiles/edge-ai-nx-16g/make-sdcard
+@@ -460,6 +460,13 @@ if [ ${#PARTS[@]} -eq 0 ]; then
+     exit 1
+ fi
+ 
++# The desktop can mount the old NVMe partitions as soon as the Jetson
++# exposes USB storage. Refuse GPT writes until the exact board disk is
++# identified, the scoped automount guard is active, and all mounts are gone.
++if [ -b "$output" ]; then
++    python3 "$here/clab-prepare-flash-target.py" "$output" || exit 1
++fi
++
+ echo  "Creating partitions"
+ if ! command -v sgdisk >/dev/null 2>&1; then
+     echo "ERR: 'sgdisk' command not found. Please install the 'gdisk' package." >&2
+@@ -485,7 +492,7 @@ if ! sgdisk "$output" --verify >/dev/null 2>&1; then
+ fi
+ if [ -b "$output" ]; then
+     sleep 1
+-    if ! $SUDO partprobe "$output" >/dev/null 2>&1; then
++    if ! $SUDO partprobe "$output"; then
+ 	echo "ERR: partprobe failed after partitioning $output" >&2
+ 	exit 1
+     fi
+diff --git a/deploy-edge-ai.sh b/deploy-edge-ai.sh
+index 3ea1df1..45e4237 100755
+--- a/deploy-edge-ai.sh
++++ b/deploy-edge-ai.sh
+@@ -1,14 +1,79 @@
+ #!/usr/bin/env bash
+ set -euo pipefail
++if [ "$#" -ne 0 ]; then
++    printf '%s\n' 'Usage: deploy-edge-ai.sh (no arguments)' >&2
++    exit 2
++fi
++if [ "$EUID" -ne 0 ]; then
++    exec sudo -- bash "$(readlink -f -- "${BASH_SOURCE[0]}")"
++fi
+ clab_deploy_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+-clab_bundle=$(python3 - "$clab_deploy_root/deployment-readiness.json" <<'PYTHON'
+-import json, sys
+-state = json.load(open(sys.argv[1]))
+-if not state.get('recovery_eeprom_probe_completed') or state.get('machine') != 'edge-ai-nx-16g':
++clab_metadata=$(python3 - "$clab_deploy_root/deployment-readiness.json" <<'PYTHON'
++import json, re, sys
++with open(sys.argv[1]) as stream:
++    state = json.load(stream)
++target = state.get('flash_target', {})
++if (not state.get('recovery_eeprom_probe_completed')
++        or state.get('machine') != 'edge-ai-nx-16g'
++        or target.get('board_id') != '3767' or target.get('board_sku') != '0000'):
+     raise SystemExit('The NX 16GB recovery check must pass before deployment')
++if not re.fullmatch('[0-9a-f]{8}', target.get('usb_serial', '')):
++    raise SystemExit('Missing checked USB serial for the automount guard')
+ print(state['deployment_directory'])
++print(target['usb_serial'])
+ PYTHON
+ )
++mapfile -t clab_fields <<< "$clab_metadata"
++[ "${#clab_fields[@]}" -eq 2 ] || exit 1
++clab_bundle=${clab_fields[0]}
++clab_usb_serial=${clab_fields[1]}
++exec 9> "$clab_deploy_root/deployment.lock"
++flock --nonblock 9 || { printf '%s\n' 'Another deployment is already running.' >&2; exit 1; }
++
++clab_rule=
++clab_cleanup() {
++    local clab_rc=$?
++    trap - EXIT
++    if [ -n "$clab_rule" ]; then
++        rm -f -- "$clab_rule"
++        udevadm control --reload-rules || printf '%s\n' 'Could not reload udev rules after cleanup.' >&2
++    fi
++    exit "$clab_rc"
++}
++trap clab_cleanup EXIT
++trap 'exit 130' INT
++trap 'exit 143' TERM
++
++# Match only this board's flashing gadget. Explicit UDisks mounts used by
++# initrd-flash remain available, while desktop automount is suppressed.
++mkdir -p /run/udev/rules.d
++clab_rule=$(mktemp --suffix=.rules "/run/udev/rules.d/99-zz-clab-edge-ai-${clab_usb_serial}-XXXXXX")
++printf 'SUBSYSTEM=="block", SUBSYSTEMS=="usb", ATTRS{idVendor}=="1d6b", ATTRS{idProduct}=="0104", ATTRS{serial}=="%s", ENV{UDISKS_IGNORE}="1", ENV{UDISKS_AUTO}="0"\n' \
++    "$clab_usb_serial" > "$clab_rule"
++chmod 0644 "$clab_rule"
++udevadm control --reload-rules
++printf 'Temporary automount guard enabled for Edge-AI USB serial %s.\n' "$clab_usb_serial"
++
++python3 - "$clab_deploy_root/deployment-readiness.json" <<'PYTHON'
++from pathlib import Path
++import json, sys
++path = Path(sys.argv[1])
++state = json.loads(path.read_text())
++state.update(status='flashing', deployment_started=True, deployment_completed=False)
++path.write_text(json.dumps(state, indent=2) + '\n')
++PYTHON
+ cd -- "$clab_bundle"
+ printf '%s\n' 'Deploying JetPack 7.2 / L4T R39.2.1: replaces board NVMe contents and updates QSPI boot firmware.'
+-exec sudo ./flash-edge-ai.sh
++clab_flash_rc=0
++./flash-edge-ai.sh || clab_flash_rc=$?
++python3 - "$clab_deploy_root/deployment-readiness.json" "$clab_flash_rc" <<'PYTHON'
++from pathlib import Path
++import json, sys
++path = Path(sys.argv[1])
++state = json.loads(path.read_text())
++rc = int(sys.argv[2])
++state.update(status='flash_completed_pending_boot_check' if rc == 0 else 'flash_failed',
++             flash_exit_code=rc, deployment_completed=rc == 0)
++path.write_text(json.dumps(state, indent=2) + '\n')
++PYTHON
++exit "$clab_flash_rc"
+diff --git a/deployment-readiness.json b/deployment-readiness.json
+index 47437f8..0c911b8 100644
+--- a/deployment-readiness.json
++++ b/deployment-readiness.json
+@@ -5,6 +5,13 @@
+   "module": "CompuLab Edge-AI Orin NX 16GB",
+   "module_sku": "P3767-0000",
+   "machine": "edge-ai-nx-16g",
++  "flash_target": {
++    "usb_serial": "46fc1920",
++    "disk_sectors": 488397168,
++    "board_id": "3767",
++    "board_sku": "0000",
++    "machine": "edge-ai-nx-16g"
++  },
+   "current_l4t": "39.2.0",
+   "image_l4t": "39.2.1",
+   "target_disk": "nvme0n1",
+diff --git a/prepare-flash-target.py b/prepare-flash-target.py
+new file mode 100644
+index 0000000..c36be62
+--- /dev/null
++++ b/prepare-flash-target.py
+@@ -0,0 +1,100 @@
++#!/usr/bin/env python3
++"""Verify the selected Jetson USB disk and unmount it before GPT writes."""
++from pathlib import Path
++import json
++import os
++import stat
++import subprocess
++import sys
++
++
++def run(arguments):
++    return subprocess.run(arguments, check=True, text=True, capture_output=True)
++
++
++def identify_target(device, expected, sys_root=Path('/sys')):
++    name = Path(device).name
++    block = sys_root / 'class/block' / name
++    if not block.exists() or (block / 'partition').exists():
++        raise RuntimeError('Expected a whole USB disk: ' + str(device))
++    ancestry = (block / 'device').resolve()
++    usb = next((parent for parent in (ancestry, *ancestry.parents)
++                if (parent / 'idVendor').is_file() and (parent / 'idProduct').is_file()), None)
++    if usb is None:
++        raise RuntimeError('Refusing a disk without a USB parent: ' + str(device))
++    values = {key: (usb / key).read_text().strip()
++              for key in ('idVendor', 'idProduct', 'serial')}
++    if values != {'idVendor': '1d6b', 'idProduct': '0104', 'serial': expected['usb_serial']}:
++        raise RuntimeError('USB disk identity does not match the checked Edge-AI: ' + str(values))
++    vendor = (block / 'device/vendor').read_text().strip()
++    if vendor != 'nvme0n1':
++        raise RuntimeError('Expected the board NVMe export, found: ' + vendor)
++    sectors = int((block / 'size').read_text().strip())
++    if sectors != expected['disk_sectors']:
++        raise RuntimeError(f'Board NVMe capacity changed: {sectors} sectors')
++    return block
++
++
++def properties(output):
++    return dict(line.split('=', 1) for line in output.splitlines() if '=' in line)
++
++
++def mounts_for(device, runner=run):
++    result = runner(['findmnt', '--json', '--list', '--source', device, '--output', 'TARGET'])
++    return [entry['target'] for entry in json.loads(result.stdout).get('filesystems', [])]
++
++
++def prepare(device, expected, sys_root=Path('/sys'), runner=run):
++    identify_target(device, expected, sys_root)
++    identity = runner(['udevadm', 'info', '--query=property', '--name=' + str(device)])
++    props = properties(identity.stdout)
++    if props.get('UDISKS_IGNORE') != '1' or props.get('UDISKS_AUTO') != '0':
++        raise RuntimeError('Scoped automount guard is missing; use deploy-edge-ai.sh')
++    result = runner(['lsblk', '--noheadings', '--raw', '--paths', '--output', 'NAME', str(device)])
++    devices = result.stdout.splitlines()
++    if not devices or devices[0] != str(device):
++        raise RuntimeError('Unexpected lsblk disk tree: ' + result.stdout)
++    for child in reversed(devices):
++        try:
++            targets = mounts_for(child, runner)
++        except subprocess.CalledProcessError as error:
++            if error.returncode != 1 or error.stderr.strip():
++                raise
++            targets = []
++        for target in targets:
++            print(f'Unmounting checked board disk: {child} at {target}', flush=True)
++            runner(['umount', '--', target])
++    runner(['udevadm', 'settle', '--timeout=10'])
++    identify_target(device, expected, sys_root)
++    for child in devices:
++        try:
++            targets = mounts_for(child, runner)
++        except subprocess.CalledProcessError as error:
++            if error.returncode != 1 or error.stderr.strip():
++                raise
++            targets = []
++        if targets:
++            raise RuntimeError(f'Refusing GPT writes while {child} is mounted: {targets}')
++    print(f'Checked Edge-AI NVMe {device}: identity matches, automount blocked, no mounts', flush=True)
++
++
++def main():
++    if len(sys.argv) != 2:
++        raise RuntimeError('Usage: prepare-flash-target.py /dev/USB_DISK')
++    device = str(Path(sys.argv[1]).resolve())
++    if os.geteuid() != 0:
++        raise RuntimeError('Flash target preparation must run as root')
++    if not stat.S_ISBLK(os.stat(device).st_mode):
++        raise RuntimeError('Expected a block device: ' + device)
++    expected = json.loads(Path(__file__).with_name('clab-flash-target.json').read_text())
++    prepare(device, expected)
++
++
++if __name__ == '__main__':
++    try:
++        main()
++    except (RuntimeError, OSError, subprocess.CalledProcessError, ValueError) as error:
++        print('ERR: flash target preparation failed: ' + str(error), file=sys.stderr)
++        if isinstance(error, subprocess.CalledProcessError) and error.stderr:
++            print(error.stderr.strip(), file=sys.stderr)
++        raise SystemExit(1)

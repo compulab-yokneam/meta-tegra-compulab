@@ -1,0 +1,64 @@
+Latest verification - 2026-10-04 Asia/Jerusalem
+Installation and normal boot verified; GPU compute and desktop passed.
+Follow-up BSP warnings are recorded in jetpack-7.2-blacksail-installation-validation.txt.
+The dated review below records the earlier in-progress state.
+
+CompuLab Edge-AI deployment review - 2026-10-03T19:15:04+03:00
+
+Outcome: Retry is still running: guard, GPT and partprobe passed; rootfs copying started.
+Final host/device success and normal boot are not yet verified.
+Target: edge-ai-nx-16g, P3767-0000 / FAB 303 / B.1, 250GB NVMe.
+Image: JetPack 7.2 / L4T R39.2.1. Original image/rootfs unchanged.
+
+Issues, fixes and remaining improvements
+1. Initial fatal failure: partprobe after GPT creation at 18:47:53.
+   Desktop mounted old rootfs/EFI at 18:47:42/43; busy partitions likely
+   blocked reread. Exact error was discarded. Fixed: temporary per-board
+   automount rule, identity/capacity checks, unmount/recheck before GPT.
+   Hardware retry now passes this phase.
+2. Lost diagnostics: partprobe stderr was suppressed. Fixed there; still
+   improve preparation/RCM redirections to >>log 2>&1, preserve copy stderr,
+   and collect device logs even after host failure.
+3. Detect-only warning at tegra-flash-helper.sh:482: empty CHECK_BOARDSKU
+   is compared numerically. Nonfatal; dispatcher matched BOARDID/SKU.
+   Pending: check nonempty first, then perform numeric comparison.
+4. Misleading success/state: first device SUCCESS covered QSPI commands;
+   host rootfs flash failed. QSPI and GPT were written, rootfs was not.
+   Launcher now records flash exit status. Pending: keep separate host,
+   device and boot results per attempt; old failure fields remain in JSON.
+5. Misleading rootfs size/quiet transfer: size=36 is the symlink length.
+   Resolved image is 29,527,900,160 bytes; dd follows it and is writing.
+   Pending: stat -L for size and show copy progress (APP and APP_b).
+6. Portability: serial 46fc1920, capacity 488397168 sectors and absolute
+   extraction path are intentionally bound to this checked board/host.
+   Recheck identity and update paths before reuse; never assume /dev/sdd.
+
+Other output: start=0 means automatic placement; target GPT was valid.
+The no-flash flag was used for preparation, followed by the actual flash.
+Zero-SBK/default-DTB notices and parse-error-mode echoes were nonfatal.
+The proprietary tool's mb2_applet notice did not stop blob generation/RCM;
+its internal behavior is not available for inspection. No evidence currently
+establishes a bad USB cable or SSD; journal checks found no new I/O errors.
+Local sudo authentication was required, and the user launched the retry.
+
+Applied runtime changes: deploy-edge-ai.sh (root execution, scoped udev
+rule/cleanup, lock, status); canonical/profile target helper and JSON;
+make-sdcard pre-GPT guard and retained partprobe stderr; readiness target.
+No integer-warning, signing, initrd-flash or copy-progress edits were applied.
+
+Validation: Bash/Python syntax and launcher ShellCheck passed. Earlier
+simulations covered successful unmount, wrong identity, missing guard and
+busy mount rejection. Deployment-only patch clean replay and reverse check
+passed; replayed scripts match active files, and target JSON matches.
+Still required: finish both rootfs copies, final statuses, normal boot,
+SSH, L4T R39.2.1 and rootfs/NVMe mount checks.
+
+Evidence (under .deploy-jetpack-7.2-blacksail):
+- profiles directory of the extracted bundle: log.initrd-flash.2026-10-03-18.47.03
+  and log.initrd-flash.2026-10-03-19.05.34
+- device-logs-failed-attempt/: status, bootloader.log, export-nvme0n1.log
+- deployment-readiness.json; before-automount-fix/ original scripts
+
+Patch: jetpack-7.2-blacksail-deployment-changes.patch (six changed files).
+Apply to a pre-fix prepared deployment workspace, not repository root;
+active workspace already contains the fixes. See the patch header for scope.
