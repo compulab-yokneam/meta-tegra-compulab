@@ -1,0 +1,3 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// Use the patched Edge-AI NX 16 GB BSP source; do not embed a target's live FDT.
+#include "tegra234-p3768-0000+p3767-0000-nv-super.dts"
