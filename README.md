@@ -479,6 +479,18 @@ sudo ./flash-edge-ai.sh -- --external-only
 The `--external-only` option refers to the NVMe installed in the board; it does
 not select storage connected directly to the host.
 
+To update only the module-specific QSPI boot firmware without modifying the
+NVMe or its `APP` partition, use:
+
+```
+sudo ./flash-edge-ai.sh --bootloader-only
+```
+
+The board must be in USB recovery mode. The dispatcher detects the installed
+module and selects its matching boot-firmware profile. `--qspi-only` is
+accepted as an alias for `--bootloader-only`. This mode cannot be combined with
+`--host-device` because QSPI belongs to the recovery-mode board.
+
 ### Writing host-connected media
 
 Writing an NVMe or USB storage device connected directly to the build host is
