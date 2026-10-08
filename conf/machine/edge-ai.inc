@@ -17,7 +17,7 @@ EDGE_AI_WIC_TTY1_ARGS:early_tty1 = "console=tty1 fbcon=nodefer"
 TEGRA_FLASHVAR_MB2BCT_CFG = "tegra234-edge-ai-mb2-bct-misc-p3767-0000.dts"
 TEGRA_FLASHVAR_PINMUX_CONFIG = "tegra234-edge-ai-pinmux.dtsi"
 TEGRA_FLASHVAR_PMC_CONFIG = "tegra234-edge-ai-padvoltage-default.dtsi"
-ODMDATA = "gbe-uphy-config-9,hsstp-lane-map-3,hsio-uphy-config-0"
+TEGRA_FLASHVAR_ODMDATA = "gbe-uphy-config-9,hsstp-lane-map-3,hsio-uphy-config-0"
 
 TNSPEC_BOOTDEV = "nvme0n1p1"
 PARTITION_LAYOUT_TEMPLATE_DEFAULT = "flash_t234_qspi.xml"
