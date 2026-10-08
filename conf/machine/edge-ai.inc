@@ -33,9 +33,19 @@ KERNEL_DEVICETREE:edge-ai:append = " \
 "
 
 PREFERRED_PROVIDER_virtual/kernel = "linux-yocto"
+# An empty FDT_FILE preserves the normal UEFI-selected device tree.  Set it to
+# a DTB basename to emit an explicit "FDT /boot/dtb/<name>" in extlinux.conf.
+FDT_FILE ?= ""
+
+# Keep the NX16G NVIDIA profile available as a known-good fallback even when
+# UEFI supplies the active DTB and extlinux.conf has no explicit FDT line.
+EDGE_AI_FALLBACK_FDT_FILE = "tegra234-p3768-0000+p3767-0000-nv-super.dtb"
+L4T_UBOOT_EXTLINUX_EXTRA_FDTS:append = "${@'' if d.getVar('EDGE_AI_FALLBACK_FDT_FILE') in (d.getVar('UBOOT_EXTLINUX_FDT') or '').split() else ' ' + d.getVar('EDGE_AI_FALLBACK_FDT_FILE')}"
+
 TEGRA_DEFAULT_KERNEL = "linux-yocto"
 
 CORE_IMAGE_BASE_INSTALL:append = " \
+    edge-ai-fdt-selector \
     nvidia-kernel-oot \
     nvidia-kernel-oot-extra \
     nvidia-kernel-oot-base \

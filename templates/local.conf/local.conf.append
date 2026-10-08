@@ -3,3 +3,10 @@ EXTRA_IMAGE_FEATURES += " package-management "
 
 # Uncomment to enable the shared-runtime/four-profile release bundle:
 # require conf/include/edge-ai-universal-bundle.inc
+
+# Optional explicit extlinux device tree.  Use a basename only.  Leave unset
+# to let UEFI supply the module-specific DTB.  Use FDT_FILE for a single-machine
+# build.  For a universal build, scope the selection to the shared runtime so
+# the four flash profiles remain generic.
+# FDT_FILE = "edgedes-adi-v18-framos-imx678-port0.dtb"
+# FDT_FILE:edge-ai-shared-runtime = "edgedes-adi-v18-framos-imx678-port0.dtb"

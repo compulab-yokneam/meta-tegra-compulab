@@ -8,6 +8,34 @@ demo-only Yocto option. It covers one IMX678 (3856x2180) or IMX676 (3552x3556)
 on EDGEDES port 0, using the same Argus applications at 10 FPS;
 other camera profiles are not qualified by that guide.
 
+The generated root filesystem keeps all opt-in ADI v18 camera profiles and the
+standard NX16G NVIDIA profile under `/boot/dtb`. In a single-machine build, set
+`FDT_FILE` to a DTB basename to emit an explicit extlinux selection. In the
+universal bundle, scope the option to the shared runtime so its four flash
+profiles remain module-specific:
+
+```bitbake
+# Single-machine image:
+FDT_FILE = "edgedes-adi-v18-framos-imx678-port0.dtb"
+
+# Universal shared runtime:
+FDT_FILE:edge-ai-shared-runtime = "edgedes-adi-v18-framos-imx678-port0.dtb"
+```
+
+Leave the option empty to let UEFI provide the module-specific DTB. Do not put
+`/boot/dtb/` in the value; the generated `FDT` statement adds that path.
+
+The target image also provides an interactive selector:
+
+```bash
+sudo edge-ai-select-fdt
+```
+
+It lists the installed files under `/boot/dtb`, updates every boot entry in
+`/boot/extlinux/extlinux.conf`, and preserves the original configuration as
+`extlinux.conf.bak`. Use `edge-ai-select-fdt --uefi` to return to the DTB
+supplied by UEFI.
+
 ## NVidia resources:
 * NVidia [tegra-demo-distro](https://github.com/OE4T/tegra-demo-distro) Yocto repository.
 
