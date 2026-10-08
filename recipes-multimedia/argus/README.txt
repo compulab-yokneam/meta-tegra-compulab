@@ -25,6 +25,10 @@ The source-built samples retain the same demo-only GTK/Xwayland EGL fix.
 The shared package installs separate mode data, not separate applications:
     /var/nvidia/nvcam/settings/edgedes-imx676-demo.nito
     /var/nvidia/nvcam/settings/edgedes-imx678-demo.nito
+Its device-tree package dependency installs the complete boot profiles:
+    /boot/dtb/edgedes-adi-v18-tevs-ar0144-port3.dtb
+    /boot/dtb/edgedes-adi-v18-framos-imx678-port0.dtb
+    /boot/dtb/edgedes-adi-v18-framos-imx676-port0.dtb
 The shell launcher selects the NITO from the live DT badge and execs the
 unchanged vendor daemon. IMX678's previous NITO remains byte-identical.
 See README.md and files/PROVENANCE.txt for both hashes and conversion inputs.

@@ -21,11 +21,46 @@ Add this explicit opt-in to the build configuration:
 require conf/include/edge-ai-argus-framos-demo.inc
 ```
 
-Requires `opengl systemd wayland x11` distro features. Boot the existing
+Requires `opengl systemd wayland x11` distro features. The image installs all
+three complete ADI v18 camera profiles under `/boot/dtb`. Boot the existing
 `edgedes-adi-v18-framos-imx678-port0.dtb` or
 `edgedes-adi-v18-framos-imx676-port0.dtb` profile matching the attached sensor.
 The include does not select
 the boot DTB, flash or reboot the target.
+
+For an ordinary single-machine image, set the default profile by basename in
+`conf/local.conf`:
+
+```bitbake
+FDT_FILE = "edgedes-adi-v18-framos-imx678-port0.dtb"
+```
+
+For the universal bundle, scope the same setting to its shared runtime so that
+the four module-specific flash profiles continue using their UEFI DTBs:
+
+```bitbake
+FDT_FILE:edge-ai-shared-runtime = "edgedes-adi-v18-framos-imx678-port0.dtb"
+```
+
+Use `edgedes-adi-v18-framos-imx676-port0.dtb` for IMX676. Leave `FDT_FILE`
+unset or empty to keep the module-specific DTB supplied by UEFI. The generated
+extlinux entry uses `FDT /boot/dtb/<basename>`; paths are not accepted as the
+option value. The NVIDIA NX16G fallback
+`tegra234-p3768-0000+p3767-0000-nv-super.dtb` is always retained in
+`/boot/dtb`, independently of the selected default.
+
+On the target, an administrator can browse the installed profiles and update
+all entries in `/boot/extlinux/extlinux.conf` interactively:
+
+```bash
+edge-ai-select-fdt
+```
+
+The command accepts a DTB basename for non-interactive use, `--show`, `--list`,
+and `--uefi` to remove explicit FDT statements. It saves the original
+configuration as `/boot/extlinux/extlinux.conf.bak`. Reboot after changing the
+selection. If signed-extlinux enforcement is enabled, the modified file must be
+re-signed before reboot; the selector warns when it finds an existing signature.
 
 In the prepared Blacksail build environment, build the existing applications,
 GStreamer plugin and demo profile recipes:
@@ -36,7 +71,8 @@ bitbake mc:edge-ai-runtime:argus-samples \
         mc:edge-ai-runtime:edge-ai-argus-framos-demo
 ```
 
-Build the IMX676 kernel module and deploy the camera device trees as well:
+To build the kernel-module package and standalone device-tree deploy artifacts
+without rebuilding the rootfs:
 
 ```bash
 bitbake -c package_write_deb mc:edge-ai-runtime:nvidia-kernel-oot
@@ -44,9 +80,10 @@ bitbake -c deploy mc:edge-ai-runtime:edgedes-adi-v18-devicetree
 ```
 
 The module is `fr_imx676.ko`; IMX678 keeps its existing `fr_imx678.ko`.
-Use packages matching the running kernel. A development target using a manually
-installed ADI bootset needs an explicit module/DTB installation; installing the
-Argus demo package alone does not add or select the camera driver.
+Use packages matching the running kernel. The Argus demo package pulls the
+device-tree package into a generated image, but it does not select a boot DTB.
+A development target using a manually installed ADI bootset still needs the
+matching camera driver modules and explicit boot-profile selection.
 
 To force application/plugin recompilation, run this first, then the build
 above to refresh packages:

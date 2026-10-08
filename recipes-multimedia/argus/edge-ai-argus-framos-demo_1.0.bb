@@ -15,7 +15,7 @@ REQUIRED_DISTRO_FEATURES = "opengl systemd wayland x11"
 COMPATIBLE_MACHINE = "^$"
 COMPATIBLE_MACHINE:edge-ai-framos-argus-demo-profile = "^(edge-ai-nx-16g|edge-ai-nx)$"
 PACKAGE_ARCH = "${MACHINE_ARCH}"
-PR = "r1"
+PR = "r2"
 
 SRC_URI = " \
     file://edgedes-imx676-demo.nito \
@@ -31,6 +31,7 @@ RCONFLICTS:${PN} = "edge-ai-argus-imx678-demo"
 RREPLACES:${PN} = "edge-ai-argus-imx678-demo"
 
 RDEPENDS:${PN} = " \
+    edgedes-adi-v18-devicetree \
     tegra-libraries-camera \
     tegra-argus-daemon \
     argus-samples \

@@ -34,11 +34,13 @@ this recipe. Boot one complete camera DTB at a time:
     edgedes-adi-v18-framos-imx678-port0.dtb
 
 Normal Edge-AI images install kernel-modules and nvidia-kernel-oot-cameras, so
-the opt-in transport and sensor packages are included in those images. Camera
-DTBs are standalone deploy artifacts: the override does not change the regular
-virtual/dtb provider, tegraflash DT selection or extlinux FDT. Explicitly build
-the DT recipe and select one complete camera DTB for the test boot. Turnkey
-production image/flash profile selection is a separate integration step.
+the opt-in transport and sensor packages are included in those images. The
+FRAMOS demo package also installs all three complete camera profiles under
+/boot/dtb through its edgedes-adi-v18-devicetree dependency. The DT recipe
+continues to emit standalone deploy artifacts as well. Neither mechanism
+changes the regular virtual/dtb provider, tegraflash DT selection or extlinux
+FDT; select one complete camera DTB for the test boot. Turnkey production
+flash-profile selection is a separate integration step.
 
 Build targets used in the Edge-AI runtime multiconfig:
 

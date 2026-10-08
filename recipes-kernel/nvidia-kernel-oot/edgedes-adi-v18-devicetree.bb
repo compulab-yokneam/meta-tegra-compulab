@@ -1,6 +1,7 @@
 SUMMARY = "Single-camera EDGEDES device trees for ADI v18 on Edge-AI"
 LICENSE = "GPL-2.0-only"
 LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/GPL-2.0-only;md5=801f80980d171dd6425610833a22dbe6"
+PR = "r2"
 
 inherit tegra-devicetree
 
@@ -26,6 +27,12 @@ DT_FILES = " \
     edgedes-adi-v18-framos-imx676-port0.dtso \
 "
 
+EDGE_AI_ADI_V18_COMPLETE_DTBS = " \
+    edgedes-adi-v18-tevs-ar0144-port3.dtb \
+    edgedes-adi-v18-framos-imx678-port0.dtb \
+    edgedes-adi-v18-framos-imx676-port0.dtb \
+"
+
 # Produce complete FDTs for extlinux as well as reusable DT overlays.
 # The base comes from the same patched NVIDIA sources as the OOT modules.
 python do_compile:append() {
@@ -40,3 +47,15 @@ python do_compile:append() {
             os.path.join(build, name + ".dtbo"),
         ], check=True)
 }
+
+# Keep the normal /boot/devicetree output from tegra-devicetree, and also put
+# the complete, directly bootable EDGEDES profiles in the requested rootfs
+# location.  Do not copy the intermediate base DTB or standalone overlays.
+do_install:append() {
+    install -d ${D}/boot/dtb
+    for dtb in ${EDGE_AI_ADI_V18_COMPLETE_DTBS}; do
+        install -m 0644 ${B}/$dtb ${D}/boot/dtb/
+    done
+}
+
+FILES:${PN}:append = " /boot/dtb/*.dtb"
