@@ -32,7 +32,6 @@ KERNEL_DEVICETREE:edge-ai:append = " \
     tegra234-p3768-0000+p3767-0005-nv-super.dtb \
 "
 
-PREFERRED_PROVIDER_virtual/kernel = "linux-yocto"
 # An empty FDT_FILE preserves the normal UEFI-selected device tree.  Set it to
 # a DTB basename to emit an explicit "FDT /boot/dtb/<name>" in extlinux.conf.
 FDT_FILE ?= ""
