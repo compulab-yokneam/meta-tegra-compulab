@@ -1,0 +1,770 @@
+From: CompuLab <support@compulab.co.il>
+Date: Tue, 6 Oct 2026 20:00:00 +0300
+Subject: [PATCH] media: edgedes: add native framos imx676 support
+
+Add the same tegracam/ADI integration as IMX678 for FRAMOS IMX676.
+Keep the sensor-only leaf separate from the ADI transport and leave the
+qualified IMX678 driver unchanged. Expose one full-resolution mode:
+3552x3556 RGGB12 at 10 FPS, 720 Mb/s per CSI lane, HMAX 1256, VMAX 5912.
+
+Preserve the F-CON_08 power/reset/clock sequence with XCLR low for 200 ms
+after INCK starts. Implement gain, exposure, group hold and fixed frame
+rate through standard tegracam controls for the shared Argus applications.
+
+Mode-table provenance: framos-jetson-drivers l4t-r38.4 commit
+d9890dedb5c32f651231f99c49e42ef78d728b12, GPL-2.0, through the previously
+qualified CompuLab EDGEDES IMX676 3552x3556 RAW12/720-Mb/s reference.
+Retain vendor copyright and license. No sensor-model auto-detection is
+claimed: compatible and model selection come from the device tree.
+
+Upstream-Status: Inappropriate [NVIDIA tegracam and CompuLab EDGEDES integration]
+---
+diff --git a/drivers/media/i2c/edgedes-sensors/framos/Makefile b/drivers/media/i2c/edgedes-sensors/framos/Makefile
+--- a/drivers/media/i2c/edgedes-sensors/framos/Makefile
++++ b/drivers/media/i2c/edgedes-sensors/framos/Makefile
+@@ -1,4 +1,5 @@
+ # SPDX-License-Identifier: GPL-2.0-only
+ ifdef CONFIG_MEDIA_SUPPORT
+ obj-m += fr_imx678.o
++obj-m += fr_imx676.o
+ endif
+diff --git a/drivers/media/i2c/edgedes-sensors/Kconfig b/drivers/media/i2c/edgedes-sensors/Kconfig
+--- a/drivers/media/i2c/edgedes-sensors/Kconfig
++++ b/drivers/media/i2c/edgedes-sensors/Kconfig
+@@ -15,2 +15,9 @@ config VIDEO_EDGEDES_FRAMOS_IMX678
+ 	  This preserves the required 200 ms XCLR delay and generic GPIO/clock
+ 	  consumers while the ADI parent subdevices control GMSL streaming.
++
++config VIDEO_EDGEDES_FRAMOS_IMX676
++	tristate "FRAMOS IMX676 sensor on the EDGEDES ADI transport"
++	depends on I2C && VIDEO_DEV && VIDEO_V4L2_SUBDEV_API
++	help
++	  Native 3552x3556 RAW12 at 10 FPS for FRAMOS FSM:GO IMX676 modules.
++	  ADI parents own transport; the leaf preserves 200 ms XCLR reset.
+diff --git a/drivers/media/i2c/edgedes-sensors/framos/fr_imx676.c b/drivers/media/i2c/edgedes-sensors/framos/fr_imx676.c
+new file mode 100644
+--- /dev/null
++++ b/drivers/media/i2c/edgedes-sensors/framos/fr_imx676.c
+@@ -0,0 +1,471 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++/*
++ * Copyright (c) 2024 Framos. All rights reserved.
++ *
++ * FRAMOS IMX676 native RAW12 support for the EDGEDES ADI GMSL transport.
++ * Adapted from fr_imx676.c; uses only the stock NVIDIA tegracam interfaces.
++ * Adapted for ADI v18 graph and GPIO consumers by CompuLab, 2026-10-06.
++ */
++#include <nvidia/conftest.h>
++#include <linux/clk.h>
++#include <linux/delay.h>
++#include <linux/gpio/consumer.h>
++#include <linux/i2c.h>
++#include <linux/math64.h>
++#include <linux/module.h>
++#include <linux/mutex.h>
++#include <media/mipi-csi2.h>
++#include <media/tegra-v4l2-camera.h>
++#include <media/tegracam_core.h>
++
++#include "fr_imx676_mode_tbls.h"
++
++#define IMX676_INCK_HZ		74250000ULL
++#define IMX676_HMAX		1256
++#define IMX676_LINE_TIME_NS	(IMX676_HMAX * 1000000000ULL / IMX676_INCK_HZ)
++#define IMX676_DEFAULT_VMAX	5912
++#define IMX676_DATA_RATE_720	6
++#define IMX676_MIN_SHR0		8
++#define IMX676_MIN_INTEGRATION	2
++
++struct imx676 {
++	struct tegracam_device *tc_dev;
++	struct gpio_desc *reset_gpio;
++	struct gpio_desc *tenable_gpio;
++	struct gpio_desc *power_enable_gpio;
++	u32 frame_length;
++	bool group_hold_active;
++	struct mutex power_lock;
++};
++
++static const u32 imx676_ctrl_cids[] = {
++	TEGRA_CAMERA_CID_GAIN,
++	TEGRA_CAMERA_CID_EXPOSURE,
++	TEGRA_CAMERA_CID_FRAME_RATE,
++	TEGRA_CAMERA_CID_SENSOR_MODE_ID,
++};
++
++static const struct regmap_config imx676_regmap_config = {
++	.reg_bits = 16,
++	.val_bits = 8,
++	.cache_type = REGCACHE_NONE,
++	.use_single_read = true,
++	.use_single_write = true,
++};
++
++static int imx676_read_reg(struct camera_common_data *s_data, u16 addr, u8 *val)
++{
++	unsigned int value;
++	int err;
++
++	err = regmap_read(s_data->regmap, addr, &value);
++	if (!err)
++		*val = value;
++	return err;
++}
++
++static int imx676_write_reg(struct camera_common_data *s_data, u16 addr, u8 val)
++{
++	return regmap_write(s_data->regmap, addr, val);
++}
++
++static int imx676_write_table(struct imx676 *priv, const imx676_reg *table)
++{
++	return regmap_util_write_table_8(priv->tc_dev->s_data->regmap,
++			table, NULL, 0, IMX676_TABLE_WAIT_MS, IMX676_TABLE_END);
++}
++
++static int imx676_write_buffered(struct camera_common_data *s_data,
++				u16 addr, unsigned int count, u32 value)
++{
++	struct imx676 *priv = s_data->priv;
++	int err = 0, release_err;
++	unsigned int i;
++
++	if (!priv->group_hold_active) {
++		err = imx676_write_reg(s_data, REGHOLD, 1);
++		if (err)
++			return err;
++	}
++
++	for (i = 0; i < count; i++) {
++		err = imx676_write_reg(s_data, addr + i, value >> (8 * i));
++		if (err)
++			break;
++	}
++
++	/* Always release our hold, including after an I2C error. */
++	if (!priv->group_hold_active) {
++		release_err = imx676_write_reg(s_data, REGHOLD, 0);
++		if (!err)
++			err = release_err;
++	}
++	return err;
++}
++
++static int imx676_set_group_hold(struct tegracam_device *tc_dev, bool hold)
++{
++	struct imx676 *priv = tegracam_get_privdata(tc_dev);
++	int err = imx676_write_reg(tc_dev->s_data, REGHOLD, hold);
++
++	if (!err)
++		priv->group_hold_active = hold;
++	return err;
++}
++
++static int imx676_set_gain(struct tegracam_device *tc_dev, s64 val)
++{
++	struct camera_common_data *s_data = tc_dev->s_data;
++	const struct sensor_control_properties *ctrl =
++		&s_data->sensor_props.sensor_modes[s_data->mode].control_properties;
++	u32 gain;
++
++	if (!ctrl->gain_factor || val < 0)
++		return -EINVAL;
++	/* 0.3 dB steps, fixed low conversion gain, maximum 72 dB. */
++	gain = div_u64((u64)val * 240, 72 * ctrl->gain_factor);
++	gain = min(gain, 240U);
++	return imx676_write_buffered(s_data, GAIN_LOW, 2, gain);
++}
++
++static int imx676_set_exposure(struct tegracam_device *tc_dev, s64 val)
++{
++	struct imx676 *priv = tegracam_get_privdata(tc_dev);
++	struct camera_common_data *s_data = tc_dev->s_data;
++	const struct sensor_control_properties *ctrl =
++		&s_data->sensor_props.sensor_modes[s_data->mode].control_properties;
++	u64 lines;
++
++	if (val < 0 || !ctrl->exposure_factor)
++		return -EINVAL;
++	lines = div64_u64((u64)val * 1000000000ULL,
++			 (u64)ctrl->exposure_factor * IMX676_LINE_TIME_NS);
++	lines = clamp_t(u64, lines, IMX676_MIN_INTEGRATION,
++			priv->frame_length - IMX676_MIN_SHR0);
++	return imx676_write_buffered(s_data, SHR0_LOW, 3,
++				    priv->frame_length - lines);
++}
++
++static int imx676_set_frame_rate(struct tegracam_device *tc_dev, s64 val)
++{
++	struct imx676 *priv = tegracam_get_privdata(tc_dev);
++	struct camera_common_data *s_data = tc_dev->s_data;
++	const struct sensor_control_properties *ctrl =
++		&s_data->sensor_props.sensor_modes[s_data->mode].control_properties;
++	int err;
++
++	/* Only the qualified 10 FPS native mode is advertised. */
++	if (val != 10ULL * ctrl->framerate_factor)
++		return -EINVAL;
++	err = imx676_write_buffered(s_data, VMAX_LOW, 3, IMX676_DEFAULT_VMAX);
++	if (!err)
++		priv->frame_length = IMX676_DEFAULT_VMAX;
++	return err;
++}
++
++static struct camera_common_pdata *imx676_parse_dt(struct tegracam_device *tc_dev)
++{
++	struct device *dev = tc_dev->dev;
++	struct camera_common_pdata *pdata;
++	int err;
++
++	pdata = devm_kzalloc(dev, sizeof(*pdata), GFP_KERNEL);
++	if (!pdata)
++		return NULL;
++	err = camera_common_parse_clocks(dev, pdata);
++	if (err)
++		goto error;
++	return pdata;
++
++error:
++	dev_err_probe(dev, err, "invalid sensor clock/reset configuration\n");
++	/* Stock tegracam handles only NULL and -EPROBE_DEFER here. */
++	return err == -EPROBE_DEFER ? ERR_PTR(err) : NULL;
++}
++
++static int imx676_power_get(struct tegracam_device *tc_dev)
++{
++	struct camera_common_data *s_data = tc_dev->s_data;
++	struct camera_common_power_rail *pw = s_data->power;
++
++	pw->mclk = devm_clk_get(tc_dev->dev, s_data->pdata->mclk_name);
++	if (IS_ERR(pw->mclk))
++		return PTR_ERR(pw->mclk);
++	pw->state = SWITCH_OFF;
++	return 0;
++}
++
++static int imx676_power_put(struct tegracam_device *tc_dev)
++{
++	/* GPIO and clock handles are device-managed. */
++	return 0;
++}
++
++static int imx676_power_on(struct camera_common_data *s_data)
++{
++	struct imx676 *priv = s_data->priv;
++	struct camera_common_power_rail *pw = s_data->power;
++	int err = 0;
++
++	mutex_lock(&priv->power_lock);
++	if (pw->state == SWITCH_ON)
++		goto out;
++	/* reset-gpios is active-low: logical one asserts physical XCLR low. */
++	gpiod_set_value_cansleep(priv->reset_gpio, 1);
++	gpiod_set_value_cansleep(priv->tenable_gpio, 0);
++	/* F-CON_08 PW_EN_0 is optional when held high by a serializer GPIO hog. */
++	if (priv->power_enable_gpio) {
++		gpiod_set_value_cansleep(priv->power_enable_gpio, 0);
++		usleep_range(5000, 6000);
++		gpiod_set_value_cansleep(priv->power_enable_gpio, 1);
++	}
++	err = clk_set_rate(pw->mclk, s_data->def_clk_freq);
++	if (err)
++		goto disable_power;
++	err = clk_prepare_enable(pw->mclk);
++	if (err)
++		goto disable_power;
++	/* FFA-GMSL requires XCLR low for >=180 ms with INCK running. */
++	msleep(200);
++	gpiod_set_value_cansleep(priv->reset_gpio, 0);
++	usleep_range(40000, 41000);
++	pw->state = SWITCH_ON;
++	goto out;
++disable_power:
++	gpiod_set_value_cansleep(priv->power_enable_gpio, 0);
++out:
++	mutex_unlock(&priv->power_lock);
++	return err;
++}
++
++static int imx676_power_off(struct camera_common_data *s_data)
++{
++	struct imx676 *priv = s_data->priv;
++	struct camera_common_power_rail *pw = s_data->power;
++
++	mutex_lock(&priv->power_lock);
++	if (pw->state == SWITCH_ON) {
++		gpiod_set_value_cansleep(priv->reset_gpio, 1);
++		clk_disable_unprepare(pw->mclk);
++		gpiod_set_value_cansleep(priv->power_enable_gpio, 0);
++		pw->state = SWITCH_OFF;
++	}
++	mutex_unlock(&priv->power_lock);
++	return 0;
++}
++
++static int imx676_set_mode(struct tegracam_device *tc_dev)
++{
++	struct imx676 *priv = tegracam_get_privdata(tc_dev);
++	struct camera_common_data *s_data = tc_dev->s_data;
++	static const imx676_reg native_raw12[] = {
++		{ DATARATE_SEL, IMX676_DATA_RATE_720 },
++		{ EXTMODE, 0 },
++		{ XVS_XHS_DRV, 0x0f },
++		{ FDG_SEL0, 0 },
++		{ FDG_SEL1, 0 },
++		{ IMX676_TABLE_END, 0 },
++	};
++	int err;
++
++	if (s_data->mode != 0 || s_data->numlanes != 4 ||
++	    s_data->colorfmt->code != MEDIA_BUS_FMT_SRGGB12_1X12)
++		return -EINVAL;
++	err = imx676_set_group_hold(tc_dev, false);
++	if (!err)
++		err = imx676_write_table(priv, imx676_init_settings);
++	if (!err)
++		err = imx676_write_table(priv, imx676_12bit_mode);
++	if (!err)
++		err = imx676_write_table(priv, mode_3552x3556);
++	if (!err)
++		err = imx676_write_table(priv, native_raw12);
++	if (!err)
++		err = imx676_write_table(priv, mode_disable_pattern_generator);
++	if (!err)
++		err = imx676_write_buffered(s_data, HMAX_LOW, 2, IMX676_HMAX);
++	if (!err)
++		err = imx676_write_buffered(s_data, VMAX_LOW, 3, IMX676_DEFAULT_VMAX);
++	if (!err) {
++		priv->frame_length = IMX676_DEFAULT_VMAX;
++		s_data->override_enable = true;
++	}
++	return err;
++}
++
++static int imx676_start_streaming(struct tegracam_device *tc_dev)
++{
++	struct imx676 *priv = tegracam_get_privdata(tc_dev);
++	int err;
++
++	err = imx676_write_table(priv, imx676_start);
++	if (!err)
++		err = imx676_write_reg(tc_dev->s_data, XMSTA, 0);
++	if (err) {
++		imx676_write_table(priv, imx676_stop);
++	}
++	return err;
++}
++
++static int imx676_stop_streaming(struct tegracam_device *tc_dev)
++{
++	struct imx676 *priv = tegracam_get_privdata(tc_dev);
++	int err;
++
++	err = imx676_write_table(priv, imx676_stop);
++	/* Drain one frame; the ADI parent disables transport after this callback. */
++	usleep_range(100000, 101000);
++	return err;
++}
++
++static int imx676_get_frame_desc(struct v4l2_subdev *sd, unsigned int pad,
++			       struct v4l2_mbus_frame_desc *fd)
++{
++	if (pad != 0)
++		return -EINVAL;
++
++	memset(fd, 0, sizeof(*fd));
++	fd->type = V4L2_MBUS_FRAME_DESC_TYPE_CSI2;
++	fd->num_entries = 1;
++	fd->entry[0].flags = V4L2_MBUS_FRAME_DESC_FL_LEN_MAX;
++	fd->entry[0].stream = 0;
++	fd->entry[0].pixelcode = MEDIA_BUS_FMT_SRGGB12_1X12;
++	fd->entry[0].length = 3552 * 3556 * 12 / 8;
++	fd->entry[0].bus.csi2.vc = 0;
++	fd->entry[0].bus.csi2.dt = MIPI_CSI2_DT_RAW12;
++	return 0;
++}
++
++static struct camera_common_sensor_ops imx676_sensor_ops = {
++	.numfrmfmts = ARRAY_SIZE(imx676_frmfmt),
++	.frmfmt_table = imx676_frmfmt,
++	.power_on = imx676_power_on,
++	.power_off = imx676_power_off,
++	.read_reg = imx676_read_reg,
++	.write_reg = imx676_write_reg,
++	.parse_dt = imx676_parse_dt,
++	.power_get = imx676_power_get,
++	.power_put = imx676_power_put,
++	.set_mode = imx676_set_mode,
++	.start_streaming = imx676_start_streaming,
++	.stop_streaming = imx676_stop_streaming,
++	.get_frame_desc = imx676_get_frame_desc,
++};
++
++static struct tegracam_ctrl_ops imx676_ctrl_ops = {
++	.numctrls = ARRAY_SIZE(imx676_ctrl_cids),
++	.ctrl_cid_list = imx676_ctrl_cids,
++	.set_gain = imx676_set_gain,
++	.set_exposure = imx676_set_exposure,
++	.set_frame_rate = imx676_set_frame_rate,
++	.set_group_hold = imx676_set_group_hold,
++};
++
++#if defined(NV_I2C_DRIVER_STRUCT_PROBE_WITHOUT_I2C_DEVICE_ID_ARG)
++static int imx676_probe(struct i2c_client *client)
++#else
++static int imx676_probe(struct i2c_client *client, const struct i2c_device_id *id)
++#endif
++{
++	struct device *dev = &client->dev;
++	struct tegracam_device *tc_dev;
++	struct imx676 *priv;
++	u8 vmax_low;
++	int err;
++
++	priv = devm_kzalloc(dev, sizeof(*priv), GFP_KERNEL);
++	tc_dev = devm_kzalloc(dev, sizeof(*tc_dev), GFP_KERNEL);
++	if (!priv || !tc_dev)
++		return -ENOMEM;
++	mutex_init(&priv->power_lock);
++	priv->tc_dev = tc_dev;
++	priv->frame_length = IMX676_DEFAULT_VMAX;
++	priv->reset_gpio = devm_gpiod_get(dev, "reset", GPIOD_OUT_HIGH);
++	if (IS_ERR(priv->reset_gpio))
++		return dev_err_probe(dev, PTR_ERR(priv->reset_gpio),
++				     "cannot get XCLR GPIO\n");
++	/* Optional when TENABLE is already held low by a serializer GPIO hog. */
++	priv->tenable_gpio = devm_gpiod_get_optional(dev, "tenable", GPIOD_OUT_LOW);
++	if (IS_ERR(priv->tenable_gpio))
++		return dev_err_probe(dev, PTR_ERR(priv->tenable_gpio),
++				     "cannot get TENABLE GPIO\n");
++	priv->power_enable_gpio = devm_gpiod_get_optional(dev, "power-enable",
++						       GPIOD_OUT_LOW);
++	if (IS_ERR(priv->power_enable_gpio))
++		return dev_err_probe(dev, PTR_ERR(priv->power_enable_gpio),
++				     "cannot get PW_EN_0 GPIO\n");
++
++	tc_dev->client = client;
++	tc_dev->dev = dev;
++	strscpy(tc_dev->name, "imx676", sizeof(tc_dev->name));
++	tc_dev->dev_regmap_config = &imx676_regmap_config;
++	tc_dev->sensor_ops = &imx676_sensor_ops;
++	tc_dev->tcctrl_ops = &imx676_ctrl_ops;
++	err = tegracam_device_register(tc_dev);
++	if (err)
++		return dev_err_probe(dev, err, "tegracam registration failed\n");
++	tegracam_set_privdata(tc_dev, priv);
++
++	err = imx676_power_on(tc_dev->s_data);
++	if (err)
++		goto unregister;
++	err = imx676_read_reg(tc_dev->s_data, VMAX_LOW, &vmax_low);
++	imx676_power_off(tc_dev->s_data);
++	if (err) {
++		dev_err(dev, "sensor I2C communication failed: %d\n", err);
++		goto unregister;
++	}
++	err = tegracam_v4l2subdev_register(tc_dev, true);
++	if (err)
++		goto unregister;
++	dev_info(dev, "FRAMOS IMX676: 3552x3556 RAW12 at 10 FPS\n");
++	return 0;
++
++unregister:
++	tegracam_device_unregister(tc_dev);
++	return err;
++}
++
++#if defined(NV_I2C_DRIVER_STRUCT_REMOVE_RETURN_TYPE_INT)
++static int imx676_remove(struct i2c_client *client)
++#else
++static void imx676_remove(struct i2c_client *client)
++#endif
++{
++	struct camera_common_data *s_data = to_camera_common_data(&client->dev);
++	struct imx676 *priv = s_data->priv;
++
++	imx676_power_off(s_data);
++	tegracam_v4l2subdev_unregister(priv->tc_dev);
++	tegracam_device_unregister(priv->tc_dev);
++#if defined(NV_I2C_DRIVER_STRUCT_REMOVE_RETURN_TYPE_INT)
++	return 0;
++#endif
++}
++
++static const struct of_device_id imx676_of_match[] = {
++	{ .compatible = "framos,imx676" },
++	{ },
++};
++MODULE_DEVICE_TABLE(of, imx676_of_match);
++
++static const struct i2c_device_id imx676_id[] = {
++	{ "imx676", 0 },
++	{ },
++};
++MODULE_DEVICE_TABLE(i2c, imx676_id);
++
++static struct i2c_driver imx676_i2c_driver = {
++	.driver = {
++		.name = "imx676",
++		.of_match_table = imx676_of_match,
++	},
++	.probe = imx676_probe,
++	.remove = imx676_remove,
++	.id_table = imx676_id,
++};
++module_i2c_driver(imx676_i2c_driver);
++
++MODULE_DESCRIPTION("FRAMOS IMX676 native RAW12 for EDGEDES");
++MODULE_AUTHOR("FRAMOS GmbH");
++MODULE_LICENSE("GPL v2");
+diff --git a/drivers/media/i2c/edgedes-sensors/framos/fr_imx676_mode_tbls.h b/drivers/media/i2c/edgedes-sensors/framos/fr_imx676_mode_tbls.h
+new file mode 100644
+--- /dev/null
++++ b/drivers/media/i2c/edgedes-sensors/framos/fr_imx676_mode_tbls.h
+@@ -0,0 +1,246 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++/*
++ * Copyright (c) 2024 Framos. All rights reserved.
++ * Native RAW12 subset of FRAMOS fr_imx676_mode_tbls.h.
++ */
++#ifndef FR_IMX676_MODE_TBLS_H
++#define FR_IMX676_MODE_TBLS_H
++
++#define STANDBY 0x3000
++#define REGHOLD 0x3001
++#define XMSTA 0x3002
++#define INCK_SEL 0x3014
++#define DATARATE_SEL 0x3015
++#define WINMODE 0x3018
++#define WDMODE 0x301a
++#define ADDMODE 0x301b
++#define VCMODE 0x301e
++#define ADBIT 0x3022
++#define MDBIT 0x3023
++#define VMAX_LOW 0x3028
++#define HMAX_LOW 0x302c
++#define FDG_SEL0 0x3030
++#define FDG_SEL1 0x3031
++#define LANEMODE 0x3040
++#define SHR0_LOW 0x3050
++#define GAIN_LOW 0x3070
++#define XVS_XHS_DRV 0x30a6
++#define EXTMODE 0x30ce
++#define BLKLEVEL_LOW 0x30dc
++#define TPG_EN_DUOUT 0x30e0
++#define TPG_COLORWIDTH 0x30e4
++#define TESTCLKEN 0x5300
++
++#define IMX676_DEFAULT_WIDTH 3552
++#define IMX676_DEFAULT_HEIGHT 3556
++#define IMX676_TABLE_WAIT_MS 0
++#define IMX676_TABLE_END 1
++#define IMX676_WAIT_MS 10
++
++typedef struct reg_8 imx676_reg;
++
++static const imx676_reg imx676_start[] = {
++
++	{STANDBY, 0x00},
++	{IMX676_TABLE_WAIT_MS, 30},
++
++	{IMX676_TABLE_WAIT_MS, IMX676_WAIT_MS},
++	{IMX676_TABLE_END, 0x00}
++};
++
++static const imx676_reg imx676_stop[] = {
++
++	{XMSTA, 0x01},
++	{IMX676_TABLE_WAIT_MS, 30},
++	{STANDBY, 0x01},
++
++	{IMX676_TABLE_WAIT_MS, IMX676_WAIT_MS},
++	{IMX676_TABLE_END, 0x00}
++};
++
++static const imx676_reg imx676_12bit_mode[] = {
++
++	{ADBIT,			0x01},
++	{MDBIT,			0x01},
++
++	{0x355A,		0x10},
++
++	{0x3C0A,		0x1F},
++	{0x3C0B,		0x1F},
++	{0x3C0C,		0x1F},
++	{0x3C0D,		0x1F},
++	{0x3C0E,		0x1F},
++	{0x3C0F,		0x1F},
++
++	{IMX676_TABLE_WAIT_MS, IMX676_WAIT_MS},
++	{IMX676_TABLE_END, 0x00}
++};
++
++static const imx676_reg imx676_init_settings[] = {
++
++	{LANEMODE,		0x03},
++	{INCK_SEL,		0x01},
++
++	{0x304E,		0x04},
++	{0x3148,		0x00},
++	{0x3460,		0x22},
++	{0x347B,		0x02},
++	{0x3A3C,		0x0F},
++	{0x3A44,		0x0B},
++	{0x3A76,		0xB5},
++	{0x3A77,		0x00},
++	{0x3A78,		0x03},
++	{0x3B22,		0x04},
++	{0x3B23,		0x44},
++	{0x3C03,		0x04},
++	{0x3C04,		0x04},
++	{0x3C30,		0x73},
++	{0x3C34,		0x6C},
++	{0x3C3C,		0x20},
++	{0x3C44,		0x06},
++	{0x3CB8,		0x00},
++	{0x3CBA,		0xFF},
++	{0x3CBB,		0x03},
++	{0x3CBC,		0xFF},
++	{0x3CBD,		0x03},
++	{0x3CC2,		0xFF},
++	{0x3CC3,		0x03},
++	{0x3CC8,		0xFF},
++	{0x3CC9,		0x03},
++	{0x3CCA,		0x00},
++	{0x3CCE,		0xFF},
++	{0x3CCF,		0x03},
++	{0x3CD0,		0xFF},
++	{0x3CD1,		0x03},
++	{0x3E00,		0x1E},
++	{0x3E02,		0x04},
++	{0x3E03,		0x00},
++	{0x3E20,		0x04},
++	{0x3E21,		0x00},
++	{0x3E22,		0x1E},
++	{0x3E24,		0xB6},
++	{0x4490,		0x07},
++	{0x4494,		0x10},
++	{0x4495,		0x00},
++	{0x4496,		0xB2},
++	{0x4497,		0x00},
++	{0x44A0,		0x33},
++	{0x44A2,		0x10},
++	{0x44A4,		0x10},
++	{0x44A6,		0x10},
++	{0x44A8,		0x4B},
++	{0x44AA,		0x4B},
++	{0x44AC,		0x4B},
++	{0x44AE,		0x46},
++	{0x44B0,		0x33},
++	{0x44B2,		0x10},
++	{0x44B4,		0x10},
++	{0x44B6,		0x10},
++	{0x44B8,		0x42},
++	{0x44BA,		0x42},
++	{0x44BC,		0x42},
++	{0x44BE,		0x42},
++	{0x44C0,		0x33},
++	{0x44C2,		0x10},
++	{0x44C4,		0x10},
++	{0x44C6,		0x10},
++	{0x44C8,		0xE7},
++	{0x44CA,		0xE2},
++	{0x44CC,		0xE2},
++	{0x44CE,		0xDD},
++	{0x44D0,		0xDD},
++	{0x44D2,		0xB2},
++	{0x44D4,		0xB2},
++	{0x44D6,		0xB2},
++	{0x44D8,		0xE1},
++	{0x44DA,		0xE1},
++	{0x44DC,		0xE1},
++	{0x44DE,		0xDD},
++	{0x44E0,		0xDD},
++	{0x44E2,		0xB2},
++	{0x44E4,		0xB2},
++	{0x44E6,		0xB2},
++	{0x44E8,		0xDD},
++	{0x44EA,		0xDD},
++	{0x44EC,		0xDD},
++	{0x44EE,		0xDD},
++	{0x44F0,		0xDD},
++	{0x44F2,		0xB2},
++	{0x44F4,		0xB2},
++	{0x44F6,		0xB2},
++	{0x4538,		0x15},
++	{0x4539,		0x15},
++	{0x453A,		0x15},
++	{0x4544,		0x15},
++	{0x4545,		0x15},
++	{0x4546,		0x15},
++	{0x4550,		0x10},
++	{0x4551,		0x10},
++	{0x4552,		0x10},
++	{0x4553,		0x10},
++	{0x4554,		0x10},
++	{0x4555,		0x10},
++	{0x4556,		0x10},
++	{0x4557,		0x10},
++	{0x4558,		0x10},
++	{0x455C,		0x10},
++	{0x455D,		0x10},
++	{0x455E,		0x10},
++	{0x455F,		0x10},
++	{0x4560,		0x10},
++	{0x4561,		0x10},
++	{0x4562,		0x10},
++	{0x4563,		0x10},
++	{0x4564,		0x10},
++	{0x4604,		0x04},
++	{0x4608,		0x22},
++	{0x479C,		0x04},
++	{0x47A0,		0x22},
++	{0x4E3C,		0x07},
++
++	{IMX676_TABLE_WAIT_MS, IMX676_WAIT_MS},
++	{IMX676_TABLE_END, 0x0000}
++};
++
++static const imx676_reg mode_3552x3556[] = {
++
++	{WINMODE,		0x00},
++	{ADDMODE,		0x00},
++	{WDMODE,		0x00},
++	{VCMODE,		0x01},
++
++	{0x4498,		0x4C},
++	{0x449A,		0x4B},
++	{0x449C,		0x4B},
++	{0x449E,		0x49},
++
++	{0x48A7,		0x01},
++	{0x4EE8,		0x00},
++
++	{IMX676_TABLE_WAIT_MS, IMX676_WAIT_MS},
++	{IMX676_TABLE_END, 0x0000}
++};
++
++static const imx676_reg mode_disable_pattern_generator[] = {
++
++	{BLKLEVEL_LOW,		0x32},
++	{TPG_EN_DUOUT,		0x00},
++	{TPG_COLORWIDTH,	0x00},
++	{TESTCLKEN,		0x02},
++
++	{IMX676_TABLE_WAIT_MS, IMX676_WAIT_MS},
++	{IMX676_TABLE_END, 0x0000}
++};
++
++static const int imx676_10fps[] = { 10 };
++static const struct camera_common_frmfmt imx676_frmfmt[] = {
++	{
++		.size = { IMX676_DEFAULT_WIDTH, IMX676_DEFAULT_HEIGHT },
++		.framerates = imx676_10fps,
++		.num_framerates = ARRAY_SIZE(imx676_10fps),
++		.hdr_en = false,
++		.mode = 0,
++	},
++};
++
++#endif

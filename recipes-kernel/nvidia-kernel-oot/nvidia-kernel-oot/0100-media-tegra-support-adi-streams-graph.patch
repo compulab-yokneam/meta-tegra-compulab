@@ -1,0 +1,686 @@
+From 24ab4c546bef5fcdabbd368a7f43f5b416331743 Mon Sep 17 00:00:00 2001
+From: CompuLab <support@compulab.co.il>
+Date: Sun, 4 Oct 2026 19:25:49 +0300
+Subject: [PATCH] media: tegra: support ADI stream-aware SerDes pipelines
+
+Traverse the active V4L2 route for the selected CSI virtual channel instead
+of assuming that the previous media pad is the upstream sink. Retain the
+sensor as the NVIDIA metadata and control provider, associate it with the
+linked NVCSI channel, and propagate its format through bridge state.
+
+Start NVCSI first, then request the selected stream from the first bridge.
+The ADI bridge recursively starts its serializer and sensor, so do not call
+those upstream subdevices a second time. Preserve the existing s_stream
+path for ordinary sensor pipelines and roll back downstream startup if a
+stream-aware bridge fails.
+
+Respect Maxim child async notifiers, resolve their subdevices after root
+completion, reuse their immutable media links, and match each shared
+bridge output by endpoint. Find the physical I2C controller through nested
+gates/address translators when constructing NVIDIA sensor metadata.
+
+Add an optional sensor get_frame_desc callback to camera_common_sensor_ops
+and forward it from the stock tegracam pad operations before registration.
+The EDGEDES sensor modules supply their native CSI datatype and VC there.
+
+Initialize optional private sensor controls and per-instance pad operations
+before async publication, so VI copies a complete control handler and the
+subdevice uses the sensor's final lock from its first bind.
+
+Zero legacy pad-operation requests to select stream 0 under Linux 6.18.
+Bound the control-copy traversal before reading the next subdevice because
+NVCSI, deserializer, serializer and sensor consume all four array slots.
+Avoid changing bridge formats that already match an active route.
+
+Prepared against the unmodified NVIDIA Jetson Linux 39.2.1 public source.
+This integration targets the Linux 6.18 V4L2 Streams API.
+
+Upstream-Status: Inappropriate [NVIDIA tegracam and CompuLab EDGEDES integration]
+Signed-off-by: CompuLab <support@compulab.co.il>
+---
+ .../platform/tegra/camera/sensor_common.c     |  19 ++
+ .../platform/tegra/camera/tegracam_v4l2.c     |  21 ++
+ .../media/platform/tegra/camera/vi/channel.c  | 223 ++++++++++++++++--
+ .../media/platform/tegra/camera/vi/graph.c    | 136 ++++++++++-
+ include/media/camera_common.h                 |   3 +
+ include/media/mc_common.h                     |   4 +
+ 6 files changed, 390 insertions(+), 16 deletions(-)
+
+diff --git a/drivers/media/platform/tegra/camera/sensor_common.c b/drivers/media/platform/tegra/camera/sensor_common.c
+index 3d86b3d..350d0c1 100644
+--- a/drivers/media/platform/tegra/camera/sensor_common.c
++++ b/drivers/media/platform/tegra/camera/sensor_common.c
+@@ -744,6 +744,25 @@ static int sensor_common_init_i2c_device_config(
+ 		}
+ 	}
+ 
++	/*
++	 * An I2C gate or address translator may introduce several virtual
++	 * adapters above a sensor. Find the physical controller for the
++	 * NVIDIA sensor metadata instead of treating the first gate as MMIO.
++	 */
++	while (parent &&
++	       of_property_read_u32_index(parent, "reg", 1, &value)) {
++		struct device_node *upstream;
++
++		if (of_device_is_compatible(parent, "i2c-mux-gpio"))
++			upstream = of_parse_phandle(parent, "i2c-parent", 0);
++		else
++			upstream = of_get_parent(parent);
++		of_node_put(parent);
++		parent = upstream;
++	}
++	if (!parent)
++		return -EINVAL;
++
+ 	/* read parent which is i2c bus */
+ 	err = of_property_read_u32_index(parent, "reg", 1, &value);
+ 	if (err) {
+diff --git a/drivers/media/platform/tegra/camera/tegracam_v4l2.c b/drivers/media/platform/tegra/camera/tegracam_v4l2.c
+index b7b1ed8..44c01a7 100644
+--- a/drivers/media/platform/tegra/camera/tegracam_v4l2.c
++++ b/drivers/media/platform/tegra/camera/tegracam_v4l2.c
+@@ -179,6 +179,17 @@ static int v4l2sd_set_fmt(struct v4l2_subdev *sd,
+ 	return ret;
+ }
+ 
++static int v4l2sd_get_frame_desc(struct v4l2_subdev *sd, unsigned int pad,
++			      struct v4l2_mbus_frame_desc *fd)
++{
++	struct camera_common_data *s_data = to_camera_common_data(sd->dev);
++
++	if (!s_data || !s_data->ops->get_frame_desc)
++		return -ENOIOCTLCMD;
++
++	return s_data->ops->get_frame_desc(sd, pad, fd);
++}
++
+ static struct v4l2_subdev_pad_ops v4l2sd_pad_ops = {
+ #if defined(NV_V4L2_SUBDEV_PAD_OPS_STRUCT_HAS_GET_SET_FRAME_INTERVAL)
+ 	.get_frame_interval = cam_g_frame_interval,
+@@ -190,6 +201,7 @@ static struct v4l2_subdev_pad_ops v4l2sd_pad_ops = {
+ 	.enum_frame_size	= camera_common_enum_framesizes,
+ 	.enum_frame_interval	= camera_common_enum_frameintervals,
+ 	.get_mbus_config	= camera_common_get_mbus_config,
++	.get_frame_desc = v4l2sd_get_frame_desc,
+ };
+ 
+ static struct v4l2_subdev_ops v4l2sd_ops = {
+@@ -245,6 +257,15 @@ int tegracam_v4l2subdev_register(struct tegracam_device *tc_dev,
+ 	/* Set owner to NULL so we can unload the driver module */
+ 	sd->owner = NULL;
+ 
++	/* Complete sensor controls and pad operations before async publication. */
++	if (s_data->ops->init_private_controls) {
++		err = s_data->ops->init_private_controls(tc_dev);
++		if (err) {
++			v4l2_ctrl_handler_free(sd->ctrl_handler);
++			return err;
++		}
++	}
++
+ #if IS_ENABLED(CONFIG_MEDIA_CONTROLLER)
+ 	tc_dev->pad.flags = MEDIA_PAD_FL_SOURCE;
+ 	sd->entity.ops = &media_ops;
+diff --git a/drivers/media/platform/tegra/camera/vi/channel.c b/drivers/media/platform/tegra/camera/vi/channel.c
+index 33700bb..07d8f41 100644
+--- a/drivers/media/platform/tegra/camera/vi/channel.c
++++ b/drivers/media/platform/tegra/camera/vi/channel.c
+@@ -964,6 +964,155 @@ int tegra_channel_write_blobs(struct tegra_channel *chan)
+ }
+ EXPORT_SYMBOL(tegra_channel_write_blobs);
+ 
++/* Select one routed stream by its CSI-2 virtual channel, not by pad order. */
++static int tegra_channel_stream_id(struct tegra_channel *chan,
++				   struct v4l2_subdev *sd, u32 pad,
++				   u32 *stream)
++{
++	struct v4l2_mbus_frame_desc fd = { 0 };
++	unsigned int i;
++	int ret;
++
++	ret = v4l2_subdev_call(sd, pad, get_frame_desc, pad, &fd);
++	if (ret)
++		return ret;
++	if (fd.type != V4L2_MBUS_FRAME_DESC_TYPE_CSI2)
++		return -EINVAL;
++
++	for (i = 0; i < fd.num_entries; i++) {
++		if (fd.entry[i].bus.csi2.vc != chan->virtual_channel)
++			continue;
++		*stream = fd.entry[i].stream;
++		return *stream < 64 ? 0 : -EINVAL;
++	}
++
++	return -ENOLINK;
++}
++
++static int tegra_channel_route_sink(struct v4l2_subdev *sd, u32 source_pad,
++				    u32 source_stream, u32 *sink_pad,
++				    u32 *sink_stream)
++{
++	struct v4l2_subdev_state *state;
++	struct v4l2_subdev_route *route;
++	int ret = -ENOLINK;
++
++	state = v4l2_subdev_lock_and_get_active_state(sd);
++	if (!state)
++		return -EINVAL;
++
++	for_each_active_route(&state->routing, route) {
++		if (route->source_pad != source_pad ||
++		    route->source_stream != source_stream)
++			continue;
++		*sink_pad = route->sink_pad;
++		*sink_stream = route->sink_stream;
++		ret = 0;
++		break;
++	}
++	v4l2_subdev_unlock_state(state);
++
++	return ret;
++}
++
++/*
++ * Propagate the selected sensor format through stream-aware bridge state.
++ * ADI configures CSI datatypes from frame descriptors, but link validation
++ * also needs matching formats on the connected pads.
++ */
++static int tegra_channel_sync_stream_formats(struct tegra_channel *chan)
++{
++	struct v4l2_subdev_format format = {
++		.which = V4L2_SUBDEV_FORMAT_ACTIVE,
++	};
++	struct media_entity *entity;
++	struct media_pad *pad;
++	u32 stream;
++	int ret;
++
++	if (!chan->stream_subdev)
++		return 0;
++
++	ret = v4l2_subdev_call(chan->subdev_on_csi, pad, get_fmt, NULL,
++			       &format);
++	if (ret)
++		return ret;
++
++	entity = &chan->stream_subdev->entity;
++	pad = &entity->pads[chan->stream_pad];
++	stream = __ffs64(chan->stream_mask);
++
++	while (pad) {
++		struct v4l2_subdev *sd = media_entity_to_v4l2_subdev(entity);
++		struct v4l2_subdev_state *state;
++		struct v4l2_subdev_format current_fmt = {
++			.which = V4L2_SUBDEV_FORMAT_ACTIVE,
++		};
++		u32 sink_pad, sink_stream;
++
++		if (!(sd->flags & V4L2_SUBDEV_FL_STREAMS))
++			break;
++		ret = tegra_channel_route_sink(sd, pad->index, stream,
++					      &sink_pad, &sink_stream);
++		if (ret)
++			return ret;
++		state = v4l2_subdev_lock_and_get_active_state(sd);
++		if (!state)
++			return -EINVAL;
++		format.pad = sink_pad;
++		format.stream = sink_stream;
++		current_fmt.pad = sink_pad;
++		current_fmt.stream = sink_stream;
++		ret = v4l2_subdev_call(sd, pad, get_fmt, state, &current_fmt);
++		/* A matching active route needs no forbidden format mutation. */
++		if (!ret && (current_fmt.format.width != format.format.width ||
++			     current_fmt.format.height != format.format.height ||
++			     current_fmt.format.code != format.format.code ||
++			     current_fmt.format.field != format.format.field))
++			ret = v4l2_subdev_call(sd, pad, set_fmt, state, &format);
++		v4l2_subdev_unlock_state(state);
++		if (ret)
++			return ret;
++
++#if defined(NV_MEDIA_ENTITY_REMOTE_PAD_PRESENT)
++		pad = media_entity_remote_pad(&entity->pads[sink_pad]);
++#else
++		pad = media_pad_remote_pad_first(&entity->pads[sink_pad]);
++#endif
++		if (!pad)
++			return -ENOLINK;
++		entity = pad->entity;
++		stream = sink_stream;
++	}
++
++	return 0;
++}
++
++static int tegra_channel_stream_subdev(struct tegra_channel *chan,
++				      int index, bool on)
++{
++	struct v4l2_subdev *sd = chan->subdev[index];
++	int i;
++
++	if (!chan->stream_subdev)
++		return v4l2_subdev_call(sd, video, s_stream, on);
++
++	if (sd == chan->stream_subdev) {
++		if (on)
++			return v4l2_subdev_enable_streams(sd, chan->stream_pad,
++							 chan->stream_mask);
++		return v4l2_subdev_disable_streams(sd, chan->stream_pad,
++						  chan->stream_mask);
++	}
++
++	/* The bridge recursively starts/stops all of its upstream sources. */
++	for (i = 0; i < index; i++)
++		if (chan->subdev[i] == chan->stream_subdev)
++			return 0;
++
++	return v4l2_subdev_call(sd, video, s_stream, on);
++}
++
+ int tegra_channel_set_stream(struct tegra_channel *chan, bool on)
+ {
+ 	int num_sd;
+@@ -978,6 +1127,9 @@ int tegra_channel_set_stream(struct tegra_channel *chan, bool on)
+ 	trace_tegra_channel_set_stream("enable", on);
+ 
+ 	if (on) {
++		ret = tegra_channel_sync_stream_formats(chan);
++		if (ret)
++			return ret;
+ 		tegra_camera_update_clknbw(chan, true);
+ 		/* Enable CSI before sensor. Reason is as follows:
+ 		 * CSI is able to catch the very first clk transition.
+@@ -987,9 +1139,15 @@ int tegra_channel_set_stream(struct tegra_channel *chan, bool on)
+ 				sd = chan->subdev[num_sd];
+ 
+ 				trace_tegra_channel_set_stream(sd->name, on);
+-				err = v4l2_subdev_call(sd, video, s_stream, on);
++				err = tegra_channel_stream_subdev(chan, num_sd, on);
+ 				if (!ret && err < 0 && err != -ENOIOCTLCMD)
+ 					ret = err;
++				if (chan->stream_subdev && ret) {
++					while (num_sd-- > 0)
++						tegra_channel_stream_subdev(chan, num_sd, false);
++					tegra_camera_update_clknbw(chan, false);
++					return ret;
++				}
+ 			}
+ 			if (!chan->bypass && !chan->pg_mode &&
+ 					chan->deskew_ctx->deskew_lanes) {
+@@ -1004,9 +1162,8 @@ int tegra_channel_set_stream(struct tegra_channel *chan, bool on)
+ 						sd = chan->subdev[num_sd];
+ 						trace_tegra_channel_set_stream(
+ 							sd->name, false);
+-						err = v4l2_subdev_call(sd,
+-							video,
+-							s_stream, false);
++						err = tegra_channel_stream_subdev(chan,
++									 num_sd, false);
+ 					}
+ 				} else
+ 					break;
+@@ -1018,7 +1175,7 @@ int tegra_channel_set_stream(struct tegra_channel *chan, bool on)
+ 			sd = chan->subdev[num_sd];
+ 
+ 			trace_tegra_channel_set_stream(sd->name, on);
+-			err = v4l2_subdev_call(sd, video, s_stream, on);
++			err = tegra_channel_stream_subdev(chan, num_sd, on);
+ 			if (!ret && err < 0 && err != -ENOIOCTLCMD)
+ 				ret = err;
+ 		}
+@@ -1150,7 +1307,7 @@ tegra_channel_enum_framesizes(struct file *file, void *fh,
+ {
+ 	struct tegra_channel *chan = video_drvdata(file);
+ 	struct v4l2_subdev *sd = chan->subdev_on_csi;
+-	struct v4l2_subdev_frame_size_enum fse;
++	struct v4l2_subdev_frame_size_enum fse = { 0 };
+ 	struct v4l2_subdev_pad_config pad_cfg;
+ 	struct v4l2_subdev_state cfg = {.pads = &pad_cfg};
+ 	int ret = 0;
+@@ -1180,7 +1337,7 @@ tegra_channel_enum_frameintervals(struct file *file, void *fh,
+ {
+ 	struct tegra_channel *chan = video_drvdata(file);
+ 	struct v4l2_subdev *sd = chan->subdev_on_csi;
+-	struct v4l2_subdev_frame_interval_enum fie;
++	struct v4l2_subdev_frame_interval_enum fie = { 0 };
+ 	struct v4l2_subdev_pad_config pad_cfg;
+ 	struct v4l2_subdev_state cfg = {.pads = &pad_cfg};
+ 	int ret = 0;
+@@ -1735,9 +1892,8 @@ static int tegra_channel_setup_controls(struct tegra_channel *chan)
+ 	v4l2_ctrl_handler_init(&chan->ctrl_handler, MAX_CID_CONTROLS);
+ 
+ 	/* Initialize the subdev and controls here at first open */
+-	sd = chan->subdev[num_sd];
+-	while ((sd = chan->subdev[num_sd++]) &&
+-		(num_sd <= chan->num_subdevs)) {
++	while (num_sd < chan->num_subdevs &&
++	       (sd = chan->subdev[num_sd++])) {
+ 		/* Add control handler for the subdevice */
+ 		ret = v4l2_ctrl_add_handler(&chan->ctrl_handler,
+ 					sd->ctrl_handler, NULL, false);
+@@ -1866,6 +2022,20 @@ static int tegra_channel_connect_sensor(
+ 	if (!csi_device)
+ 		return -ENODEV;
+ 
++	if (chan->stream_subdev) {
++		struct tegra_csi_channel *csi_chan;
++
++		/* A routed bridge separates the sensor endpoint from NVCSI. */
++		list_for_each_entry(csi_chan, &csi_device->csi_chans, list) {
++			if (&csi_chan->subdev != chan->subdev[0])
++				continue;
++			csi_chan->s_data = to_camera_common_data(sensor_dev);
++			csi_chan->sensor_sd = sensor_sd;
++			return 0;
++		}
++		return -ENODEV;
++	}
++
+ 	for_each_endpoint_of_node(sensor_of_node, ep_node) {
+ 		struct device_node *csi_chan_of_node;
+ 		struct tegra_csi_channel *csi_chan;
+@@ -2038,6 +2208,8 @@ void tegra_channel_remove_subdevices(struct tegra_channel *chan)
+ 	chan->video = NULL;
+ 	chan->num_subdevs = 0;
+ 	chan->subdev_on_csi = NULL;
++	chan->stream_subdev = NULL;
++	chan->stream_mask = 0;
+ }
+ EXPORT_SYMBOL(tegra_channel_remove_subdevices);
+ 
+@@ -2048,6 +2220,7 @@ int tegra_channel_init_subdevices(struct tegra_channel *chan)
+ 	struct media_pad *pad;
+ 	struct v4l2_subdev *sd;
+ 	int index = 0;
++	u32 stream = 0;
+ 	u8 num_sd = 0;
+ 	struct tegra_camera_dev_info camdev_info;
+ 	int grp_id = chan->pg_mode ? (TPG_CSI_GROUP_ID + chan->port[0] + 1)
+@@ -2079,8 +2252,29 @@ int tegra_channel_init_subdevices(struct tegra_channel *chan)
+ 
+ 	sd->grp_id = grp_id;
+ 	chan->grp_id = grp_id;
+-	index = pad->index - 1;
+-	while (index >= 0) {
++	chan->stream_subdev = NULL;
++	chan->stream_mask = 0;
++	while (pad->index > 0) {
++		if (sd->flags & V4L2_SUBDEV_FL_STREAMS) {
++			u32 sink_pad;
++
++			if (!chan->stream_subdev) {
++				ret = tegra_channel_stream_id(chan, sd, pad->index,
++							     &stream);
++				if (ret)
++					return ret;
++				chan->stream_subdev = sd;
++				chan->stream_pad = pad->index;
++				chan->stream_mask = BIT_ULL(stream);
++			}
++			ret = tegra_channel_route_sink(sd, pad->index, stream,
++						      &sink_pad, &stream);
++			if (ret)
++				return ret;
++			index = sink_pad;
++		} else {
++			index = pad->index - 1;
++		}
+ 		pad = &entity->pads[index];
+ 		if (!(pad->flags & MEDIA_PAD_FL_SINK))
+ 			break;
+@@ -2107,7 +2301,6 @@ int tegra_channel_init_subdevices(struct tegra_channel *chan)
+ 		if (len < 0)
+ 			return -EINVAL;
+ 
+-		index = pad->index - 1;
+ 	}
+ 	spec_bar(); /** for num_sd < MAX_SUBDEVICES */
+ 
+@@ -2204,7 +2397,7 @@ __tegra_channel_try_format(struct tegra_channel *chan,
+ 			struct v4l2_pix_format *pix)
+ {
+ 	const struct tegra_video_format *vfmt;
+-	struct v4l2_subdev_format fmt;
++	struct v4l2_subdev_format fmt = { 0 };
+ 	struct v4l2_subdev *sd = chan->subdev_on_csi;
+ 	struct v4l2_subdev_pad_config pad_cfg;
+ 	struct v4l2_subdev_state cfg = {.pads = &pad_cfg};
+@@ -2258,7 +2451,7 @@ __tegra_channel_set_format(struct tegra_channel *chan,
+ 			struct v4l2_pix_format *pix)
+ {
+ 	const struct tegra_video_format *vfmt;
+-	struct v4l2_subdev_format fmt;
++	struct v4l2_subdev_format fmt = { 0 };
+ 	struct v4l2_subdev *sd = chan->subdev_on_csi;
+ 	struct v4l2_subdev_pad_config pad_cfg;
+ 	struct v4l2_subdev_state cfg = {.pads = &pad_cfg};
+diff --git a/drivers/media/platform/tegra/camera/vi/graph.c b/drivers/media/platform/tegra/camera/vi/graph.c
+index 097db3f..b9461ec 100644
+--- a/drivers/media/platform/tegra/camera/vi/graph.c
++++ b/drivers/media/platform/tegra/camera/vi/graph.c
+@@ -30,6 +30,8 @@
+  * Graph Management
+  */
+ 
++static bool tegra_vi_graph_is_maxim_deserializer(struct device_node *node);
++
+ static struct tegra_vi_graph_entity *
+ tegra_vi_graph_find_entity(struct tegra_channel *chan,
+ 		       const struct device_node *node)
+@@ -127,6 +129,13 @@ static int tegra_vi_graph_build_one(struct tegra_channel *chan,
+ 		/* Find the remote entity. */
+ 		ent = tegra_vi_graph_find_entity(chan, to_of_node(link.remote_node));
+ 		if (ent == NULL) {
++			/* Another VI channel may share this bridge's CSI output. */
++			if (tegra_vi_graph_is_maxim_deserializer(entity->node)) {
++#if defined(CONFIG_V4L2_FWNODE)
++				v4l2_fwnode_put_link(&link);
++#endif
++				continue;
++			}
+ 			dev_err(chan->vi->dev, "no entity found for %pOF\n",
+ 				to_of_node(link.remote_node));
+ #if defined(CONFIG_V4L2_FWNODE)
+@@ -159,6 +168,10 @@ static int tegra_vi_graph_build_one(struct tegra_channel *chan,
+ 			local->name, local_pad->index,
+ 			remote->name, remote_pad->index);
+ 
++		/* Upstream bridges create immutable links in their child notifier. */
++		if (media_entity_find_link(local_pad, remote_pad))
++			continue;
++
+ 		ret = tegra_media_create_link(local, local_pad->index, remote,
+ 				remote_pad->index, link_flags);
+ 		if (ret < 0) {
+@@ -295,6 +308,29 @@ static int tegra_vi_graph_notify_complete(struct v4l2_async_notifier *notifier)
+ 
+ 	dev_dbg(chan->vi->dev, "notify complete, all subdevs registered\n");
+ 
++	/*
++	 * Stream-aware bridges bind their serializers and sensors through
++	 * child notifiers. They belong to this V4L2 device when the root
++	 * notifier completes, without a duplicate VI async connection.
++	 */
++	list_for_each_entry(entity, &chan->entities, list) {
++		struct v4l2_subdev *sd;
++
++		if (entity->subdev)
++			continue;
++		list_for_each_entry(sd, &chan->vi->v4l2_dev.subdevs, list) {
++			if (of_fwnode_handle(entity->node) != sd->fwnode &&
++			    (!sd->dev || of_fwnode_handle(entity->node) !=
++			     dev_fwnode(sd->dev)))
++				continue;
++			entity->entity = &sd->entity;
++			entity->subdev = sd;
++			break;
++		}
++		if (!entity->subdev)
++			return -ENODEV;
++	}
++
+ 	/* Allocate video_device */
+ 	ret = tegra_channel_init_video(chan);
+ 	if (ret < 0) {
+@@ -414,6 +450,15 @@ static void tegra_vi_graph_notify_unbind(struct v4l2_async_notifier *notifier,
+ 			break;
+ 		}
+ 	}
++#if defined(NV_V4L2_ASYNC_CONNECTION_STRUCT_PRESENT)
++	/* Drop pointers supplied by the bridge's child notifier as well. */
++	list_for_each_entry(entity, &chan->entities, list) {
++		if (!entity->asc) {
++			entity->subdev = NULL;
++			entity->entity = NULL;
++		}
++	}
++#endif
+ }
+ 
+ void tegra_vi_graph_cleanup(struct tegra_mc_vi *vi)
+@@ -439,6 +484,65 @@ void tegra_vi_graph_cleanup(struct tegra_mc_vi *vi)
+ }
+ EXPORT_SYMBOL(tegra_vi_graph_cleanup);
+ 
++static bool tegra_vi_graph_is_maxim_deserializer(struct device_node *node)
++{
++	return of_device_is_compatible(node, "maxim,max96712") ||
++	       of_device_is_compatible(node, "maxim,max96724") ||
++	       of_device_is_compatible(node, "maxim,max96724f") ||
++	       of_device_is_compatible(node, "maxim,max96724r") ||
++	       of_device_is_compatible(node, "maxim,max9296a") ||
++	       of_device_is_compatible(node, "maxim,max96714") ||
++	       of_device_is_compatible(node, "maxim,max96714f");
++}
++
++static bool tegra_vi_graph_is_nested_serdes(struct device_node *node)
++{
++	struct device_node *parent = of_get_parent(node);
++	bool virtual_adapter = false;
++
++	while (parent) {
++		if (of_node_name_eq(parent, "i2c-atr") ||
++		    of_node_name_eq(parent, "i2c-gate"))
++			virtual_adapter = true;
++		if (virtual_adapter &&
++		    tegra_vi_graph_is_maxim_deserializer(parent)) {
++			of_node_put(parent);
++			return true;
++		}
++		parent = of_get_next_parent(parent);
++	}
++
++	return false;
++}
++
++/* Match each bridge output endpoint independently for shared CSI outputs. */
++static struct device_node *
++tegra_vi_graph_match_endpoint(struct tegra_channel *chan,
++			      struct device_node *node)
++{
++	struct tegra_vi_graph_entity *csi;
++	struct device_node *ep;
++
++	if (!tegra_vi_graph_is_maxim_deserializer(node))
++		return NULL;
++	csi = list_first_entry(&chan->entities, struct tegra_vi_graph_entity,
++			       list);
++	for_each_endpoint_of_node(csi->node, ep) {
++		struct device_node *remote = of_graph_get_remote_port_parent(ep);
++		struct device_node *match = NULL;
++
++		if (remote == node)
++			match = of_graph_get_remote_endpoint(ep);
++		of_node_put(remote);
++		if (!match)
++			continue;
++		of_node_put(ep);
++		return match;
++	}
++
++	return NULL;
++}
++
+ static int tegra_vi_graph_parse_one(struct tegra_channel *chan,
+ 				struct device_node *node)
+ {
+@@ -464,6 +568,28 @@ static int tegra_vi_graph_parse_one(struct tegra_channel *chan,
+ 			break;
+ 		}
+ 
++		/* Only walk upstream of a Maxim bridge, not another CSI channel. */
++		if (tegra_vi_graph_is_maxim_deserializer(node)) {
++			struct of_endpoint endpoint;
++			u32 num_links = 4;
++
++			if (of_device_is_compatible(node, "maxim,max9296a"))
++				num_links = 2;
++			else if (of_device_is_compatible(node, "maxim,max96714") ||
++				 of_device_is_compatible(node, "maxim,max96714f"))
++				num_links = 1;
++
++			ret = of_graph_parse_endpoint(ep, &endpoint);
++			if (ret) {
++				of_node_put(remote);
++				break;
++			}
++			if (endpoint.port >= num_links) {
++				of_node_put(remote);
++				continue;
++			}
++		}
++
+ 		/* skip the vi of_node and duplicated entities */
+ 		if (remote == chan->vi->dev->of_node ||
+ 		    tegra_vi_graph_find_entity(chan, remote) ||
+@@ -689,8 +815,16 @@ int tegra_vi_graph_init(struct tegra_mc_vi *vi)
+ #else
+ 		list_for_each_entry(entity, &chan->entities, list) {
+ 			struct v4l2_async_connection *asc;
+-			asc = v4l2_async_nf_add_fwnode(&chan->notifier, of_fwnode_handle(entity->node),
++			struct device_node *match;
++
++			if (tegra_vi_graph_is_nested_serdes(entity->node))
++				continue;
++			match = tegra_vi_graph_match_endpoint(chan, entity->node);
++			asc = v4l2_async_nf_add_fwnode(&chan->notifier,
++					match ? of_fwnode_handle(match) :
++					of_fwnode_handle(entity->node),
+ 					struct v4l2_async_connection);
++			of_node_put(match);
+ 			if (IS_ERR(asc))
+ 				asc = NULL;
+ 			entity->asc = asc;
+diff --git a/include/media/camera_common.h b/include/media/camera_common.h
+index d30b873..4698f4e 100644
+--- a/include/media/camera_common.h
++++ b/include/media/camera_common.h
+@@ -169,6 +169,9 @@ struct camera_common_sensor_ops {
+ 	int (*set_mode)(struct tegracam_device *tc_dev);
+ 	int (*start_streaming)(struct tegracam_device *tc_dev);
+ 	int (*stop_streaming)(struct tegracam_device *tc_dev);
++	int (*get_frame_desc)(struct v4l2_subdev *sd, unsigned int pad,
++		struct v4l2_mbus_frame_desc *fd);
++	int (*init_private_controls)(struct tegracam_device *tc_dev);
+ };
+ 
+ struct tegracam_sensor_data {
+diff --git a/include/media/mc_common.h b/include/media/mc_common.h
+index e74971f..3fd78e8 100644
+--- a/include/media/mc_common.h
++++ b/include/media/mc_common.h
+@@ -155,6 +155,10 @@ struct tegra_channel {
+ 	struct tegra_mc_vi *vi;
+ 	struct v4l2_subdev *subdev[MAX_SUBDEVICES];
+ 	struct v4l2_subdev *subdev_on_csi;
++	/* First bridge owns recursive upstream streaming for a routed pipeline. */
++	struct v4l2_subdev *stream_subdev;
++	u32 stream_pad;
++	u64 stream_mask;
+ 
+ 	struct v4l2_ctrl_handler ctrl_handler;
+ 	struct v4l2_pix_format format;
+-- 
+2.34.1

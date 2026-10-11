@@ -1,0 +1,318 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// SPDX-FileCopyrightText: Copyright (c) 2026 CompuLab Ltd.
+
+/dts-v1/;
+/plugin/;
+
+#include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/gpio/tegra234-gpio.h>
+#include <dt-bindings/media/video-interfaces.h>
+
+/*
+ * Initial ADI v18 transport profile for F-CON_08 v2.0rA + ISB_IMX678_SG1.
+ * Use instead of the TEVS profile; only EDGEDES coax port 0 is enabled.
+ *
+ * Preserve the qualified R39 eb-edgedes-framos-imx678-overlay.dts sensor
+ * mode and lane ordering: MAX96724 PHY2 -> Edge-AI CSI-C (port-index 2),
+ * identity four-lane map, VC0, 2.5 Gb/s per output lane. RAW12 capture is
+ * qualified with ADI v18 in pixel mode; it does not use the old TN pipe
+ * properties (DBL12/soft-bpp/alt-mem-map12). Cold-power startup is not qualified.
+ *
+ * FRAMOS support's corrected F-CON_08 pinout identifies MFP0=XCLR,
+ * MFP4=INCK, MFP6=TENABLE, MFP8=PW_EN_0, MFP9=SDA and MFP10=SCL.
+ * Serializer i2c@0 below is ADI's logical downstream ATR adapter, not a
+ * claim about the physical MFP I2C channel numbering. The qualified vendor
+ * profile also leaves the serializer control-I2C pin routing at defaults.
+ */
+
+/ {
+	overlay-name = "CompuLab EDGEDES ADI v18 FRAMOS IMX678 port 0";
+	compatible = "compulab,edgeai-orn", "nvidia,tegra234";
+
+	fragment@0 {
+		target = <&cam_i2c>;
+		__overlay__ {
+			status = "okay";
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			edgedes_adi_framos_des: deserializer@27 {
+				compatible = "maxim,max96724";
+				reg = <0x27>;
+				/* Edge-AI EDGEDES PWDN/reset: physical low asserts reset. */
+				enable-gpios = <&gpio TEGRA234_MAIN_GPIO(Y, 4) GPIO_ACTIVE_HIGH>;
+				maxim,control-channel-port = <0>;
+				/* Link-local DT address 0x40 is exposed upstream at alias 0x42. */
+				i2c-alias-pool = <0x42>;
+
+				ports {
+					#address-cells = <1>;
+					#size-cells = <0>;
+					port@0 {
+						reg = <0>;
+						edgedes_adi_framos_gmsl0_in: endpoint {
+							remote-endpoint = <&edgedes_adi_framos_ser0_out>;
+						};
+					};
+					/* ADI source pad 6 = four GMSL inputs + hardware PHY2. */
+					port@6 {
+						reg = <6>;
+						edgedes_adi_framos_phy2_out: endpoint {
+							bus-type = <MEDIA_BUS_TYPE_CSI2_DPHY>;
+							clock-lanes = <0>;
+							data-lanes = <1 2 3 4>;
+							lane-polarities = <0 0 0 0 0>;
+							link-frequencies = /bits/ 64 <1250000000>;
+							remote-endpoint = <&edgedes_adi_framos_csi_in>;
+						};
+					};
+				};
+
+				i2c-atr {
+					#address-cells = <1>;
+					#size-cells = <0>;
+					i2c@0 {
+						reg = <0>;
+						#address-cells = <1>;
+						#size-cells = <0>;
+
+						edgedes_adi_framos_ser0: serializer@40 {
+							compatible = "maxim,max96793", "maxim,max96717f";
+							reg = <0x40>;
+							gpio-controller;
+							#gpio-cells = <2>;
+							#clock-cells = <0>;
+							/* Pool for native TCA6408 0x21 and IMX678 0x1a; ATR assigns dynamically. */
+							i2c-alias-pool = <0x22 0x1b>;
+							pinctrl-names = "default";
+							pinctrl-0 = <&edgedes_adi_framos_rclk>;
+
+							edgedes_adi_framos_rclk: rclk-pins {
+								pins = "mfp4";
+								function = "rclkout";
+								/* Qualified 37.125-MHz clock uses the fastest slew. */
+								slew-rate = <0>;
+							};
+
+							ports {
+								#address-cells = <1>;
+								#size-cells = <0>;
+								port@0 {
+									reg = <0>;
+									edgedes_adi_framos_ser0_csi_in: endpoint {
+										bus-type = <MEDIA_BUS_TYPE_CSI2_DPHY>;
+										clock-lanes = <0>;
+										data-lanes = <1 2 3 4>;
+										lane-polarities = <0 0 0 0 0>;
+										remote-endpoint = <&edgedes_adi_framos_imx678_out>;
+									};
+								};
+								port@1 {
+									reg = <1>;
+									edgedes_adi_framos_ser0_out: endpoint {
+										remote-endpoint = <&edgedes_adi_framos_gmsl0_in>;
+									};
+								};
+							};
+
+							i2c-atr {
+								#address-cells = <1>;
+								#size-cells = <0>;
+								i2c@0 {
+									reg = <0>;
+									#address-cells = <1>;
+									#size-cells = <0>;
+
+									/* Expose the expander for diagnostics; do not change strap states. */
+									gpio@21 {
+										compatible = "ti,tca6408";
+										reg = <0x21>;
+										gpio-controller;
+										#gpio-cells = <2>;
+										gpio-line-names =
+											"SLAMODE1", "SLAMODE2", "PW_EN_1", "TOUT0",
+											"XMASTER0", "TOUT2", "SYS_PW_EN", "TOUT1";
+									};
+
+									edgedes_adi_framos_imx678: imx678@1a {
+										compatible = "framos,imx678";
+										reg = <0x1a>;
+										status = "okay";
+										/* Driver: PW_EN low 5 ms, INCK on, XCLR low 200 ms. */
+										reset-gpios = <&edgedes_adi_framos_ser0 0 GPIO_ACTIVE_LOW>;
+										tenable-gpios = <&edgedes_adi_framos_ser0 6 GPIO_ACTIVE_HIGH>;
+										power-enable-gpios = <&edgedes_adi_framos_ser0 8 GPIO_ACTIVE_HIGH>;
+										clocks = <&edgedes_adi_framos_ser0>;
+										clock-names = "mclk";
+										mclk = "mclk";
+										assigned-clocks = <&edgedes_adi_framos_ser0>;
+										assigned-clock-rates = <37125000>;
+										vc-id = <0>;
+										devnode = "video0";
+										physical_w = "20.00";
+										physical_h = "16.80";
+										sensor_model = "imx678";
+										post_crop_frame_drop = "0";
+										use_decibel_gain = "true";
+										delayed_gain = "false";
+										use_sensor_mode_id = "false";
+
+										/* Preserve only the previously qualified native 10-FPS mode. */
+										mode0 {
+											mclk_khz = "37125";
+											num_lanes = "4";
+											tegra_sinterface = "serial_c";
+											vc_id = "0";
+											phy_mode = "DPHY";
+											discontinuous_clk = "no";
+											dpcm_enable = "false";
+											cil_settletime = "0";
+											lane_polarity = "0";
+											active_w = "3856";
+											active_h = "2180";
+											dynamic_pixel_bit_depth = "12";
+											csi_pixel_bit_depth = "12";
+											mode_type = "bayer";
+											pixel_phase = "rggb";
+											readout_orientation = "0";
+											line_length = "6600";
+											inherent_gain = "1";
+											pix_clk_hz = "396000000";
+											serdes_pix_clk_hz = "833333333";
+											gain_factor = "10";
+											min_gain_val = "0";
+											max_gain_val = "720";
+											step_gain_val = "3";
+											default_gain = "0";
+											min_hdr_ratio = "1";
+											max_hdr_ratio = "1";
+											framerate_factor = "1000000";
+											min_framerate = "10000000";
+											max_framerate = "10000000";
+											step_framerate = "1";
+											default_framerate = "10000000";
+											exposure_factor = "1000000";
+											min_exp_time = "30";
+											max_exp_time = "99875";
+											step_exp_time = "1";
+											default_exp_time = "10000";
+											embedded_metadata_height = "0";
+										};
+
+										ports {
+											#address-cells = <1>;
+											#size-cells = <0>;
+											port@0 {
+												reg = <0>;
+												edgedes_adi_framos_imx678_out: endpoint {
+													/* NVIDIA leaf metadata: downstream CSI-C, four lanes. */
+													port-index = <2>;
+													bus-width = <4>;
+													bus-type = <MEDIA_BUS_TYPE_CSI2_DPHY>;
+													clock-lanes = <0>;
+													data-lanes = <1 2 3 4>;
+													lane-polarities = <0 0 0 0 0>;
+													/* Sensor CSI 1188 Mb/s/lane; link-frequencies is half the bit rate. */
+													link-frequencies = /bits/ 64 <594000000>;
+													vc-id = <0>;
+													remote-endpoint = <&edgedes_adi_framos_ser0_csi_in>;
+												};
+											};
+										};
+									};
+								};
+							};
+						};
+					};
+				};
+			};
+		};
+	};
+
+	fragment@1 {
+		target = <&nvcsi>;
+		__overlay__ {
+			status = "okay";
+			num-channels = <1>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+			channel@0 {
+				reg = <0>;
+				ports {
+					#address-cells = <1>;
+					#size-cells = <0>;
+					port@0 {
+						reg = <0>;
+						#address-cells = <1>;
+						#size-cells = <0>;
+						edgedes_adi_framos_csi_in: endpoint@0 {
+							reg = <0>;
+							port-index = <2>;
+							bus-width = <4>;
+							vc-id = <0>;
+							bus-type = <MEDIA_BUS_TYPE_CSI2_DPHY>;
+							data-lanes = <1 2 3 4>;
+							remote-endpoint = <&edgedes_adi_framos_phy2_out>;
+						};
+					};
+					port@1 {
+						reg = <1>;
+						#address-cells = <1>;
+						#size-cells = <0>;
+						edgedes_adi_framos_csi_out: endpoint@1 {
+							reg = <1>;
+							remote-endpoint = <&edgedes_adi_framos_vi_in>;
+						};
+					};
+				};
+			};
+		};
+	};
+
+	fragment@2 {
+		target = <&capture_vi>;
+		__overlay__ {
+			num-channels = <1>;
+			ports {
+				#address-cells = <1>;
+				#size-cells = <0>;
+				port@0 {
+					reg = <0>;
+					edgedes_adi_framos_vi_in: endpoint {
+						port-index = <2>;
+						bus-width = <4>;
+						vc-id = <0>;
+						remote-endpoint = <&edgedes_adi_framos_csi_out>;
+					};
+				};
+			};
+		};
+	};
+
+	fragment@3 {
+		target-path = "/";
+		__overlay__ {
+			tegra-camera-platform {
+				compatible = "nvidia, tegra-camera-platform";
+				num_csi_lanes = <4>;
+				max_lane_speed = <2500000>;
+				min_bits_per_pixel = <12>;
+				vi_peak_byte_per_pixel = <2>;
+				vi_bw_margin_pct = <25>;
+				isp_peak_byte_per_pixel = <5>;
+				isp_bw_margin_pct = <25>;
+				modules {
+					module0 {
+						badge = "imx678_port0_framos";
+						position = "front";
+						orientation = "1";
+						drivernode0 {
+							pcl_id = "v4l2_sensor";
+							sysfs-device-tree = "/sys/firmware/devicetree/base/bus@0/i2c@3180000/deserializer@27/i2c-atr/i2c@0/serializer@40/i2c-atr/i2c@0/imx678@1a";
+						};
+					};
+				};
+			};
+		};
+	};
+};

@@ -1,0 +1,285 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// SPDX-FileCopyrightText: Copyright (c) 2026 CompuLab Ltd.
+
+/dts-v1/;
+/plugin/;
+
+#include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/gpio/tegra234-gpio.h>
+#include <dt-bindings/media/video-interfaces.h>
+
+/* Preserve the qualified TEVS-AR0144 sensor metadata from the R39 profile. */
+#define TEVS_AR0144_MODE(_width, _height) \
+	mclk_khz = "24000"; \
+	num_lanes = "4"; \
+	tegra_sinterface = "serial_c"; \
+	vc_id = "0"; \
+	phy_mode = "DPHY"; \
+	discontinuous_clk = "yes"; \
+	dpcm_enable = "false"; \
+	cil_settletime = "0"; \
+	lane_polarity = "0"; \
+	active_w = _width; \
+	active_h = _height; \
+	mode_type = "yuv"; \
+	pixel_phase = "uyvy"; \
+	csi_pixel_bit_depth = "16"; \
+	readout_orientation = "90"; \
+	line_length = _width; \
+	inherent_gain = "1"; \
+	mclk_multiplier = "9.33"; \
+	pix_clk_hz = "140000000"; \
+	serdes_pix_clk_hz = "625000000"; \
+	gain_factor = "16"; \
+	framerate_factor = "1000000"; \
+	exposure_factor = "1000000"; \
+	min_gain_val = "16"; \
+	max_gain_val = "170"; \
+	step_gain_val = "1"; \
+	default_gain = "16"; \
+	min_hdr_ratio = "1"; \
+	max_hdr_ratio = "1"; \
+	min_framerate = "5000000"; \
+	max_framerate = "60000000"; \
+	step_framerate = "1"; \
+	default_framerate = "60000000"; \
+	min_exp_time = "13"; \
+	max_exp_time = "683709"; \
+	step_exp_time = "1"; \
+	default_exp_time = "2495"; \
+	embedded_metadata_height = "0";
+
+/ {
+	overlay-name = "CompuLab EDGEDES ADI v18 TEVS-AR0144 port 3";
+	compatible = "compulab,edgeai-orn", "nvidia,tegra234";
+
+	fragment@0 {
+		target = <&cam_i2c>;
+		__overlay__ {
+			status = "okay";
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			edgedes_adi: deserializer@27 {
+				compatible = "maxim,max96724";
+				reg = <0x27>;
+				/* Edge-AI EDGEDES PWDN/reset: physical low asserts reset. */
+				enable-gpios = <&gpio TEGRA234_MAIN_GPIO(Y, 4) GPIO_ACTIVE_HIGH>;
+				maxim,control-channel-port = <0>;
+				/* Only port 3 is declared, so only link 3 is enabled. */
+				i2c-alias-pool = <0x34>;
+
+				ports {
+					#address-cells = <1>;
+					#size-cells = <0>;
+					port@3 {
+						reg = <3>;
+						edgedes_adi_gmsl3_in: endpoint {
+							remote-endpoint = <&edgedes_adi_ser3_out>;
+						};
+					};
+					/* ADI source pad 6 = GMSL inputs (4) + hardware PHY 2. */
+					port@6 {
+						reg = <6>;
+						edgedes_adi_phy2_out: endpoint {
+							bus-type = <MEDIA_BUS_TYPE_CSI2_DPHY>;
+							clock-lanes = <0>;
+							data-lanes = <1 2 3 4>;
+							lane-polarities = <0 0 0 0 0>;
+							link-frequencies = /bits/ 64 <1250000000>;
+							remote-endpoint = <&edgedes_adi_csi_in>;
+						};
+					};
+				};
+
+				i2c-atr {
+					#address-cells = <1>;
+					#size-cells = <0>;
+					i2c@3 {
+						reg = <3>;
+						#address-cells = <1>;
+						#size-cells = <0>;
+
+						edgedes_adi_ser3: serializer@40 {
+							compatible = "maxim,max96717", "maxim,max96717f";
+							reg = <0x40>;
+							gpio-controller;
+							#gpio-cells = <2>;
+							#clock-cells = <0>;
+							/* Pool for native PCA9554 0x25 and TEVS 0x48; ATR assigns dynamically. */
+							i2c-alias-pool = <0x24 0x3c>;
+
+							ports {
+								#address-cells = <1>;
+								#size-cells = <0>;
+								port@0 {
+									reg = <0>;
+									edgedes_adi_ser3_csi_in: endpoint {
+										bus-type = <MEDIA_BUS_TYPE_CSI2_DPHY>;
+										clock-lanes = <0>;
+										data-lanes = <1 2 3 4>;
+										lane-polarities = <0 0 0 0 0>;
+										clock-noncontinuous;
+										remote-endpoint = <&edgedes_adi_tevs_out>;
+									};
+								};
+								port@1 {
+									reg = <1>;
+									edgedes_adi_ser3_out: endpoint {
+										remote-endpoint = <&edgedes_adi_gmsl3_in>;
+									};
+								};
+							};
+
+							i2c-atr {
+								#address-cells = <1>;
+								#size-cells = <0>;
+								i2c@0 {
+									reg = <0>;
+									#address-cells = <1>;
+									#size-cells = <0>;
+
+									/* TEVS reset/standby use PCA9554, not serializer MFPs. */
+									edgedes_adi_tevs_gpio: gpio@25 {
+										compatible = "nxp,pca9554";
+										reg = <0x25>;
+										gpio-controller;
+										#gpio-cells = <2>;
+										gpio-line-names =
+											"EXPOSURE_TRIG_IN", "FLASH_OUT",
+											"INFO_TRIG_IN", "CAMA_SHUTTER",
+											"CSI_P1_nRST", "PWR_TIME0",
+											"PWR_TIME1", "3V3_EN";
+									};
+
+									edgedes_adi_tevs: tevs@48 {
+										compatible = "tn,tevs";
+										reg = <0x48>;
+										reset-gpios = <&edgedes_adi_tevs_gpio 4 GPIO_ACTIVE_HIGH>;
+										standby-gpios = <&edgedes_adi_tevs_gpio 2 GPIO_ACTIVE_HIGH>;
+										vc-id = <0>;
+										devnode = "video0";
+										physical_w = "3.840";
+										physical_h = "2.400";
+										sensor_model = "tevs";
+										use_sensor_mode_id = "false";
+										mode0 { TEVS_AR0144_MODE("640", "480") };
+										mode1 { TEVS_AR0144_MODE("1280", "720") };
+										mode2 { TEVS_AR0144_MODE("1280", "800") };
+
+										ports {
+											#address-cells = <1>;
+											#size-cells = <0>;
+											port@0 {
+												reg = <0>;
+												edgedes_adi_tevs_out: endpoint {
+													/* NVIDIA leaf metadata: downstream CSI-C, four lanes. */
+													port-index = <2>;
+													bus-width = <4>;
+													bus-type = <MEDIA_BUS_TYPE_CSI2_DPHY>;
+													clock-lanes = <0>;
+													data-lanes = <1 2 3 4>;
+													clock-noncontinuous;
+													link-frequencies = /bits/ 64 <280000000>;
+													vc-id = <0>;
+													remote-endpoint = <&edgedes_adi_ser3_csi_in>;
+												};
+											};
+										};
+									};
+								};
+							};
+						};
+					};
+				};
+			};
+		};
+	};
+
+	fragment@1 {
+		target = <&nvcsi>;
+		__overlay__ {
+			status = "okay";
+			num-channels = <1>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+			channel@0 {
+				reg = <0>;
+				ports {
+					#address-cells = <1>;
+					#size-cells = <0>;
+					port@0 {
+						reg = <0>;
+						#address-cells = <1>;
+						#size-cells = <0>;
+						edgedes_adi_csi_in: endpoint@0 {
+							reg = <0>;
+							port-index = <2>;
+							bus-width = <4>;
+							vc-id = <0>;
+							bus-type = <MEDIA_BUS_TYPE_CSI2_DPHY>;
+							data-lanes = <1 2 3 4>;
+							remote-endpoint = <&edgedes_adi_phy2_out>;
+						};
+					};
+					port@1 {
+						reg = <1>;
+						#address-cells = <1>;
+						#size-cells = <0>;
+						edgedes_adi_csi_out: endpoint@1 {
+							reg = <1>;
+							remote-endpoint = <&edgedes_adi_vi_in>;
+						};
+					};
+				};
+			};
+		};
+	};
+
+	fragment@2 {
+		target = <&capture_vi>;
+		__overlay__ {
+			num-channels = <1>;
+			ports {
+				#address-cells = <1>;
+				#size-cells = <0>;
+				port@0 {
+					reg = <0>;
+					edgedes_adi_vi_in: endpoint {
+						port-index = <2>;
+						bus-width = <4>;
+						vc-id = <0>;
+						remote-endpoint = <&edgedes_adi_csi_out>;
+					};
+				};
+			};
+		};
+	};
+
+	fragment@3 {
+		target-path = "/";
+		__overlay__ {
+			tegra-camera-platform {
+				compatible = "nvidia, tegra-camera-platform";
+				num_csi_lanes = <4>;
+				max_lane_speed = <2500000>;
+				min_bits_per_pixel = <16>;
+				vi_peak_byte_per_pixel = <2>;
+				vi_bw_margin_pct = <25>;
+				isp_peak_byte_per_pixel = <5>;
+				isp_bw_margin_pct = <25>;
+				modules {
+					module0 {
+						badge = "tevs_ar0144_port3_technexion";
+						position = "front";
+						orientation = "1";
+						drivernode0 {
+							pcl_id = "v4l2_sensor";
+							sysfs-device-tree = "/sys/firmware/devicetree/base/bus@0/i2c@3180000/deserializer@27/i2c-atr/i2c@3/serializer@40/i2c-atr/i2c@0/tevs@48";
+						};
+					};
+				};
+			};
+		};
+	};
+};
