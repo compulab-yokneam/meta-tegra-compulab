@@ -80,6 +80,8 @@ do_deploy() {
         'Do not pass a host /dev/nvme path. Do not interrupt power or USB.' \
         'To preserve compatible QSPI firmware and update only the board NVMe:' \
         '     sudo ./flash-edge-ai.sh -- --external-only' \
+        'To update only QSPI boot firmware without modifying the board NVMe:' \
+        '     sudo ./flash-edge-ai.sh --bootloader-only' \
         'Failure logs are saved under profiles/<selected-machine>/log.initrd-flash.*' \
         '' \
         'HOST-CONNECTED MEDIA (explicit, destructive)' \

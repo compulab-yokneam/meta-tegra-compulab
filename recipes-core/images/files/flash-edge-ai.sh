@@ -4,19 +4,25 @@ set -eu
 here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 machine=
 detect_only=0
+bootloader_only=0
 host_device=
 
 usage() {
-    echo "Usage: $0 [--detect-only] [--force-machine MACHINE] [-- INITRD_FLASH_ARGUMENTS...]"
+    echo "Usage: $0 [--detect-only] [--bootloader-only] [--force-machine MACHINE] [-- INITRD_FLASH_ARGUMENTS...]"
     echo "       $0 [--force-machine MACHINE] --host-device DEVICE [-- MAKE_SDCARD_ARGUMENTS...]"
     echo "Supported machines: edge-ai-nx-16g, edge-ai-nx-8g, edge-ai-nano-8g, edge-ai-nano-4g"
     echo "Default target: NVMe installed in the recovery-mode board (nvme0n1)"
+    echo "Bootloader only: update the board QSPI boot firmware without writing the NVMe"
 }
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --detect-only)
             detect_only=1
+            shift
+            ;;
+        --bootloader-only|--qspi-only)
+            bootloader_only=1
             shift
             ;;
         --force-machine)
@@ -43,6 +49,12 @@ while [ "$#" -gt 0 ]; do
             ;;
     esac
 done
+
+if [ "$bootloader_only" -eq 1 ] && [ -n "$host_device" ]; then
+    echo "--bootloader-only cannot be used with --host-device" >&2
+    usage >&2
+    exit 2
+fi
 
 case "$machine" in
     '')
@@ -104,7 +116,12 @@ else
         echo "Incomplete flash profile: $profile" >&2
         exit 1
     }
-    echo "Flashing the NVMe installed in the board (nvme0n1)..."
+    if [ "$bootloader_only" -eq 1 ]; then
+        echo "Flashing only the board QSPI boot firmware; the NVMe will not be modified..."
+        set -- --qspi-only "$@"
+    else
+        echo "Flashing the NVMe installed in the board (nvme0n1)..."
+    fi
     (
         cd "$profile"
         exec ./initrd-flash "$@"
