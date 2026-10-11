@@ -1,0 +1,29 @@
+From b75025072ce8ed4602b8b4bbe3149c69c8e2aa29 Mon Sep 17 00:00:00 2001
+From: Cosmin Tanislav <demonsingur@gmail.com>
+Date: Wed, 30 Sep 2026 01:41:53 +0300
+Subject: [PATCH 19/23] arm64: defconfig: disable deprecated MAX96712 driver
+Upstream-Status: Submitted [https://lore.kernel.org/r/20260930-gmsl2-3_serdes-v18-0-43117818f499@analog.com]
+
+The staging MAX96712 driver will be removed as its functionality has
+been moved to the MAX96724 driver which makes use of the Maxim
+GMSL2/3 deserializer framework.
+
+Signed-off-by: Cosmin Tanislav <demonsingur@gmail.com>
+Tested-by: Martin Hecht <mhecht73@gmail.com>
+Tested-by: Tomi Valkeinen <tomi.valkeinen@ideasonboard.com>
+---
+ arch/arm64/configs/defconfig | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/arch/arm64/configs/defconfig b/arch/arm64/configs/defconfig
+index 83496e2..8a47b0d 100644
+--- a/arch/arm64/configs/defconfig
++++ b/arch/arm64/configs/defconfig
+@@ -1317,7 +1317,6 @@ CONFIG_GREYBUS=m
+ CONFIG_GREYBUS_BEAGLEPLAY=m
+ CONFIG_STAGING=y
+ CONFIG_STAGING_MEDIA=y
+-CONFIG_VIDEO_MAX96712=m
+ CONFIG_VIDEO_MESON_VDEC=m
+ CONFIG_SND_BCM2835=m
+ CONFIG_CHROME_PLATFORMS=y
