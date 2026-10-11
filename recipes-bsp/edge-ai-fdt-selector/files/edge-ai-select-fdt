@@ -1,0 +1,175 @@
+#!/bin/sh
+# Select an installed DTB for every entry in the L4T extlinux configuration.
+
+set -eu
+
+dtb_dir=${EDGE_AI_DTB_DIR:-/boot/dtb}
+extlinux_conf=${EDGE_AI_EXTLINUX_CONF:-/boot/extlinux/extlinux.conf}
+
+usage() {
+    cat <<EOF
+Usage: $(basename "$0") [DTB-FILE | --uefi | --list | --show]
+
+Without an argument, browse the installed DTBs interactively.
+DTB-FILE must be the basename of a file in $dtb_dir.
+--uefi removes explicit FDT statements so UEFI supplies the device tree.
+EOF
+}
+
+die() {
+    printf 'ERROR: %s\n' "$*" >&2
+    exit 1
+}
+
+show_current() {
+    current=$(awk '
+        $1 == "FDT" && $2 ~ "^/boot/dtb/" {
+            sub("^/boot/dtb/", "", $2)
+            print $2
+            exit
+        }
+    ' "$extlinux_conf")
+    if [ -n "$current" ]; then
+        printf '%s\n' "$current"
+    else
+        printf '%s\n' 'UEFI-provided device tree (no explicit FDT statement)'
+    fi
+}
+
+list_dtbs() {
+    found=0
+    for path in "$dtb_dir"/*.dtb; do
+        [ -f "$path" ] || continue
+        found=1
+        basename "$path"
+    done
+    [ "$found" -eq 1 ] || die "no DTB files found in $dtb_dir"
+}
+
+choose_dtb() {
+    printf 'Current selection: ' >&2
+    show_current >&2
+    printf '%s\n' '  0) Use the device tree supplied by UEFI' >&2
+
+    count=0
+    for path in "$dtb_dir"/*.dtb; do
+        [ -f "$path" ] || continue
+        count=$((count + 1))
+        printf '%3d) %s\n' "$count" "$(basename "$path")" >&2
+    done
+    [ "$count" -gt 0 ] || die "no DTB files found in $dtb_dir"
+
+    while :; do
+        printf 'Select [0-%d]: ' "$count" >&2
+        IFS= read -r selection || die 'selection cancelled'
+        case "$selection" in
+            0)
+                printf '%s\n' --uefi
+                return
+                ;;
+            *[!0-9]*|'')
+                printf 'Enter a number from 0 through %d.\n' "$count" >&2
+                continue
+                ;;
+        esac
+        [ "$selection" -le "$count" ] || {
+            printf 'Enter a number from 0 through %d.\n' "$count" >&2
+            continue
+        }
+
+        index=0
+        for path in "$dtb_dir"/*.dtb; do
+            [ -f "$path" ] || continue
+            index=$((index + 1))
+            if [ "$index" -eq "$selection" ]; then
+                basename "$path"
+                return
+            fi
+        done
+    done
+}
+
+if [ "$#" -eq 1 ]; then
+    case "$1" in
+        -h|--help) usage; exit 0 ;;
+        --list) list_dtbs; exit 0 ;;
+    esac
+fi
+
+[ -f "$extlinux_conf" ] || die "$extlinux_conf does not exist"
+
+case $# in
+    0) requested=$(choose_dtb) ;;
+    1)
+        case "$1" in
+            --show) show_current; exit 0 ;;
+            --uefi) requested=--uefi ;;
+            *) requested=$1 ;;
+        esac
+        ;;
+    *) usage >&2; exit 2 ;;
+esac
+
+[ "$(id -u)" -eq 0 ] || die 'root privileges are required to update extlinux.conf'
+
+if [ "$requested" != --uefi ]; then
+    case "$requested" in
+        */*|*[!A-Za-z0-9._+-]*) die "select a DTB basename from $dtb_dir" ;;
+        *.dtb) ;;
+        *) die 'the selected filename must end in .dtb' ;;
+    esac
+    [ -f "$dtb_dir/$requested" ] || die "$requested is not installed in $dtb_dir"
+fi
+
+tmp=$(mktemp "${extlinux_conf}.tmp.XXXXXX") || die 'cannot create a temporary extlinux file'
+trap 'rm -f "$tmp"' EXIT HUP INT TERM
+
+if [ "$requested" = --uefi ]; then
+    awk '!/^[[:space:]]*FDT[[:space:]]/' "$extlinux_conf" > "$tmp"
+else
+    fdt_path="/boot/dtb/$requested"
+    if grep -q '^[[:space:]]*FDT[[:space:]]' "$extlinux_conf"; then
+        awk -v fdt="$fdt_path" '
+            /^[[:space:]]*FDT[[:space:]]/ { print "\tFDT " fdt; next }
+            { print }
+        ' "$extlinux_conf" > "$tmp"
+    else
+        awk -v fdt="$fdt_path" '
+            { print }
+            /^[[:space:]]*LINUX[[:space:]]/ { print "\tFDT " fdt }
+        ' "$extlinux_conf" > "$tmp"
+    fi
+fi
+
+# Keep the file ready for the Tegra signing tool, which expects its input size
+# to be an even multiple of 16 bytes.
+size=$(wc -c < "$tmp")
+padding=$(( (16 - size % 16) % 16 ))
+while [ "$padding" -gt 0 ]; do
+    printf '\n' >> "$tmp"
+    padding=$((padding - 1))
+done
+
+chmod 0644 "$tmp"
+if cmp -s "$extlinux_conf" "$tmp"; then
+    printf '%s\n' 'extlinux.conf already has the requested selection.'
+    exit 0
+fi
+
+if [ ! -e "${extlinux_conf}.bak" ]; then
+    cp -p "$extlinux_conf" "${extlinux_conf}.bak"
+fi
+mv -f "$tmp" "$extlinux_conf"
+trap - EXIT HUP INT TERM
+
+if [ -e "${extlinux_conf}.sig" ]; then
+    printf '%s\n' \
+        "WARNING: ${extlinux_conf}.sig was not regenerated; signed-extlinux enforcement may reject this change." >&2
+fi
+
+if [ "$requested" = --uefi ]; then
+    printf '%s\n' 'Removed explicit FDT statements; UEFI will supply the device tree.'
+else
+    printf 'Selected %s.\n' "$requested"
+fi
+printf '%s\n' 'Reboot to use the new device tree.'
