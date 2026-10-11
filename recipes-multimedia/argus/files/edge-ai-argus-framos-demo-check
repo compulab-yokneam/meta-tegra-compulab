@@ -1,0 +1,53 @@
+#!/bin/sh
+# Guard the demo override; --start selects sensor-specific ISP data and execs
+# the unchanged NVIDIA daemon. No camera/device registers are changed here.
+set -eu
+
+case "${1-}" in
+    ""|--start) ;;
+    *) printf '%s\n' "Usage: $0 [--start]" >&2; exit 2 ;;
+esac
+test "$#" -le 1 || exit 2
+
+skip_demo() {
+    printf '%s\n' "FRAMOS Argus demo skipped: $*. Remove the demo package/drop-in to restore generic Argus." >&2
+    # ExecCondition exit 1 skips the service without a restart failure loop.
+    exit 1
+}
+
+dt_modules=/proc/device-tree/tegra-camera-platform/modules
+test -d "$dt_modules" || skip_demo "camera modules are absent from the live device tree"
+
+active_modules=0
+for camera_module in "$dt_modules"/module*; do
+    test -d "$camera_module" || continue
+    if test -r "$camera_module/status"; then
+        module_status=$(tr -d '\000' < "$camera_module/status")
+        case "$module_status" in
+            disabled|fail|fail-*) continue ;;
+            okay|ok) ;;
+            *) skip_demo "unexpected camera-module status '$module_status'" ;;
+        esac
+    fi
+    test -r "$camera_module/badge" || skip_demo "an active camera module has no badge"
+    module_badge=$(tr -d '\000' < "$camera_module/badge")
+    test "$camera_module" = "$dt_modules/module0" || skip_demo "an additional active camera module exists"
+    case "$module_badge" in
+        imx676_port0_framos|imx678_port0_framos) ;;
+        *) skip_demo "unsupported active camera badge '$module_badge'" ;;
+    esac
+    active_modules=$((active_modules + 1))
+done
+
+test "$active_modules" -eq 1 || skip_demo "exactly one active IMX676/IMX678 port-0 camera module is required"
+if test "${1-}" = --start; then
+    case "$module_badge" in
+        imx676_port0_framos) profile=edgedes-imx676-demo.nito ;;
+        imx678_port0_framos) profile=edgedes-imx678-demo.nito ;;
+    esac
+    NVCAMERA_NITO_PATH=@LOCALSTATEDIR@/nvidia/nvcam/settings/$profile
+    test -r "$NVCAMERA_NITO_PATH" || skip_demo "missing NITO '$NVCAMERA_NITO_PATH'"
+    export NVCAMERA_NITO_PATH
+    exec /usr/sbin/nvargus-daemon
+fi
+exit 0

@@ -1,0 +1,181 @@
+EDGEDES IMX678 Argus demo -- validation, 2026-10-06
+=================================================
+
+Historical IMX678-only checkpoint. Later on this date the demo was generalized
+to edge-ai-argus-framos-demo for IMX676 and IMX678, preserving the same apps,
+plugin and IMX678 NITO. Current service/package commands are in README.md;
+new IMX676 results and shared-launcher checks are in IMX676-VALIDATION.txt.
+The package/service names below describe this earlier checkpoint only.
+
+Result: existing Yocto applications and nvarguscamerasrc were rebuilt,
+packaged, installed and tested. Fresh normal package QA passed for all three
+requested packages. The previous successful NITO is reused byte-for-byte.
+This is an internal uncalibrated demo, not a production camera qualification.
+
+Scope
+-----
+Target: root@192.168.122.250, Edge-AI Orin NX16G/P3767-0000.
+Kernel: 6.18.48-yocto-standard-adi-v18; NVIDIA runtime R39.2.1.
+Camera: one FRAMOS IMX678 on EDGEDES coax port 0, ADI v18 transport.
+Live module0 badge: imx678_port0_framos.
+Tested mode only: 3856x2180 RGGB RAW12/RG12 input, 10 FPS, sensor mode 0.
+GStreamer receives ISP-processed NV12, not native Bayer RAW12.
+
+Demo opt-in: require conf/include/edge-ai-argus-imx678-demo.inc
+Full demo requires opengl, systemd, wayland and x11 distro features.
+This does not select the boot DTB or regenerate/flash a complete image.
+The tested complete DTB remains edgedes-adi-v18-framos-imx678-port0.dtb.
+
+NITO
+----
+Installed file: /var/nvidia/nvcam/settings/edgedes-imx678-demo.nito
+Size: 958476 bytes
+SHA256: fbbe09af35b1fe561b2f0c0995cdd2b916915284bf770ce8500456fb186e5f2f
+
+Original: jetson-linux-r3564/workdir/framos-argus-imx678.LBjRSL/nito-tools/
+imx678_front_framos-uncalibrated.nito, from the successful R39.2.0 setup.
+See files/PROVENANCE.txt for conversion inputs and retained NVIDIA agreement.
+This generic migration baseline is NOT FRAMOS factory sensor/lens IQ tuning.
+
+Build and packages
+------------------
+Used the existing meta-tegra argus-samples_39.2.1.bb and
+gstreamer1.0-plugins-nvarguscamerasrc_1.0.0-r39.2.1.bb recipes.
+The demo-only sample append fixes GTK/Xwayland EGL native-visual selection.
+No proprietary Argus core source was rebuilt: those libraries/daemon are
+NVIDIA prebuilt binaries supplied by existing runtime recipes.
+
+Actual forced source compile succeeded for both applications and plugin:
+    bitbake -f -c compile mc:edge-ai-runtime:argus-samples \
+            mc:edge-ai-runtime:gstreamer1.0-plugins-nvarguscamerasrc
+
+Demo-patched application compile, package generation and NITO hash verification
+then succeeded. Final package-only run was:
+    bitbake -R <argus-demo-build.conf> -c package_write_deb \
+            mc:edge-ai-runtime:edge-ai-argus-imx678-demo \
+            mc:edge-ai-runtime:argus-samples \
+            mc:edge-ai-runtime:gstreamer1.0-plugins-nvarguscamerasrc
+
+The temporary -R file requires the demo include and limits multiconfig parsing
+to the runtime/default contexts, removing inherited firmware MC append tokens.
+The initial successful profile package graph ran 3358 tasks, 35 rerun; the
+final kmod dependency repackage ran 3358 tasks, 3 rerun, exit 0.
+An earlier ordinary package build was interrupted after app/plugin artifacts
+were ready because its default dependency chain also selected the unchanged
+stock kernel. It is NOT claimed as a successful complete image/build.
+
+Final explicit package_qa was dry-run first, then all three QA tasks forced
+and executed with normal dependency checks intact: 3328-task graph, exactly
+3 QA tasks rerun, exit 0. No QA suppression or kernel/OOT compile was needed.
+Log: .build-jetpack-7.2-blacksail/logs/
+argus-demo-final-package-qa-20261006T150106Z.log
+
+Final installed versions / artifact SHA256:
+    argus-samples: 39.2.1-20260806224157-r0.edgedesdemo1
+    26ed7800e6f0ddda9b9030871e293115aa93c085a0e4cffc8012d61ab872b20e
+    gstreamer1.0-plugins-nvarguscamerasrc: 1.0.0-r39.2.1-r0
+    1b0197a2cc84b5bbcf8a9185b52b4c189b45dea10aa3b69343d65f2b0faf3c7b
+    edge-ai-argus-imx678-demo: 1.0-r0 (final dependency list includes kmod)
+    7cdcb06feddf51a7a51f2399a2d284859f2eac6d2bee34fd0ca887f85a7c153f
+
+Deploy prefix:
+.build-jetpack-7.2-blacksail/tegra-demo-distro/build-edge-ai-nx-16g/
+tmp-mc-edge-ai-runtime/deploy/deb/
+    aarch64_tegra234/argus-samples_39.2.1-20260806224157-r0.edgedesdemo1_arm64.deb
+    aarch64_tegra/gstreamer1.0-plugins-nvarguscamerasrc_1.0.0-r39.2.1-r0_arm64.deb
+    edge_ai_nx_16g/edge-ai-argus-imx678-demo_1.0-r0_arm64.deb
+
+Install and service
+-------------------
+Matching .deb packages installed with dpkg; dependency checks passed and
+dpkg --audit is clean. Package ownership of apps/plugin/NITO was verified.
+The former temporary /run drop-in was moved to the diagnostic backup;
+the effective DropInPaths now contains only:
+    /etc/systemd/system/nvargus-daemon.service.d/90-edgedes-imx678-demo.conf
+ExecCondition guard returned 0 for the single expected active camera module.
+Effective environment:
+    NVCAMERA_NITO_PATH=/var/nvidia/nvcam/settings/edgedes-imx678-demo.nito
+The daemon remains active, with no diagnostic capture clients left running.
+
+Post-install measured tests
+---------------------------
+1. argus_oneshot: native 3856x2180 JPEG, real ceiling scene, exit 0.
+   Also passed as non-root weston with process-local PATH including /usr/sbin.
+   Root JPEG SHA256:
+   b3940b2e5da484e346342801585356ca757889b93980952186027dd57a881bdd
+
+2. nvarguscamerasrc -> identity -> fakesink: exactly 100 actual buffers,
+   clean EOS and exit 0. EOS alone was not accepted as frame evidence.
+   After the final kmod dependency repackage/reinstall and service restart,
+   another 10-buffer checkpoint passed with clean EOS/exit 0.
+
+3. Existing R39.2.0 argus_metadata_probe diagnostic against current R39.2.1:
+   100/100 frames; sensor timestamps gave 10.0002172 FPS.
+   Final 20 frames: AE converged 20/20; AWB converged 20/20.
+   Invalid automatic states, nonexact durations, timestamp errors and mailbox
+   skips: all 0. Exposure range: 20.691888-33.330827 ms; gain ~1.
+   This diagnostic was not rebuilt by the requested product recipes.
+
+4. Native Wayland GStreamer preview as weston: native NV12 capture ->
+   nvvidconv -> system-memory BGRx 1280x724 -> identity -> waylandsink.
+   Exactly 100 actual buffers, clean EOS/exit 0, about 10.956 seconds.
+
+5. Demo-patched GTK argus_camera as weston/X11:
+   --device=0 --sensormode=0 --framerate=10 --still=1 --exit
+   saved a native 3856x2180 image0000.jpg, exit 0.
+   JPEG SHA256:
+   bed19c98395c6ae1a335f0595928ec711e23c2843bbfad17682faccd8a7c159e
+
+6. GTK live viewer --kpi=1: bounded 25-second run, 22 display-FPS samples,
+   9.98-10.02 FPS, no reported frame drops. These KPI messages follow actual
+   frame acquisition/rendering/eglSwapBuffers, not just window creation.
+   Supervisor exit 124 is the deliberate test duration limit; logs show
+   request flush and device close completed after SIGINT.
+
+Failures investigated, not counted as passes
+-------------------------------------------
+The first pre-package trial reached EOS without frames with a busy bypass
+control/stale queue. Bounded client cleanup and daemon restart recovered it;
+subsequent ioctl tracing showed controls accepted. No driver fix was made.
+
+Stock GTK startup hit EGL_BAD_CONFIG because the realized Xwayland view's
+visual differed from the selected EGL config. The gated sample patch now
+matches the actual native visual; it does not add a native Wayland backend.
+
+A patched GTK still trial initially segfaulted inside vendor libnvmm_jpeg.so,
+with "lsmod: not found". Saved core placed the fault in jpeg_write_raw_data,
+not GLContext. Vendor JPEG checks nvgpu through lsmod; su weston had only
+/bin:/usr/bin in PATH. With process-local PATH=/usr/sbin:/usr/bin:/sbin:/bin,
+JPEG and live tests passed. kmod is now an explicit demo runtime dependency.
+README.md examples include that PATH without editing global system files.
+
+Evidence and rollback
+---------------------
+Local evidence:
+.deploy-jetpack-7.2-blacksail/argus-imx678-demo-20261006.p6JITF/
+    packages/, rollback-packages/, postinstall-headless/,
+    gtk-image0000.jpg, gtk-still-path.log, gtk-live-path.log,
+    wayland-preview-postinstall.log, packages-after.txt, unit-after.txt,
+    runtime-before-final-install.txt, runtime-after.txt
+Target backups/logs:
+    /root/edgedes-argus-demo-20261006.njeMQc/
+GTK JPEG directory:
+    /tmp/edgedes-argus-gui-path-20261006.KzfPaM/
+
+The ordinary argus-samples r0 .deb and original viewer/plugin binaries were
+saved before replacement. Purge the demo package to remove its CONFFILES
+drop-in, then reload/restart the daemon with no capture client. Reinstall the
+ordinary sample package to undo the demo EGL fix. See README.md/README.txt.
+
+Core libnvargus, socketclient, socketserver and daemon SHA256 values still
+match the pre-install baseline. extlinux SHA256 and boot ID also match.
+No reboot, kernel/sensor-driver source, DTB, firmware, vendor/legacy NITO or
+proprietary runtime-library modification was made for this task.
+
+Limits
+------
+Internal uncalibrated demo only. No factory IQ/lens shading, HDR, other modes,
+IMX676, simultaneous/mixed cameras, frame sync or cold-power startup is
+qualified here. All current transport qualification remains warm-state only.
+The opt-in is not a new NVIDIA redistribution license grant; vendor terms
+and notices are retained. A full flashable/rootfs image was not built.

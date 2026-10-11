@@ -1,0 +1,109 @@
+Subject: [PATCH] argus: match EGL config to the GTK X11 view visual
+
+The GTK sample obtains an already-realized X11 window, but selects the
+first 32-bit EGL config without checking its native visual. On Weston
+XWayland the default GTK view can use a 24-bit visual while that config
+uses a different 32-bit visual, causing EGL_BAD_CONFIG.
+
+Query the actual X11 view visual through the window abstraction and
+require an EGL window config with the same native visual, 24-bit depth
+and no multisampling. Keep the original 32-bit color requirement for
+backends without a native visual constraint. Sharing and surfaceless
+config selection are unchanged.
+
+This compatibility patch is enabled only for the shared FRAMOS Argus demo.
+
+Upstream-Status: Inappropriate [demo-only XWayland compatibility]
+
+diff --git a/argus/samples/utils/WindowBase.h b/argus/samples/utils/WindowBase.h
+--- a/argus/samples/utils/WindowBase.h
++++ b/argus/samples/utils/WindowBase.h
+@@ -210,3 +210,13 @@
+     /**
++     * Gets the native visual ID required by the window. Zero means that the
++     * window backend does not require native visual matching.
++     */
++    virtual bool getEGLNativeVisualId(EGLint &visualId) const
++    {
++        visualId = 0;
++        return true;
++    }
++
++    /**
+      * Gets the EGL surface for a given EGL config.
+      */
+diff --git a/argus/samples/utils/gtk/Window.h b/argus/samples/utils/gtk/Window.h
+--- a/argus/samples/utils/gtk/Window.h
++++ b/argus/samples/utils/gtk/Window.h
+@@ -58,2 +58,3 @@
+     virtual EGLNativeWindowType getEGLNativeWindow() const;
++    virtual bool getEGLNativeVisualId(EGLint &visualId) const;
+     virtual uint32_t getWidth() const;
+diff --git a/argus/samples/utils/gtk/Window.cpp b/argus/samples/utils/gtk/Window.cpp
+--- a/argus/samples/utils/gtk/Window.cpp
++++ b/argus/samples/utils/gtk/Window.cpp
+@@ -499,2 +499,20 @@
++bool Window::getEGLNativeVisualId(EGLint &visualId) const
++{
++    PROPAGATE_ERROR(const_cast<Window*>(this)->setWindowGui());
++
++    GdkWindow *window = gtk_widget_get_window(m_private->m_view);
++    if (!window || !GDK_IS_X11_WINDOW(window))
++        ORIGINATE_ERROR("The EGL view must be a realized X11 window");
++
++    Display *display = gdk_x11_display_get_xdisplay(gdk_window_get_display(window));
++    const XWindow xwindow = gdk_x11_window_get_xid(window);
++    XWindowAttributes attributes;
++    if (!XGetWindowAttributes(display, xwindow, &attributes))
++        ORIGINATE_ERROR("Could not query the EGL view's X11 visual");
++
++    visualId = static_cast<EGLint>(XVisualIDFromVisual(attributes.visual));
++    return true;
++}
++
+ uint32_t Window::getWidth() const
+ {
+diff --git a/argus/samples/utils/GLContext.cpp b/argus/samples/utils/GLContext.cpp
+--- a/argus/samples/utils/GLContext.cpp
++++ b/argus/samples/utils/GLContext.cpp
+@@ -139,11 +139,31 @@
+-            // Choose the EGL config (32-bit color, 24-bit depth, no multisampling).
+-            for (EGLint config = 0; config < numConfigs; config++)
+-            {
+-                EGLint attrib;
+-
+-                // Color bits.
+-                eglGetConfigAttrib(m_display, configs[config], EGL_BUFFER_SIZE, &attrib);
+-                if (attrib != 32)
+-                    continue;
++            EGLint nativeVisualId = 0;
++            PROPAGATE_ERROR(m_window->getEGLNativeVisualId(nativeVisualId));
++
++            // Match the realized window's visual, with 24-bit depth and no multisampling.
++            for (EGLint config = 0; config < numConfigs; config++)
++            {
++                EGLint attrib;
++
++                if (!eglGetConfigAttrib(m_display, configs[config], EGL_SURFACE_TYPE, &attrib))
++                    ORIGINATE_ERROR("Could not query EGL surface type (error 0x%04x)", eglGetError());
++                if (!(attrib & EGL_WINDOW_BIT))
++                    continue;
++
++                if (nativeVisualId != 0)
++                {
++                    if (!eglGetConfigAttrib(m_display, configs[config], EGL_NATIVE_VISUAL_ID,
++                        &attrib))
++                        ORIGINATE_ERROR("Could not query EGL native visual (error 0x%04x)",
++                            eglGetError());
++                    if (attrib != nativeVisualId)
++                        continue;
++                }
++                else
++                {
++                    // Preserve the color requirement for backends without native visuals.
++                    eglGetConfigAttrib(m_display, configs[config], EGL_BUFFER_SIZE, &attrib);
++                    if (attrib != 32)
++                        continue;
++                }
+ 
+                 // Depth bits.
