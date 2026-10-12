@@ -1,7 +1,8 @@
 # FRAMOS IMX676 / IMX678 Argus demo
 
-Internal, uncalibrated demo for Edge-AI Orin NX16G: one IMX676 or IMX678 on EDGEDES
-port 0, ADI v18, NVIDIA R39.2.1 and Linux `6.18.48-yocto-standard-adi-v18`.
+Internal, uncalibrated demo for Edge-AI Orin NX16G: one to four IMX676 sensors on
+EDGEDES ports 0-3, or one IMX678 on port 0; ADI v18, NVIDIA R39.2.1 and Linux
+`6.18.48-yocto-standard-adi-v18`.
 IMX678 uses **3856×2180** and IMX676 uses **3552×3556**, both RGGB RAW12
 at 10 FPS. Argus provides ISP-processed **NV12**, not RAW12, to GStreamer.
 One `argus_camera`, `argus_oneshot`, and `nvarguscamerasrc` serve both sensors.
@@ -22,9 +23,12 @@ require conf/include/edge-ai-argus-framos-demo.inc
 ```
 
 Requires `opengl systemd wayland x11` distro features. The image installs all
-three complete ADI v18 camera profiles under `/boot/dtb`. Boot the existing
-`edgedes-adi-v18-framos-imx678-port0.dtb` or
-`edgedes-adi-v18-framos-imx676-port0.dtb` profile matching the attached sensor.
+seven complete ADI v18 camera profiles under `/boot/dtb`. Select the profile
+matching the attached sensor and coax port: IMX678 has a port-0 profile, while
+IMX676 has port-0, port-1, port-2 and port-3 profiles. For example,
+`edgedes-adi-v18-framos-imx676-port2.dtb` selects an IMX676 on coax port 2.
+`edgedes-adi-v18-framos-imx676-4port.dtb` discovers the connected IMX676
+assemblies on any subset of the four ports at boot.
 The include does not select
 the boot DTB, flash or reboot the target.
 
@@ -42,12 +46,60 @@ the four module-specific flash profiles continue using their UEFI DTBs:
 FDT_FILE:edge-ai-shared-runtime = "edgedes-adi-v18-framos-imx678-port0.dtb"
 ```
 
-Use `edgedes-adi-v18-framos-imx676-port0.dtb` for IMX676. Leave `FDT_FILE`
+Use the matching `edgedes-adi-v18-framos-imx676-portN.dtb` for IMX676, where
+`N` is the EDGEDES coax port (0-3). Leave `FDT_FILE`
 unset or empty to keep the module-specific DTB supplied by UEFI. The generated
 extlinux entry uses `FDT /boot/dtb/<basename>`; paths are not accepted as the
 option value. The NVIDIA NX16G fallback
 `tegra234-p3768-0000+p3767-0000-nv-super.dtb` is always retained in
 `/boot/dtb`, independently of the selected default.
+
+For one reusable IMX676 DTB covering any combination of EDGEDES inputs,
+select the complete multi-port profile:
+
+```bitbake
+FDT_FILE = "edgedes-adi-v18-framos-imx676-4port.dtb"
+```
+
+The matching `edgedes-adi-v18-framos-imx676-4port.dtbo` is a standalone overlay
+for the same NX16G base. Its `.dtso` includes source fragments for the
+MAX96724, each serializer/sensor path, NVCSI, VI and camera modules. The
+`edgedes-adi-v18-framos-imx676-mode.dtsi` fragment holds the shared sensor
+mode. Build this top-level source to produce one overlay; `.dtsi` files are
+included source components.
+
+All four inputs share MAX96724 PHY2 and the four-lane CSI-C output. Each
+sensor emits native VC0. The ADI framework maps these to output VCs 0-3,
+matching the four NVCSI/VI channels and the port-specific `mode0.vc_id`.
+The overlay enables `compulab,default-multi-link-routes` and
+`compulab,allow-missing-links`. ADI patches `0027`/`0028` detect link locks
+before creating the downstream I2C adapters and camera notifiers. Empty inputs
+are excluded; the physical port remains the output VC and stream ID, so a
+camera alone on port 3 still uses output VC3. Serializer aliases are pinned to
+their physical ports; sensor/expander aliases are unique across all four paths.
+The kernel temporarily detaches only the absent cameras' module metadata from
+the live device tree, preventing Argus from enumerating nonexistent cameras.
+The DTB on disk is not rewritten. NVIDIA OOT patch `0103` leaves absent VI
+channels unregistered instead of blocking the connected cameras.
+
+Install both matching updated `max-serdes.ko` and `tegra-camera.ko` with this
+DTB; replacing the DTB alone is insufficient. Keep a single-port boot entry for
+rollback. The single-port profiles do not enable automatic discovery and keep
+their existing behavior.
+
+Connect complete, powered IMX676 camera/serializer assemblies before booting.
+Zero connected cameras should boot normally with no camera video devices and
+the demo Argus service skipped. Discovery is performed at boot, not during
+live cable hot-plugging; power down before changing the cabling. It detects
+reachable GMSL links, not arbitrary sensor silicon: IMX678, TEVS, other models,
+and mixed sensor types still need their matching profiles. A connected
+serializer with a failed sensor is not treated as an empty port.
+
+Video device numbers and Argus camera indexes are compact and are not physical
+port numbers. A lone camera on any port can therefore be `/dev/video0` and
+Argus device 0 while retaining its physical-port output VC. No frame
+synchronization is configured. Sparse-port, four-camera capture, output
+bandwidth and cold-power reliability still require hardware validation.
 
 On the target, an administrator can browse the installed profiles and update
 all entries in `/boot/extlinux/extlinux.conf` interactively:
@@ -85,6 +137,14 @@ device-tree package into a generated image, but it does not select a boot DTB.
 A development target using a manually installed ADI bootset still needs the
 matching camera driver modules and explicit boot-profile selection.
 
+When using `devtool`, an active `nvidia-kernel-oot` external-source override
+bypasses the recipe's `SRC_URI` camera patches. Apply the layer's `0100` through
+`0103` patches to that development source, or save its changes and reset the
+override before a normal image build. A successful build of an unpatched
+external tree does not supply the optional-camera driver. The prepared
+optional-camera bootset uses a separately patched build of `tegra-camera.ko`
+and does not modify the active NVIDIA development source.
+
 To force application/plugin recompilation, run this first, then the build
 above to refresh packages:
 
@@ -120,9 +180,12 @@ systemctl cat nvargus-daemon
 Expect `active` and the shared `edge-ai-argus-framos-demo-check --start` launcher.
 It selects `edgedes-imx676-demo.nito` or `edgedes-imx678-demo.nito` under
 `/var/nvidia/nvcam/settings`, then execs the unchanged vendor daemon.
-The service guard accepts exactly one active module0 with badge
-`imx678_port0_framos` or `imx676_port0_framos`; other or mixed camera profiles
-intentionally skip this service. DT selection is explicit, not chip-ID detection.
+The service guard accepts one IMX678 module or one to four IMX676 modules with
+distinct port badges; mixed sensor types and unsupported camera modules skip
+the demo service. DT selection is explicit, not chip-ID detection. The IMX676
+port-1/2/3 and auto-detected multi-port profiles reuse the qualified sensor mode
+and CSI-C routing, but need hardware validation on those physical links and
+in the four-stream aggregate configuration.
 When migrating from the old IMX678-only package, purge it first to remove its
 retained service drop-in, then install `edge-ai-argus-framos-demo`.
 

@@ -1,5 +1,5 @@
 SUMMARY = "Demo-only uncalibrated FRAMOS IMX676/IMX678 NITO and Argus runtime"
-DESCRIPTION = "Opt-in single-camera ISP migration baseline for Edge-AI NX16G, ADI v18 and NVIDIA R39.2.1; not FRAMOS factory IQ tuning or a production camera profile."
+DESCRIPTION = "Opt-in ISP migration baseline for one to four IMX676 cameras or one IMX678 camera on Edge-AI NX16G, ADI v18 and NVIDIA R39.2.1; not FRAMOS factory IQ tuning or a production camera profile."
 HOMEPAGE = "https://developer.nvidia.com/embedded/jetpack/downloads/archive-7.2.1"
 
 # The generated NITO contains parameters from NVIDIA's generic template.
@@ -15,7 +15,7 @@ REQUIRED_DISTRO_FEATURES = "opengl systemd wayland x11"
 COMPATIBLE_MACHINE = "^$"
 COMPATIBLE_MACHINE:edge-ai-framos-argus-demo-profile = "^(edge-ai-nx-16g|edge-ai-nx)$"
 PACKAGE_ARCH = "${MACHINE_ARCH}"
-PR = "r2"
+PR = "r4"
 
 SRC_URI = " \
     file://edgedes-imx676-demo.nito \

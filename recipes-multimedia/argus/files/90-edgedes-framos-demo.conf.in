@@ -1,5 +1,5 @@
-# Demo-only, single IMX676/IMX678 ADI port-0 profile. Remove before using
-# another camera profile to restore the generic daemon configuration.
+# Demo-only, IMX676 port-0..3 (single/multi) or IMX678 port-0 ADI profile.
+# Remove before using another camera profile to restore generic configuration.
 [Service]
 ExecCondition=@LIBEXECDIR@/edge-ai-argus-framos-demo-check
 ExecStart=

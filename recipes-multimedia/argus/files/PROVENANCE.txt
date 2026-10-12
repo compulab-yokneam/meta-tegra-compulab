@@ -79,11 +79,16 @@ The existing tegra-libraries-camera and tegra-argus-daemon recipes supply
 proprietary runtime binaries; argus-samples and nvarguscamerasrc are built from
 their existing source recipes. The demo never rebuilds proprietary Argus core.
 The service drop-in uses an ExecCondition and a small shell launcher. The
-same helper requires exactly one active module0 with badge imx678_port0_framos
-or imx676_port0_framos, sets that sensor's explicit NVCAMERA_NITO_PATH and execs
-the unchanged vendor daemon. Other or mixed profiles skip the service with a
-clear message. One argus_camera, argus_oneshot and nvarguscamerasrc serve both.
+helper accepts one active IMX678 module with badge imx678_port0_framos, or
+one to four IMX676 modules with distinct imx676_port0_framos through
+imx676_port3_framos badges. It sets the matching NVCAMERA_NITO_PATH and execs
+the unchanged vendor daemon. Mixed or unsupported profiles skip the service.
+One argus_camera, argus_oneshot and nvarguscamerasrc serve both sensors.
 The service guard selects the DT profile, not a probed sensor silicon ID.
+The optional multi-port IMX676 DTB uses boot-time GMSL link discovery and
+omits absent module metadata from the live DT before Argus enumeration.
+This requires the matching optional-link ADI and NVIDIA OOT driver patches;
+it does not change either NITO or add mixed-sensor or hot-plug support.
 To restore generic Argus, remove the demo package/drop-in, reload systemd and
 restart nvargus-daemon when no capture process is running. Existing legacy
 NITO files and all driver/DTS/boot settings remain untouched by this package.
