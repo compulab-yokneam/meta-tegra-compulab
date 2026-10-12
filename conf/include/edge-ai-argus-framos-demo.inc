@@ -1,4 +1,4 @@
-# Explicit opt-in for the single-camera IMX676/IMX678 Argus demo.
+# Explicit opt-in for one to four IMX676 cameras or one IMX678 camera.
 # One source-built application/plugin set serves both DT-selected sensors.
 require conf/include/edge-ai-adi-gmsl-v18.inc
 
