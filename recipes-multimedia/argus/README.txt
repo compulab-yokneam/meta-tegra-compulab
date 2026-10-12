@@ -27,6 +27,11 @@ This is not arbitrary sensor-model detection or runtime hot-plug support.
 Video device numbers/Argus indexes compact; output VC remains the physical port.
 
 One argus_camera / argus_oneshot / nvarguscamerasrc supports both sensors.
+The launcher /opt/compulab/bin/argus_camera.sh accepts --list and --device N
+(also --device=N or -d N). No arguments retain the first-camera preview.
+Device indexes are compact Argus indexes, not physical coax port numbers:
+a single camera connected to any EDGEDES port is device 0. Run --list to
+inspect the available devices and sensor modes; it exits without preview.
 No second Argus application or fork of NVIDIA core libraries is introduced.
 The source-built samples retain the same demo-only GTK/Xwayland EGL fix.
 

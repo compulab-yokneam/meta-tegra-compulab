@@ -245,6 +245,22 @@ Argus commands below set PATH for that process without changing system files.
 
 ## Argus applications
 
+The packaged launcher selects any connected Argus camera and also works from
+a root serial/SSH shell by switching to the Weston desktop user:
+
+```bash
+/opt/compulab/bin/argus_camera.sh --list
+/opt/compulab/bin/argus_camera.sh --device 0
+/opt/compulab/bin/argus_camera.sh --device=1
+```
+
+Without arguments it retains the existing device-0, sensor-mode-0, 10-FPS
+preview. `--list` prints the native sample's device and sensor-mode information,
+then exits without starting preview. `--device` (or `-d`) selects the compact
+Argus device index shown by `--list`, not the physical coax port or a
+`/dev/videoN` suffix. A camera alone on any EDGEDES port is device 0; with two
+connected cameras, select device 0 or 1. Use `--help` for the launcher options.
+
 Headless native JPEG, in a fresh writable directory:
 
 ```bash
