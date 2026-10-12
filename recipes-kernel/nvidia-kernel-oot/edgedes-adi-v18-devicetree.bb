@@ -1,7 +1,7 @@
-SUMMARY = "Single-camera EDGEDES device trees for ADI v18 on Edge-AI"
+SUMMARY = "Single-camera and auto-detected multi-port EDGEDES device trees"
 LICENSE = "GPL-2.0-only"
 LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/GPL-2.0-only;md5=801f80980d171dd6425610833a22dbe6"
-PR = "r2"
+PR = "r4"
 
 inherit tegra-devicetree
 
@@ -13,24 +13,57 @@ COMPATIBLE_MACHINE:adi-gmsl-v18 = "^(edge-ai-nx-16g|edge-ai-nx)$"
 FILESEXTRAPATHS:prepend := "${THISDIR}/nvidia-kernel-oot:"
 SRC_URI = " \
     file://tegra234-edge-ai-adi-base.dts \
+    file://edgedes-adi-v18-tevs-ar0144-port3-deserializer.dtso \
     file://edgedes-adi-v18-tevs-ar0144-port3.dtso \
+    file://edgedes-adi-v18-framos-imx678-port0-deserializer.dtso \
     file://edgedes-adi-v18-framos-imx678-port0.dtso \
+    file://edgedes-adi-v18-framos-imx676-port0-deserializer.dtso \
     file://edgedes-adi-v18-framos-imx676-port0.dtso \
+    file://edgedes-adi-v18-framos-imx676-port1-deserializer.dtso \
+    file://edgedes-adi-v18-framos-imx676-port1.dtso \
+    file://edgedes-adi-v18-framos-imx676-port2-deserializer.dtso \
+    file://edgedes-adi-v18-framos-imx676-port2.dtso \
+    file://edgedes-adi-v18-framos-imx676-port3-deserializer.dtso \
+    file://edgedes-adi-v18-framos-imx676-port3.dtso \
+    file://edgedes-adi-v18-framos-imx676-4port.dtso \
+    file://edgedes-adi-v18-framos-imx676-4port-deserializer.dtsi \
+    file://edgedes-adi-v18-framos-imx676-4port-nvcsi.dtsi \
+    file://edgedes-adi-v18-framos-imx676-4port-vi.dtsi \
+    file://edgedes-adi-v18-framos-imx676-4port-camera-platform.dtsi \
+    file://edgedes-adi-v18-framos-imx676-mode.dtsi \
+    file://edgedes-adi-v18-framos-imx676-port0.dtsi \
+    file://edgedes-adi-v18-framos-imx676-port1.dtsi \
+    file://edgedes-adi-v18-framos-imx676-port2.dtsi \
+    file://edgedes-adi-v18-framos-imx676-port3.dtsi \
 "
 
 S = "${UNPACKDIR}"
 DT_FILES_PATH = "${UNPACKDIR}"
 DT_FILES = " \
     tegra234-edge-ai-adi-base.dts \
+    edgedes-adi-v18-tevs-ar0144-port3-deserializer.dtso \
     edgedes-adi-v18-tevs-ar0144-port3.dtso \
+    edgedes-adi-v18-framos-imx678-port0-deserializer.dtso \
     edgedes-adi-v18-framos-imx678-port0.dtso \
+    edgedes-adi-v18-framos-imx676-port0-deserializer.dtso \
     edgedes-adi-v18-framos-imx676-port0.dtso \
+    edgedes-adi-v18-framos-imx676-port1-deserializer.dtso \
+    edgedes-adi-v18-framos-imx676-port1.dtso \
+    edgedes-adi-v18-framos-imx676-port2-deserializer.dtso \
+    edgedes-adi-v18-framos-imx676-port2.dtso \
+    edgedes-adi-v18-framos-imx676-port3-deserializer.dtso \
+    edgedes-adi-v18-framos-imx676-port3.dtso \
+    edgedes-adi-v18-framos-imx676-4port.dtso \
 "
 
 EDGE_AI_ADI_V18_COMPLETE_DTBS = " \
     edgedes-adi-v18-tevs-ar0144-port3.dtb \
     edgedes-adi-v18-framos-imx678-port0.dtb \
     edgedes-adi-v18-framos-imx676-port0.dtb \
+    edgedes-adi-v18-framos-imx676-port1.dtb \
+    edgedes-adi-v18-framos-imx676-port2.dtb \
+    edgedes-adi-v18-framos-imx676-port3.dtb \
+    edgedes-adi-v18-framos-imx676-4port.dtb \
 "
 
 # Produce complete FDTs for extlinux as well as reusable DT overlays.
@@ -39,13 +72,21 @@ python do_compile:append() {
     import os
     import subprocess
     build = d.getVar("B")
-    for profile in ("tevs-ar0144-port3", "framos-imx678-port0", "framos-imx676-port0"):
+    for profile in ("tevs-ar0144-port3", "framos-imx678-port0", "framos-imx676-port0",
+                    "framos-imx676-port1", "framos-imx676-port2", "framos-imx676-port3"):
         name = "edgedes-adi-v18-" + profile
         subprocess.run([
             "fdtoverlay", "-i", os.path.join(build, "tegra234-edge-ai-adi-base.dtb"),
             "-o", os.path.join(build, name + ".dtb"),
+            os.path.join(build, name + "-deserializer.dtbo"),
             os.path.join(build, name + ".dtbo"),
         ], check=True)
+    multi = "edgedes-adi-v18-framos-imx676-4port"
+    subprocess.run([
+        "fdtoverlay", "-i", os.path.join(build, "tegra234-edge-ai-adi-base.dtb"),
+        "-o", os.path.join(build, multi + ".dtb"),
+        os.path.join(build, multi + ".dtbo"),
+    ], check=True)
 }
 
 # Keep the normal /boot/devicetree output from tegra-devicetree, and also put

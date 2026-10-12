@@ -1,0 +1,56 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// SPDX-FileCopyrightText: Copyright (c) 2026 CompuLab Ltd.
+
+fragment@7 {
+	target-path = "/";
+	__overlay__ {
+		tegra-camera-platform {
+			compatible = "nvidia, tegra-camera-platform";
+			num_csi_lanes = <4>;
+			max_lane_speed = <2500000>;
+			min_bits_per_pixel = <12>;
+			vi_peak_byte_per_pixel = <2>;
+			vi_bw_margin_pct = <25>;
+			isp_peak_byte_per_pixel = <5>;
+			isp_bw_margin_pct = <25>;
+			modules {
+				edgedes_adi_framos_module0: module0 {
+					badge = "imx676_port0_framos";
+					position = "front";
+					orientation = "1";
+					drivernode0 {
+						pcl_id = "v4l2_sensor";
+						sysfs-device-tree = "/sys/firmware/devicetree/base/bus@0/i2c@3180000/deserializer@27/i2c-atr/i2c@0/serializer@40/i2c-atr/i2c@0/imx676@1a";
+					};
+				};
+				edgedes_adi_framos_module1: module1 {
+					badge = "imx676_port1_framos";
+					position = "front";
+					orientation = "1";
+					drivernode0 {
+						pcl_id = "v4l2_sensor";
+						sysfs-device-tree = "/sys/firmware/devicetree/base/bus@0/i2c@3180000/deserializer@27/i2c-atr/i2c@1/serializer@40/i2c-atr/i2c@0/imx676@1a";
+					};
+				};
+				edgedes_adi_framos_module2: module2 {
+					badge = "imx676_port2_framos";
+					position = "front";
+					orientation = "1";
+					drivernode0 {
+						pcl_id = "v4l2_sensor";
+						sysfs-device-tree = "/sys/firmware/devicetree/base/bus@0/i2c@3180000/deserializer@27/i2c-atr/i2c@2/serializer@40/i2c-atr/i2c@0/imx676@1a";
+					};
+				};
+				edgedes_adi_framos_module3: module3 {
+					badge = "imx676_port3_framos";
+					position = "front";
+					orientation = "1";
+					drivernode0 {
+						pcl_id = "v4l2_sensor";
+						sysfs-device-tree = "/sys/firmware/devicetree/base/bus@0/i2c@3180000/deserializer@27/i2c-atr/i2c@3/serializer@40/i2c-atr/i2c@0/imx676@1a";
+					};
+				};
+			};
+		};
+	};
+};

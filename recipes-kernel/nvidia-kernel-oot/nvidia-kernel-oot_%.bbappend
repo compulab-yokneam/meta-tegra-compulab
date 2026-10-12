@@ -15,6 +15,7 @@ SRC_URI:append:edge-ai:adi-gmsl-v18 = " \
     file://0100-media-tegra-support-adi-streams-graph.patch;patchdir=nvidia-oot \
     file://0101-media-edgedes-add-tevs-and-framos-imx678.patch;patchdir=nvidia-oot \
     file://0102-media-edgedes-add-framos-imx676.patch;patchdir=nvidia-oot \
+    file://0103-media-tegra-support-optional-adi-camera-links.patch;patchdir=nvidia-oot \
 "
 
 TEGRA_OOT_EXTRA_CAMERA_DRIVERS:append:edge-ai:adi-gmsl-v18 = " \

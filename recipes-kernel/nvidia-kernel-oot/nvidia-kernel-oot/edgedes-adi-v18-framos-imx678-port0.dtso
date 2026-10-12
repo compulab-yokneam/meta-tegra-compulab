@@ -26,57 +26,16 @@
  */
 
 / {
-	overlay-name = "CompuLab EDGEDES ADI v18 FRAMOS IMX678 port 0";
+	overlay-name = "CompuLab EDGEDES ADI v18 FRAMOS IMX678 port 0 serializer and sensor";
 	compatible = "compulab,edgeai-orn", "nvidia,tegra234";
 
 	fragment@0 {
-		target = <&cam_i2c>;
+		target = <&edgedes_adi_framos_i2c0>;
 		__overlay__ {
-			status = "okay";
 			#address-cells = <1>;
 			#size-cells = <0>;
 
-			edgedes_adi_framos_des: deserializer@27 {
-				compatible = "maxim,max96724";
-				reg = <0x27>;
-				/* Edge-AI EDGEDES PWDN/reset: physical low asserts reset. */
-				enable-gpios = <&gpio TEGRA234_MAIN_GPIO(Y, 4) GPIO_ACTIVE_HIGH>;
-				maxim,control-channel-port = <0>;
-				/* Link-local DT address 0x40 is exposed upstream at alias 0x42. */
-				i2c-alias-pool = <0x42>;
-
-				ports {
-					#address-cells = <1>;
-					#size-cells = <0>;
-					port@0 {
-						reg = <0>;
-						edgedes_adi_framos_gmsl0_in: endpoint {
-							remote-endpoint = <&edgedes_adi_framos_ser0_out>;
-						};
-					};
-					/* ADI source pad 6 = four GMSL inputs + hardware PHY2. */
-					port@6 {
-						reg = <6>;
-						edgedes_adi_framos_phy2_out: endpoint {
-							bus-type = <MEDIA_BUS_TYPE_CSI2_DPHY>;
-							clock-lanes = <0>;
-							data-lanes = <1 2 3 4>;
-							lane-polarities = <0 0 0 0 0>;
-							link-frequencies = /bits/ 64 <1250000000>;
-							remote-endpoint = <&edgedes_adi_framos_csi_in>;
-						};
-					};
-				};
-
-				i2c-atr {
-					#address-cells = <1>;
-					#size-cells = <0>;
-					i2c@0 {
-						reg = <0>;
-						#address-cells = <1>;
-						#size-cells = <0>;
-
-						edgedes_adi_framos_ser0: serializer@40 {
+			edgedes_adi_framos_ser0: serializer@40 {
 							compatible = "maxim,max96793", "maxim,max96717f";
 							reg = <0x40>;
 							gpio-controller;
@@ -223,10 +182,17 @@
 								};
 							};
 						};
-					};
-				};
-			};
 		};
+	};
+
+	fragment@4 {
+		target = <&edgedes_adi_framos_gmsl0_in>;
+		__overlay__ { remote-endpoint = <&edgedes_adi_framos_ser0_out>; };
+	};
+
+	fragment@5 {
+		target = <&edgedes_adi_framos_phy2_out>;
+		__overlay__ { remote-endpoint = <&edgedes_adi_framos_csi_in>; };
 	};
 
 	fragment@1 {

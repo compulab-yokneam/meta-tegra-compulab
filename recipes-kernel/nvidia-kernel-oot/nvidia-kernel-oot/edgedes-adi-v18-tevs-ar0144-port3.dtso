@@ -50,57 +50,16 @@
 	embedded_metadata_height = "0";
 
 / {
-	overlay-name = "CompuLab EDGEDES ADI v18 TEVS-AR0144 port 3";
+	overlay-name = "CompuLab EDGEDES ADI v18 TEVS-AR0144 port 3 serializer and sensor";
 	compatible = "compulab,edgeai-orn", "nvidia,tegra234";
 
 	fragment@0 {
-		target = <&cam_i2c>;
+		target = <&edgedes_adi_i2c3>;
 		__overlay__ {
-			status = "okay";
 			#address-cells = <1>;
 			#size-cells = <0>;
 
-			edgedes_adi: deserializer@27 {
-				compatible = "maxim,max96724";
-				reg = <0x27>;
-				/* Edge-AI EDGEDES PWDN/reset: physical low asserts reset. */
-				enable-gpios = <&gpio TEGRA234_MAIN_GPIO(Y, 4) GPIO_ACTIVE_HIGH>;
-				maxim,control-channel-port = <0>;
-				/* Only port 3 is declared, so only link 3 is enabled. */
-				i2c-alias-pool = <0x34>;
-
-				ports {
-					#address-cells = <1>;
-					#size-cells = <0>;
-					port@3 {
-						reg = <3>;
-						edgedes_adi_gmsl3_in: endpoint {
-							remote-endpoint = <&edgedes_adi_ser3_out>;
-						};
-					};
-					/* ADI source pad 6 = GMSL inputs (4) + hardware PHY 2. */
-					port@6 {
-						reg = <6>;
-						edgedes_adi_phy2_out: endpoint {
-							bus-type = <MEDIA_BUS_TYPE_CSI2_DPHY>;
-							clock-lanes = <0>;
-							data-lanes = <1 2 3 4>;
-							lane-polarities = <0 0 0 0 0>;
-							link-frequencies = /bits/ 64 <1250000000>;
-							remote-endpoint = <&edgedes_adi_csi_in>;
-						};
-					};
-				};
-
-				i2c-atr {
-					#address-cells = <1>;
-					#size-cells = <0>;
-					i2c@3 {
-						reg = <3>;
-						#address-cells = <1>;
-						#size-cells = <0>;
-
-						edgedes_adi_ser3: serializer@40 {
+			edgedes_adi_ser3: serializer@40 {
 							compatible = "maxim,max96717", "maxim,max96717f";
 							reg = <0x40>;
 							gpio-controller;
@@ -190,10 +149,17 @@
 								};
 							};
 						};
-					};
-				};
-			};
 		};
+	};
+
+	fragment@4 {
+		target = <&edgedes_adi_gmsl3_in>;
+		__overlay__ { remote-endpoint = <&edgedes_adi_ser3_out>; };
+	};
+
+	fragment@5 {
+		target = <&edgedes_adi_phy2_out>;
+		__overlay__ { remote-endpoint = <&edgedes_adi_csi_in>; };
 	};
 
 	fragment@1 {

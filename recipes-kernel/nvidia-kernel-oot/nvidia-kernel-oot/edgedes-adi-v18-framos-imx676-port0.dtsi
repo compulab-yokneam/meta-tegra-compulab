@@ -1,0 +1,124 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// SPDX-FileCopyrightText: Copyright (c) 2026 CompuLab Ltd.
+
+fragment@1 {
+	target = <&edgedes_adi_framos_i2c0>;
+	__overlay__ {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		edgedes_adi_framos_ser0: serializer@40 {
+			compatible = "maxim,max96793", "maxim,max96717f";
+			reg = <0x40>;
+			gpio-controller;
+			#gpio-cells = <2>;
+			#clock-cells = <0>;
+			/* Pool for native TCA6408 0x21 and IMX676 0x1a; ATR assigns dynamically. */
+			i2c-alias-pool = <0x22 0x1b>;
+			pinctrl-names = "default";
+			pinctrl-0 = <&edgedes_adi_framos_rclk_p0>;
+
+			edgedes_adi_framos_rclk_p0: rclk-pins {
+				pins = "mfp4";
+				function = "rclkout";
+				/* Qualified 37.125-MHz clock uses the fastest slew. */
+				slew-rate = <0>;
+			};
+
+			ports {
+				#address-cells = <1>;
+				#size-cells = <0>;
+				port@0 {
+					reg = <0>;
+					edgedes_adi_framos_ser0_csi_in: endpoint {
+						bus-type = <MEDIA_BUS_TYPE_CSI2_DPHY>;
+						clock-lanes = <0>;
+						data-lanes = <1 2 3 4>;
+						lane-polarities = <0 0 0 0 0>;
+						remote-endpoint = <&edgedes_adi_framos_imx676_p0_out>;
+					};
+				};
+				port@1 {
+					reg = <1>;
+					edgedes_adi_framos_ser0_out: endpoint {
+						remote-endpoint = <&edgedes_adi_framos_gmsl0_in>;
+					};
+				};
+			};
+
+			i2c-atr {
+				#address-cells = <1>;
+				#size-cells = <0>;
+				i2c@0 {
+					reg = <0>;
+					#address-cells = <1>;
+					#size-cells = <0>;
+
+					/* Expose the expander for diagnostics; do not change strap states. */
+					gpio@21 {
+						compatible = "ti,tca6408";
+						reg = <0x21>;
+						gpio-controller;
+						#gpio-cells = <2>;
+						gpio-line-names =
+							"SLAMODE1", "SLAMODE2", "PW_EN_1", "TOUT0",
+							"XMASTER0", "TOUT2", "SYS_PW_EN", "TOUT1";
+					};
+
+					edgedes_adi_framos_imx676_p0: imx676@1a {
+						compatible = "framos,imx676";
+						reg = <0x1a>;
+						status = "okay";
+						/* Driver: PW_EN low 5 ms, INCK on, XCLR low 200 ms. */
+						reset-gpios = <&edgedes_adi_framos_ser0 0 GPIO_ACTIVE_LOW>;
+						tenable-gpios = <&edgedes_adi_framos_ser0 6 GPIO_ACTIVE_HIGH>;
+						power-enable-gpios = <&edgedes_adi_framos_ser0 8 GPIO_ACTIVE_HIGH>;
+						clocks = <&edgedes_adi_framos_ser0>;
+						clock-names = "mclk";
+						mclk = "mclk";
+						assigned-clocks = <&edgedes_adi_framos_ser0>;
+						assigned-clock-rates = <37125000>;
+						/* Native sensor CSI virtual channel; MAX96724 maps it downstream. */
+						vc-id = <0>;
+						devnode = "video0";
+						/* 3552 active pixels at 2 um; four extra output rows. */
+						physical_w = "7.104";
+						physical_h = "7.104";
+						sensor_model = "imx676";
+						post_crop_frame_drop = "0";
+						use_decibel_gain = "true";
+						delayed_gain = "false";
+						use_sensor_mode_id = "false";
+
+						/* Preserve only the previously qualified native 10-FPS mode. */
+						mode0 {
+							vc_id = "0";
+#include "edgedes-adi-v18-framos-imx676-mode.dtsi"
+						};
+
+						ports {
+							#address-cells = <1>;
+							#size-cells = <0>;
+							port@0 {
+								reg = <0>;
+								edgedes_adi_framos_imx676_p0_out: endpoint {
+									/* NVIDIA leaf metadata: downstream CSI-C, four lanes. */
+									port-index = <2>;
+									bus-width = <4>;
+									bus-type = <MEDIA_BUS_TYPE_CSI2_DPHY>;
+									clock-lanes = <0>;
+									data-lanes = <1 2 3 4>;
+									lane-polarities = <0 0 0 0 0>;
+									/* Sensor CSI 720 Mb/s/lane; link-frequencies is half the bit rate. */
+									link-frequencies = /bits/ 64 <360000000>;
+									vc-id = <0>;
+									remote-endpoint = <&edgedes_adi_framos_ser0_csi_in>;
+								};
+							};
+						};
+					};
+				};
+			};
+		};
+	};
+};
