@@ -31,5 +31,7 @@ SRC_URI:append:edge-ai:adi-gmsl-v18 = " \
     file://adi-gmsl-v18/0024-media-maxim-serdes-adapt-ADI-v18-to-Linux-6.18-inter.patch \
     file://adi-gmsl-v18/0025-media-maxim-serdes-preserve-MAX96793-on-GMSL2.patch \
     file://adi-gmsl-v18/0026-media-max96717-qualify-MAX96793-pixel-mode-on-EDGEDE.patch \
+    file://adi-gmsl-v18/0027-media-maxim-serdes-add-opt-in-multi-link-default-routes.patch \
+    file://adi-gmsl-v18/0028-media-maxim-serdes-discover-optional-camera-links.patch \
     file://adi-gmsl-v18/edgedes-adi-v18.cfg \
 "

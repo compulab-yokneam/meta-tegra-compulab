@@ -18,10 +18,19 @@ Source organization
       use its discovered address as the readdressing source when reset is skipped.
 0026: use the qualified MAX96793 pixel-mode path, explicitly clearing tunnel
       mode even when advertised capabilities contain only pixel mode.
+0027: opt into initial aggregation of all enabled GMSL inputs on the first
+      enabled CSI output PHY with compulab,default-multi-link-routes;
+      preserve the first-input-only default for profiles without the property.
+0028: opt into boot-time discovery with compulab,allow-missing-links; skip
+      empty GMSL inputs before ATR/notifier creation and preserve physical
+      port-to-output-VC numbering and serializer aliases for sparse inputs.
+      Temporarily detach only absent Argus module metadata from the live DT;
+      restore it on driver removal. Requires CONFIG_OF_DYNAMIC.
 
 The NVIDIA OOT bbappend conditionally adds 0100 (stream-aware bridge graph,
 format propagation, sensor metadata/control registration) and 0101 (TEVS and
-native FRAMOS IMX678 sensor modules), followed by 0102 (native FRAMOS IMX676).
+native FRAMOS IMX678 sensor modules), followed by 0102 (native FRAMOS IMX676)
+and 0103 (optional-input graph traversal and capture-channel registration).
 NVIDIA interfaces remain the leaf-sensor
 API; ADI owns serializer/deserializer routing and nested I2C address translation.
 
@@ -121,7 +130,11 @@ See recipes-multimedia/argus/IMX676-VALIDATION.txt for the separate qualificatio
 
 Limits and follow-up
 -------------------
-Only one camera is enabled per profile. Mixed simultaneous capture, dynamic
+Single-camera profiles remain explicit. The IMX676 four-port DTB now describes
+all four possible assemblies and discovers the connected subset at boot.
+This needs both 0028 in max-serdes.ko and 0103 in tegra-camera.ko; changing
+only the DTB is not sufficient. Discovery is not arbitrary sensor-model
+identification or live cable hotplug. Mixed simultaneous capture, dynamic
 routing and other TEVS models/modes are not qualified by these tests.
 An explicit internal IMX678 Argus/ISP demo was validated on this Yocto graph
 on 2026-10-06: native JPEG, 100 frames at 10 FPS with AE/AWB convergence,
