@@ -5,9 +5,13 @@ LINUX_VERSION:edgeai-orn = "6.18.48"
 SRCREV_machine:edgeai-orn = "5b95344d2d0cfbe5889e3eb5a2ea3939dc3412f0"
 SRCREV_meta:edgeai-orn = "185549fc38a492dc3e431b32ac6774620ae6b468"
 
+# Balena's rollback health check and Supervisor use uname -r to identify the
+# L4T release.  Preserve the Yocto suffix and advertise the matching BSP version.
+LINUX_VERSION_EXTENSION:append:edgeai-orn = "-l4t-r${L4T_VERSION}"
+
 # Apply the mandatory balenaOS kernel configuration and signing/deployment
 # integration to the selected EdgeAI kernel provider.
-inherit ${@'kernel-resin deploy' if 'edgeai-orn' in (d.getVar('MACHINEOVERRIDES') or '').split(':') else ''}
+inherit ${@'l4t_version kernel-resin deploy' if 'edgeai-orn' in (d.getVar('MACHINEOVERRIDES') or '').split(':') else ''}
 
 # meta-balena-jetson obtains extlinux.conf from its Noble kernel append.  Keep
 # the same rootfs boot contract when linux-yocto is selected, without changing
