@@ -1,5 +1,5 @@
 #!/bin/sh
-# Select an installed DTB for every entry in the L4T extlinux configuration.
+# Select a complete installed DTB for every entry in the L4T boot configuration.
 
 set -eu
 
@@ -13,6 +13,8 @@ Usage: $(basename "$0") [DTB-FILE | --uefi | --list | --show]
 Without an argument, browse the installed DTBs interactively.
 DTB-FILE must be the basename of a file in $dtb_dir.
 --uefi removes explicit FDT statements so UEFI supplies the device tree.
+Selecting a DTB or --uefi also clears OVERLAYS from all boot entries.
+This selects complete DTBs; it does not configure modular overlay stacks.
 EOF
 }
 
@@ -34,6 +36,14 @@ show_current() {
     else
         printf '%s\n' 'UEFI-provided device tree (no explicit FDT statement)'
     fi
+    awk '
+        $1 == "LABEL" { label = $2 }
+        $1 == "OVERLAYS" {
+            overlays = $0
+            sub("^[[:space:]]*OVERLAYS[[:space:]]*", "", overlays)
+            printf "Overlays (%s): %s\n", label, overlays
+        }
+    ' "$extlinux_conf"
 }
 
 list_dtbs() {
@@ -124,17 +134,27 @@ fi
 tmp=$(mktemp "${extlinux_conf}.tmp.XXXXXX") || die 'cannot create a temporary extlinux file'
 trap 'rm -f "$tmp"' EXIT HUP INT TERM
 
+had_overlays=$(awk '
+    $1 == "OVERLAYS" { found = 1 }
+    END { print found + 0 }
+' "$extlinux_conf")
+
 if [ "$requested" = --uefi ]; then
-    awk '!/^[[:space:]]*FDT[[:space:]]/' "$extlinux_conf" > "$tmp"
+    awk '
+        $1 == "OVERLAYS" { next }
+        !/^[[:space:]]*FDT[[:space:]]/
+    ' "$extlinux_conf" > "$tmp"
 else
     fdt_path="/boot/dtb/$requested"
     if grep -q '^[[:space:]]*FDT[[:space:]]' "$extlinux_conf"; then
         awk -v fdt="$fdt_path" '
+            $1 == "OVERLAYS" { next }
             /^[[:space:]]*FDT[[:space:]]/ { print "\tFDT " fdt; next }
             { print }
         ' "$extlinux_conf" > "$tmp"
     else
         awk -v fdt="$fdt_path" '
+            $1 == "OVERLAYS" { next }
             { print }
             /^[[:space:]]*LINUX[[:space:]]/ { print "\tFDT " fdt }
         ' "$extlinux_conf" > "$tmp"
@@ -171,5 +191,8 @@ if [ "$requested" = --uefi ]; then
     printf '%s\n' 'Removed explicit FDT statements; UEFI will supply the device tree.'
 else
     printf 'Selected %s.\n' "$requested"
+fi
+if [ "$had_overlays" -eq 1 ]; then
+    printf '%s\n' 'Cleared OVERLAYS from all boot entries.'
 fi
 printf '%s\n' 'Reboot to use the new device tree.'
