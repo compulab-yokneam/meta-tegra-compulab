@@ -1,0 +1,24 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// SPDX-FileCopyrightText: Copyright (c) 2026 CompuLab Ltd.
+
+/dts-v1/;
+/plugin/;
+
+#include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/gpio/tegra234-gpio.h>
+#include <dt-bindings/media/video-interfaces.h>
+
+/* Detect zero to four IMX678 assemblies on MAX96724 GMSL inputs at boot. */
+/ {
+	overlay-name = "CompuLab EDGEDES ADI v18 FRAMOS IMX678 four-port";
+	compatible = "compulab,edgeai-orn", "nvidia,tegra234";
+
+	#include "edgedes-adi-v18-framos-4port-deserializer.dtsi"
+	#include "edgedes-adi-v18-framos-imx678-port0.dtsi"
+	#include "edgedes-adi-v18-framos-imx678-port1.dtsi"
+	#include "edgedes-adi-v18-framos-imx678-port2.dtsi"
+	#include "edgedes-adi-v18-framos-imx678-port3.dtsi"
+	#include "edgedes-adi-v18-framos-4port-nvcsi.dtsi"
+	#include "edgedes-adi-v18-framos-4port-vi.dtsi"
+	#include "edgedes-adi-v18-framos-imx678-4port-camera-platform.dtsi"
+};

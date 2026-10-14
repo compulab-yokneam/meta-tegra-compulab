@@ -1,0 +1,92 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Valentin Raevsky <valentin@compulab.co.il>
+Date: Tue, 13 Oct 2026 00:00:00 +0000
+Subject: [PATCH] media: tegra: handle unconfigured optional GMSL inputs
+
+The modular EDGEDES transport overlay describes four possible GMSL inputs.
+A camera leaf overlay supplies the remote endpoint only for its selected
+port. Inputs without a leaf intentionally have no remote-endpoint property.
+The VI graph parser resolves every remote before filtering Maxim output
+pads and unrelated optional inputs, so one unconfigured input aborts graph
+parsing for every VI channel, including channels with a connected camera.
+
+Classify Maxim endpoints and select the channel's physical input before
+resolving its remote parent. Skip a missing remote-endpoint property only
+on an input of a bridge that opts into compulab,allow-missing-links. Keep
+remote resolution mandatory for configured inputs: a present but invalid
+remote-endpoint property still reports an error. Ordinary sensor graphs
+retain their strict remote requirement, and Maxim CSI output endpoints
+remain excluded from upstream traversal.
+
+No remote node reference is acquired for an endpoint filtered before
+resolution, so remove the corresponding of_node_put calls. References for
+traversed upstream entities continue to follow the existing ownership.
+Do not change sensor modes, device-tree composition or Argus/NITO policy.
+
+Prepared against NVIDIA Jetson Linux 39.2.1 after the ADI patches
+0100 through 0103.
+
+Upstream-Status: Inappropriate [CompuLab Tegra optional camera discovery]
+Signed-off-by: Valentin Raevsky <valentin@compulab.co.il>
+---
+ drivers/media/platform/tegra/camera/vi/graph.c | 32 +++++++++++-------------
+ 1 file changed, 15 insertions(+), 17 deletions(-)
+
+diff --git a/drivers/media/platform/tegra/camera/vi/graph.c b/drivers/media/platform/tegra/camera/vi/graph.c
+--- a/drivers/media/platform/tegra/camera/vi/graph.c
++++ b/drivers/media/platform/tegra/camera/vi/graph.c
+@@ -678,15 +678,11 @@ static int tegra_vi_graph_parse_one(struct tegra_channel *chan,
+ 
+ 		dev_dbg(chan->vi->dev, "handling endpoint %s\n", ep->full_name);
+ 
+-		remote = of_graph_get_remote_port_parent(ep);
+-		if (!remote) {
+-			ret = -EINVAL;
+-			break;
+-		}
+-
+ 		/* Only walk upstream of a Maxim bridge, not another CSI channel. */
+ 		if (tegra_vi_graph_is_maxim_deserializer(node)) {
+ 			struct of_endpoint endpoint;
++			bool optional = of_property_read_bool(node,
++						"compulab,allow-missing-links");
+ 			u32 num_links = 4;
+ 
+ 			if (of_device_is_compatible(node, "maxim,max9296a"))
+@@ -696,21 +692,23 @@ static int tegra_vi_graph_parse_one(struct tegra_channel *chan,
+ 				num_links = 1;
+ 
+ 			ret = of_graph_parse_endpoint(ep, &endpoint);
+-			if (ret) {
+-				of_node_put(remote);
++			if (ret)
+ 				break;
+-			}
+-			if (endpoint.port >= num_links) {
+-				of_node_put(remote);
++			if (endpoint.port >= num_links)
+ 				continue;
+-			}
+ 			/* Each optional capture channel owns only its input graph. */
+-			if (of_property_read_bool(node,
+-						  "compulab,allow-missing-links") &&
+-			    endpoint.port != chan->virtual_channel) {
+-				of_node_put(remote);
++			if (optional && endpoint.port != chan->virtual_channel)
++				continue;
++			/* No leaf overlay configured this optional input. */
++			if (optional &&
++			    !of_find_property(ep, "remote-endpoint", NULL))
+ 				continue;
+-			}
++		}
++
++		remote = of_graph_get_remote_port_parent(ep);
++		if (!remote) {
++			ret = -EINVAL;
++			break;
+ 		}
+ 
+ 		/* skip the vi of_node and duplicated entities */
+-- 
+2.34.1

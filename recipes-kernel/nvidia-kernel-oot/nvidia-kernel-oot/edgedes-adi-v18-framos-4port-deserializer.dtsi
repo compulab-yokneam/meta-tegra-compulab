@@ -1,0 +1,133 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// SPDX-FileCopyrightText: Copyright (c) 2026 CompuLab Ltd.
+
+fragment@0 {
+	target = <&cam_i2c>;
+	__overlay__ {
+		status = "okay";
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		edgedes_adi_framos_des: deserializer@27 {
+			compatible = "maxim,max96724";
+			reg = <0x27>;
+			enable-gpios = <&gpio TEGRA234_MAIN_GPIO(Y, 4) GPIO_ACTIVE_HIGH>;
+			maxim,control-channel-port = <0>;
+			/* Route all four native VC0 streams to PHY2 with output VCs 0-3. */
+			compulab,default-multi-link-routes;
+			/* Discover attached assemblies at boot; unused inputs are optional. */
+			compulab,allow-missing-links;
+			/* Keep serializer addresses tied to physical ports across subsets. */
+			compulab,serializer-aliases = <0x42 0x32 0x33 0x34>;
+			/* Prune absent-camera Argus metadata from the live device tree. */
+			compulab,camera-modules = <&edgedes_adi_framos_module0
+				&edgedes_adi_framos_module1 &edgedes_adi_framos_module2
+				&edgedes_adi_framos_module3>;
+			/* One remote serializer alias for each GMSL input. */
+			i2c-alias-pool = <0x42 0x32 0x33 0x34>;
+
+			ports {
+				#address-cells = <1>;
+				#size-cells = <0>;
+				port@0 {
+					reg = <0>;
+					edgedes_adi_framos_gmsl0_in: endpoint {
+#ifndef EDGEDES_ADI_FRAMOS_MODULAR_OVERLAY
+						remote-endpoint = <&edgedes_adi_framos_ser0_out>;
+#endif
+					};
+				};
+				port@1 {
+					reg = <1>;
+					edgedes_adi_framos_gmsl1_in: endpoint {
+#ifndef EDGEDES_ADI_FRAMOS_MODULAR_OVERLAY
+						remote-endpoint = <&edgedes_adi_framos_ser1_out>;
+#endif
+					};
+				};
+				port@2 {
+					reg = <2>;
+					edgedes_adi_framos_gmsl2_in: endpoint {
+#ifndef EDGEDES_ADI_FRAMOS_MODULAR_OVERLAY
+						remote-endpoint = <&edgedes_adi_framos_ser2_out>;
+#endif
+					};
+				};
+				port@3 {
+					reg = <3>;
+					edgedes_adi_framos_gmsl3_in: endpoint {
+#ifndef EDGEDES_ADI_FRAMOS_MODULAR_OVERLAY
+						remote-endpoint = <&edgedes_adi_framos_ser3_out>;
+#endif
+					};
+				};
+				port@6 {
+					reg = <6>;
+					#address-cells = <1>;
+					#size-cells = <0>;
+					edgedes_adi_framos_phy2_out_0: endpoint@0 {
+						reg = <0>;
+						bus-type = <MEDIA_BUS_TYPE_CSI2_DPHY>;
+						clock-lanes = <0>;
+						data-lanes = <1 2 3 4>;
+						lane-polarities = <0 0 0 0 0>;
+						link-frequencies = /bits/ 64 <1250000000>;
+						remote-endpoint = <&edgedes_adi_framos_csi_in_0>;
+					};
+					edgedes_adi_framos_phy2_out_1: endpoint@1 {
+						reg = <1>;
+						bus-type = <MEDIA_BUS_TYPE_CSI2_DPHY>;
+						clock-lanes = <0>;
+						data-lanes = <1 2 3 4>;
+						lane-polarities = <0 0 0 0 0>;
+						link-frequencies = /bits/ 64 <1250000000>;
+						remote-endpoint = <&edgedes_adi_framos_csi_in_1>;
+					};
+					edgedes_adi_framos_phy2_out_2: endpoint@2 {
+						reg = <2>;
+						bus-type = <MEDIA_BUS_TYPE_CSI2_DPHY>;
+						clock-lanes = <0>;
+						data-lanes = <1 2 3 4>;
+						lane-polarities = <0 0 0 0 0>;
+						link-frequencies = /bits/ 64 <1250000000>;
+						remote-endpoint = <&edgedes_adi_framos_csi_in_2>;
+					};
+					edgedes_adi_framos_phy2_out_3: endpoint@3 {
+						reg = <3>;
+						bus-type = <MEDIA_BUS_TYPE_CSI2_DPHY>;
+						clock-lanes = <0>;
+						data-lanes = <1 2 3 4>;
+						lane-polarities = <0 0 0 0 0>;
+						link-frequencies = /bits/ 64 <1250000000>;
+						remote-endpoint = <&edgedes_adi_framos_csi_in_3>;
+					};
+				};
+			};
+
+			i2c-atr {
+				#address-cells = <1>;
+				#size-cells = <0>;
+				edgedes_adi_framos_i2c0: i2c@0 {
+					reg = <0>;
+					#address-cells = <1>;
+					#size-cells = <0>;
+				};
+				edgedes_adi_framos_i2c1: i2c@1 {
+					reg = <1>;
+					#address-cells = <1>;
+					#size-cells = <0>;
+				};
+				edgedes_adi_framos_i2c2: i2c@2 {
+					reg = <2>;
+					#address-cells = <1>;
+					#size-cells = <0>;
+				};
+				edgedes_adi_framos_i2c3: i2c@3 {
+					reg = <3>;
+					#address-cells = <1>;
+					#size-cells = <0>;
+				};
+			};
+		};
+	};
+};

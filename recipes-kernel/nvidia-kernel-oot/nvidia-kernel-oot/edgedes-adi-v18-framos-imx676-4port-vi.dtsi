@@ -1,49 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
 // SPDX-FileCopyrightText: Copyright (c) 2026 CompuLab Ltd.
 
-fragment@6 {
-	target = <&capture_vi>;
-	__overlay__ {
-		num-channels = <4>;
-		ports {
-			#address-cells = <1>;
-			#size-cells = <0>;
-			port@0 {
-				reg = <0>;
-				edgedes_adi_framos_vi_in_0: endpoint {
-					port-index = <2>;
-					bus-width = <4>;
-					vc-id = <0>;
-					remote-endpoint = <&edgedes_adi_framos_csi_out_0>;
-				};
-			};
-			port@1 {
-				reg = <1>;
-				edgedes_adi_framos_vi_in_1: endpoint {
-					port-index = <2>;
-					bus-width = <4>;
-					vc-id = <1>;
-					remote-endpoint = <&edgedes_adi_framos_csi_out_1>;
-				};
-			};
-			port@2 {
-				reg = <2>;
-				edgedes_adi_framos_vi_in_2: endpoint {
-					port-index = <2>;
-					bus-width = <4>;
-					vc-id = <2>;
-					remote-endpoint = <&edgedes_adi_framos_csi_out_2>;
-				};
-			};
-			port@3 {
-				reg = <3>;
-				edgedes_adi_framos_vi_in_3: endpoint {
-					port-index = <2>;
-					bus-width = <4>;
-					vc-id = <3>;
-					remote-endpoint = <&edgedes_adi_framos_csi_out_3>;
-				};
-			};
-		};
-	};
-};
+/* Compatibility include; transport is shared by FRAMOS sensor profiles. */
+#include "edgedes-adi-v18-framos-4port-vi.dtsi"
