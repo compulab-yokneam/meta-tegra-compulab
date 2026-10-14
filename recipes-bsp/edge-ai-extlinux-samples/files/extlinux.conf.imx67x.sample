@@ -1,0 +1,26 @@
+DEFAULT primary
+TIMEOUT 10
+
+MENU TITLE Boot Options
+LABEL primary
+      MENU LABEL primary Image
+      FDT default
+      OVERLAYS /boot/devicetree/tegra234-p3768-0000+p3767-0000-dynamic.dtbo
+      LINUX /boot/Image
+      APPEND ${cbootargs} mminit_loglevel=4 console=ttyTCU0,115200  fbcon=map:0 video=efifb:off console=tty0 efi=runtime nvme.use_threaded_interrupts=1 pci=pcie_bus_perf  mminit_loglevel=4 console=tty0 console=ttyTCU0,115200  l4tver=39.2.0 rootdelay=1 roottimeout=60  sdhci_tegra.en_boot_part_access=1 rootwait video=efifb:off
+
+LABEL imx676
+      MENU LABEL primary
+      LINUX /boot/Image
+      FDT /boot/dtb/tegra234-edge-ai-adi-base.dtb
+      OVERLAYS /boot/devicetree/edgedes-adi-v18-transport-4port.dtbo,/boot/devicetree/edgedes-adi-v18-camera-imx676-port0.dtbo,/boot/devicetree/edgedes-adi-v18-camera-imx676-port1.dtbo,/boot/devicetree/edgedes-adi-v18-camera-imx676-port2.dtbo,/boot/devicetree/edgedes-adi-v18-camera-imx676-port3.dtbo
+      INITRD /boot/initrd
+      APPEND ${cbootargs} mminit_loglevel=4 console=ttyTCU0,115200 firmware_class.path=/etc/firmware fbcon=map:0 video=efifb:off console=tty0 efi=runtime nvme.use_threaded_interrupts=1 pci=pcie_bus_perf iomem=relaxed pci=realloc pcie_aspm=off
+
+LABEL imx678
+      MENU LABEL primary
+      LINUX /boot/Image
+      FDT /boot/dtb/tegra234-edge-ai-adi-base.dtb
+      OVERLAYS /boot/devicetree/edgedes-adi-v18-transport-4port.dtbo,/boot/devicetree/edgedes-adi-v18-camera-imx678-port0.dtbo,/boot/devicetree/edgedes-adi-v18-camera-imx678-port1.dtbo,/boot/devicetree/edgedes-adi-v18-camera-imx678-port2.dtbo,/boot/devicetree/edgedes-adi-v18-camera-imx678-port3.dtbo
+      INITRD /boot/initrd
+      APPEND ${cbootargs} mminit_loglevel=4 console=ttyTCU0,115200 firmware_class.path=/etc/firmware fbcon=map:0 video=efifb:off console=tty0 efi=runtime nvme.use_threaded_interrupts=1 pci=pcie_bus_perf iomem=relaxed pci=realloc pcie_aspm=off
