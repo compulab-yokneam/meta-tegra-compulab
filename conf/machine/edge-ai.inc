@@ -36,6 +36,10 @@ KERNEL_DEVICETREE:edge-ai:append = " \
 # a DTB basename to emit an explicit "FDT /boot/dtb/<name>" in extlinux.conf.
 FDT_FILE ?= ""
 
+# Ordered DTBO basenames under /boot/devicetree, applied to FDT_FILE at boot.
+# Keep empty unless selecting an explicit base DTB and compatible overlays.
+FDT_OVERLAYS ?= ""
+
 # Keep the NX16G NVIDIA profile available as a known-good fallback even when
 # UEFI supplies the active DTB and extlinux.conf has no explicit FDT line.
 EDGE_AI_FALLBACK_FDT_FILE = "tegra234-p3768-0000+p3767-0000-nv-super.dtb"
