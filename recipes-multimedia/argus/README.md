@@ -412,6 +412,15 @@ Argus commands below set PATH for that process without changing system files.
 
 ## Argus applications
 
+Edge-AI `demo-image-weston` images also install the supplied camera boot
+example as `/boot/extlinux/extlinux.conf.imx67x.sample`. It contains separate
+all-port IMX676 and IMX678 entries and is inactive: the generated
+`/boot/extlinux/extlinux.conf` remains unchanged. The sample is for the NX16G
+camera profile and assumes its matching DTBs, overlays and initrd are
+installed. Review its boot arguments and model selection before adapting it
+to the active configuration; it relies on `${cbootargs}` for root-device
+settings. This package does not enable camera drivers.
+
 The packaged launcher selects any connected Argus camera and also works from
 a root serial/SSH shell by switching to the Weston desktop user:
 
