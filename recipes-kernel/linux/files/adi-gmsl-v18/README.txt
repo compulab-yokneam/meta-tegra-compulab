@@ -35,8 +35,9 @@ NVIDIA interfaces remain the leaf-sensor
 API; ADI owns serializer/deserializer routing and nested I2C address translation.
 
 The edgedes-adi-v18-devicetree recipe builds the modified CompuLab/NVIDIA base,
-both overlays, and complete DTBs for Edge-AI NX 16G (including the edge-ai-nx
-alias). Other Jetson modules require a matching base DT and are excluded from
+single-port and optional multi-port overlays and complete DTBs for Edge-AI
+NX 16G (including the edge-ai-nx alias). Other Jetson modules require a
+matching base DT and are excluded from
 this recipe. Boot one complete camera DTB at a time:
 
     edgedes-adi-v18-tevs-ar0144-port3.dtb
@@ -44,7 +45,7 @@ this recipe. Boot one complete camera DTB at a time:
 
 Normal Edge-AI images install kernel-modules and nvidia-kernel-oot-cameras, so
 the opt-in transport and sensor packages are included in those images. The
-FRAMOS demo package also installs all three complete camera profiles under
+FRAMOS demo package also installs all eleven complete camera profiles under
 /boot/dtb through its edgedes-adi-v18-devicetree dependency. The DT recipe
 continues to emit standalone deploy artifacts as well. Neither mechanism
 changes the regular virtual/dtb provider, tegraflash DT selection or extlinux
@@ -130,8 +131,10 @@ See recipes-multimedia/argus/IMX676-VALIDATION.txt for the separate qualificatio
 
 Limits and follow-up
 -------------------
-Single-camera profiles remain explicit. The IMX676 four-port DTB now describes
-all four possible assemblies and discovers the connected subset at boot.
+Single-camera profiles remain explicit. Each IMX676/IMX678 four-port DTB
+describes all four possible assemblies of that model and discovers the
+connected subset at boot. The transport fragments and optional-link driver
+patches are shared; sensor modes, input link frequencies and NITO stay distinct.
 This needs both 0028 in max-serdes.ko and 0103 in tegra-camera.ko; changing
 only the DTB is not sufficient. Discovery is not arbitrary sensor-model
 identification or live cable hotplug. Mixed simultaneous capture, dynamic
