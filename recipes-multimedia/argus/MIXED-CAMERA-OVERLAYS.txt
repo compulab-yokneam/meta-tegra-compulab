@@ -1,0 +1,143 @@
+EDGEDES composable IMX676/IMX678 boot overlays -- 2026-10-13
+=========================================================
+
+Scope: Edge-AI NX16G/P3767-0000, ADI v18 and NVIDIA R39.2.1. This extends the
+existing optional-link model to explicit per-port sensor choices. It does not
+add sensor identification, live hotplug, synchronization or production IQ
+qualification. Matching optional-link max-serdes/tegra-camera patches and
+both sensor drivers remain required. The VI graph patch 0104 additionally
+filters Maxim outputs/unrelated optional inputs before remote resolution and
+accepts a missing remote-endpoint only on an unconfigured optional GMSL input.
+Configured dangling references and ordinary graph errors remain failures.
+No UEFI or NITO workaround is required for this graph-registration fix.
+Patch 0105 applies the optional-input rule to media-link construction too:
+absent sink references are skipped before remote parsing, independent of
+endpoint order. Configured corrupt references and missing outputs remain errors.
+
+Composition
+-----------
+FDT_FILE selects tegra234-edge-ai-adi-base.dtb from /boot/dtb. FDT_OVERLAYS
+selects basenames from /boot/devicetree in this order:
+    edgedes-adi-v18-transport-4port.dtbo
+    edgedes-adi-v18-camera-imx676-portN.dtbo or
+    edgedes-adi-v18-camera-imx678-portN.dtbo for each configured port N=0..3.
+Select no more than one leaf per port. Transport-only is valid. Do not combine
+old single-port pairs or homogeneous four-port overlays with this transport.
+Leaves are independent after common transport; no future-leaf fixups exist.
+
+Common owns stable ATR adapters/input endpoints, PHY2/CSI-C output VC0-3,
+unique aliases and model-free moduleN placeholders. Each leaf adds its
+serializer/sensor mode, enables moduleN and completes the GMSL graph. Empty
+unconfigured endpoints are ignored; configured but absent assemblies use
+optional-link discovery. Shared downstream endpoints remain available;
+unused VI channels are suppressed by the driver, not by disabling PHY2.
+
+The generator validates order, names, duplicates, base and physical ports.
+Do not also set UBOOT_EXTLINUX_FDTOVERLAYS. Universal builds scope the three
+configuration options to :edge-ai-shared-runtime. Detached Secure Boot
+signatures are owned by the DT recipe when signing keys are configured.
+Manual signed extlinux edits need re-signing. Keep a complete-DTB boot entry
+without OVERLAYS for rollback. The selector clears overlay lists when
+selecting a complete DTB or UEFI; it does not author modular stacks.
+
+Argus/NITO policy
+-----------------
+EDGE_AI_ARGUS_NITO_SELECTION defaults to auto. Homogeneous discovered subsets
+use their model-specific forced file even in marked mixed-capable profiles.
+Only mixed active models select per-camera lookup, requiring the modular DT
+marker. Explicit single remains homogeneous-only. Explicit per-camera retains
+directory lookup for marked profiles even with one camera; legacy homogeneous
+entries retain their forced-file fallback. Both condition and start check the
+selected forced file is regular/readable and log the effective policy/count.
+
+The opt-in guard allows mixed distinct ports, checks default-directory NITO
+presence, unsets inherited NVCAMERA_NITO_PATH and execs the unchanged daemon.
+Presence is not binary content/identity validation. Embedded badge/model
+identities and native modes must match and be verified or regenerated with
+official NVIDIA tools. Renaming files is insufficient. The supplied baseline
+NITOs have not been qualified for automatic mixed-camera selection. No binary
+patching, proprietary library replacement or NITO conversion is performed.
+
+Validation limits
+-----------------
+The opt-in edge-ai-argus-framos-camera-menu.inc generates independent all-port
+IMX676, all-port IMX678, explicit mixed and UEFI fallback entries. The default
+is the homogeneous IMX676 profile. Mixed layout defaults to 676 port0 plus
+678 port1, and can be changed through EDGE_AI_CAMERA_MIXED_OVERLAYS.
+Label-specific FDT generation preserves kernel/initrd/APPEND and validates each
+stack. 111 real-BitBake-data hook fixtures and six no-op machine/profile scope
+checks passed; all 153 existing global-generation fixtures remain unchanged.
+The explicit NX16G camera default is not portable to other universal modules.
+
+The DT compile task checks all 81 empty/IMX676/IMX678 port combinations via
+ordered libfdt composition. Structural tests cover both leaf orders, symbols,
+graph reciprocity, aliases, modes, module paths/status and legacy compatibility.
+Guard fixtures cover opt-in/default/fallback selection and inherited overrides.
+Boot-generator and complete-DTB-selector fixtures cover configuration safety.
+
+On 2026-10-13, DT deploy and DT/Argus/selector package QA passed. A temporary
+configuration generated the ordered mixed boot entry and installed the
+per-camera guard through actual BitBake tasks; local.conf was not modified.
+Independent fixture reruns passed 1431 real-shell guard checks, 153 boot-hook
+cases, 27 selector cases and 95 signing/install/deploy assertions with real
+CMS verification. Both homogeneous multi-port DTBs remain byte-identical.
+
+The 0104 VI parser fix passed 15,608 standalone C regression runs using the
+actual extracted function with mock OF helpers and address/undefined-behavior
+sanitizers. Coverage includes all 81 leaf assignments, four VI channels,
+all 24 input endpoint orders, outputs first/last and 56 error/boundary cases.
+The pre-0104 parser reproduced the mixed-port0/port1 failure in all 192
+channel/order cases. These tests do not exercise kernel notifier completion
+or hardware capture; they verify endpoint filtering and strict error handling.
+
+The 0105 actual-function C link-builder harness passed 647,297 cases, including
+all 16 configured-input subsets and all 40,320 endpoint orders, corrupt remote
+properties/outputs, invalid pads and ordinary/required-Maxim compatibility.
+These are mock-helper regressions, not physical-port capture qualification.
+
+The runtime nvidia-kernel-oot build applied 0100 through 0104 cleanly and
+passed package QA. The rebuilt tegra-camera module retains all 159 exports
+and its original vermagic/dependencies. Only that module was staged on the
+DUT, with an original-module backup and rollback script; the kernel Image,
+initrd, DT files, extlinux configuration and NITO files were unchanged.
+Loading the fix and validating hardware capture require a subsequent reboot.
+
+These checks do not establish hardware capture. First test raw V4L2 capture,
+then each model individually with automatic NITO lookup and verify the selected
+identity in daemon logs. Next test two mixed cameras independently/concurrently,
+reversed/sparse ports and finally four cameras. ISP throughput, cold-power
+startup and image quality require separate hardware qualification. No mixed
+hardware capture was performed here. Correct embedded tuning identities remain
+a deployment prerequisite. See README.md for configuration examples.
+
+Single-model modular DUT validation -- 2026-10-13
+-----------------------------------------------
+The r7 auto guard passed 2,462 real-shell fixture checks covering all 81
+port/model combinations, three requested policies, marker presence, compact
+and sparse module numbering, inherited selectors and NITO prerequisites.
+The mc:edge-ai-runtime:edge-ai-argus-framos-demo package QA build passed.
+
+On root@192.168.122.250 with the mixed-imx676-imx678 boot entry, only IMX676
+port 0 was physically connected. The live DT retained only module0; auto
+selected the existing edgedes-imx676-demo.nito through its explicit path.
+Argus logged successful NITO loading and selected the native 3552x3556,
+12-bit, 10-FPS sensor mode. The daemon remained active after testing.
+
+Headless test (45-second external timeout):
+    gst-launch-1.0 -e -v nvarguscamerasrc sensor-id=0 sensor-mode=0 \
+        num-buffers=30 ! \
+        'video/x-raw(memory:NVMM),format=NV12,width=3552,height=3556,framerate=10/1' \
+        ! identity name=framecheck silent=false ! fakesink sync=false
+Result: exactly 30 downstream frame buffers, native negotiated caps, EOS,
+successful cleanup and exit 0. Frame timestamps averaged 9.96 FPS including
+startup. The packaged argus_camera.sh --list exited 0 as weston and reported
+one camera, index 0, with the native mode. No test client remained running.
+No NITO initialization, SCF or missing-V4L2-device errors occurred after the
+auto-policy activation. Generic-template LSC/module-mapping warnings remain;
+this is capture validation, not image-quality calibration.
+
+Only the guard and its service drop-in changed on the DUT. The daemon was
+restarted without rebooting; boot configuration, DT files, camera module and
+both NITO binaries were unchanged. Original files and rollback.sh are under
+/var/backups/edge-ai-argus-auto-20261013T160644Z. No two-model mixed capture,
+IMX678-only auto capture, sparse physical ports or GUI preview was tested here.

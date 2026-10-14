@@ -1,8 +1,8 @@
 SUMMARY = "CompuLab Edge-AI Argus camera launcher example"
-DESCRIPTION = "Installs a serial-console-safe Argus GTK launcher with connected-camera selection and enumeration in the Weston XWayland session."
+DESCRIPTION = "Installs a serial-console-safe Argus GTK launcher with physical EDGEDES port selection, simultaneous tiled camera preview, explicit Argus device selection and enumeration in the Weston XWayland session."
 LICENSE = "MIT"
 LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda2f7b4f302"
-PR = "r1"
+PR = "r3"
 
 SRC_URI = "file://argus_camera.sh"
 S = "${UNPACKDIR}"

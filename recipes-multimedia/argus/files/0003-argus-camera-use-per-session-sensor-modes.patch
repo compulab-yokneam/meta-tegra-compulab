@@ -1,0 +1,237 @@
+Subject: [PATCH] argus: camera: select sensor modes per capture session
+
+The native multi-session preview creates one request per camera but its
+source observers previously reused the globally selected device's sensor
+mode object for every request. This also reused that device's resolution
+when requesting native-sized streams.
+
+Pass each multi-session device index into the source observer and resolve
+its own sensor mode in the mode and variable-frame-rate callbacks. Derive
+native output dimensions from the request's actual source mode. Keep the
+UINT32_MAX sentinel path for existing single-session callers and reject
+device indexes equal to the device count before dereferencing the vector.
+
+Common explicit exposure, gain and frame-rate controls remain shared;
+Argus clips these controls to the active sensor's supported ranges. This
+does not synchronize cameras or provide mixed-sensor ISP tuning/NITOs.
+
+Upstream-Status: Inappropriate [CompuLab multi-camera launcher integration]
+
+diff --git a/argus/apps/camera/modules/Dispatcher.cpp b/argus/apps/camera/modules/Dispatcher.cpp
+index 07c6187..8d6df44 100644
+--- a/argus/apps/camera/modules/Dispatcher.cpp
++++ b/argus/apps/camera/modules/Dispatcher.cpp
+@@ -223,8 +223,9 @@ private:
+ class SourceSettingsObserver : public IObserverForInterface
+ {
+ public:
+-    SourceSettingsObserver(Argus::ISourceSettings *iSourceSettings)
++    SourceSettingsObserver(Argus::ISourceSettings *iSourceSettings, uint32_t deviceIndex)
+         : m_iSourceSettings(iSourceSettings)
++        , m_deviceIndex(deviceIndex)
+     {
+         Dispatcher &dispatcher = Dispatcher::getInstance();
+ 
+@@ -340,7 +341,8 @@ private:
+         assert(&source == &dispatcher.m_sensorModeIndex);
+ 
+         Argus::SensorMode *sensorMode = NULL;
+-        PROPAGATE_ERROR(dispatcher.getSensorMode(dispatcher.m_sensorModeIndex.get(), &sensorMode));
++        PROPAGATE_ERROR(dispatcher.getSensorMode(dispatcher.m_sensorModeIndex.get(), &sensorMode,
++            m_deviceIndex));
+ 
+         if (m_iSourceSettings->setSensorMode(sensorMode) != Argus::STATUS_OK)
+             ORIGINATE_ERROR("Failed to set sensor mode");
+@@ -454,7 +456,7 @@ private:
+             // it to the source
+             Argus::SensorMode *sensorMode = NULL;
+             PROPAGATE_ERROR(dispatcher.getSensorMode(dispatcher.m_sensorModeIndex.get(),
+-                &sensorMode));
++                &sensorMode, m_deviceIndex));
+ 
+             Argus::ISensorMode *iSensorMode =
+                 Argus::interface_cast<Argus::ISensorMode>(sensorMode);
+@@ -496,7 +498,7 @@ private:
+             // it to the source
+             Argus::SensorMode *sensorMode = NULL;
+             PROPAGATE_ERROR(dispatcher.getSensorMode(dispatcher.m_sensorModeIndex.get(),
+-                &sensorMode));
++                &sensorMode, m_deviceIndex));
+ 
+             Argus::ISensorMode *iSensorMode =
+                 Argus::interface_cast<Argus::ISensorMode>(sensorMode);
+@@ -513,6 +515,7 @@ private:
+     }
+ 
+     Argus::ISourceSettings *m_iSourceSettings;
++    const uint32_t m_deviceIndex;
+ };
+ 
+ /**
+@@ -1441,10 +1444,31 @@ bool Dispatcher::getInfo(std::string &info) const
+     return true;
+ }
+ 
+-bool Dispatcher::getSensorMode(uint32_t sensorModeIndex, Argus::SensorMode **sensorMode) const
++bool Dispatcher::getSensorMode(uint32_t sensorModeIndex, Argus::SensorMode **sensorMode,
++    uint32_t deviceIndex) const
+ {
+     assert(m_deviceOpen);
+ 
++    if (deviceIndex != UINT32_MAX)
++    {
++        if (deviceIndex >= m_cameraDevices.size())
++            ORIGINATE_ERROR("Invalid session device index");
++
++        const Argus::ICameraProperties *properties =
++            Argus::interface_cast<Argus::ICameraProperties>(m_cameraDevices[deviceIndex]);
++        if (!properties)
++            ORIGINATE_ERROR("Failed to get session camera properties");
++
++        std::vector<Argus::SensorMode*> modes;
++        if (properties->getAllSensorModes(&modes) != Argus::STATUS_OK)
++            ORIGINATE_ERROR("Failed to get session sensor modes");
++        if (sensorModeIndex >= modes.size())
++            ORIGINATE_ERROR("Invalid session sensor mode index");
++
++        *sensorMode = modes[sensorModeIndex];
++        return true;
++    }
++
+     if (sensorModeIndex >= m_sensorModes.size())
+         ORIGINATE_ERROR("Invalid sensor mode index");
+ 
+@@ -1480,7 +1504,7 @@ bool Dispatcher::createSession(TrackedUniqueObj<Argus::CaptureSession> &session,
+ {
+     assert(m_deviceOpen);
+ 
+-    if (deviceIndex > m_cameraDevices.size())
++    if (deviceIndex >= m_cameraDevices.size())
+         ORIGINATE_ERROR("Invalid device index");
+ 
+     // close the internal session, it might be using the device which will be used by the new
+@@ -1582,7 +1606,7 @@ bool Dispatcher::waitForEvents(Argus::EventQueue *eventQueue, TimeValue timeout,
+ }
+ 
+ bool Dispatcher::createRequest(TrackedUniqueObj<Argus::Request> &request,
+-    Argus::CaptureIntent captureIntent, Argus::CaptureSession *session)
++    Argus::CaptureIntent captureIntent, Argus::CaptureSession *session, uint32_t deviceIndex)
+ {
+     if (!session)
+     {
+@@ -1614,7 +1638,7 @@ bool Dispatcher::createRequest(TrackedUniqueObj<Argus::Request> &request,
+         ORIGINATE_ERROR("Failed to get ISourceSettings interface");
+ 
+     // register the source settings observer
+-    PROPAGATE_ERROR(registerObserver(iSourceSettings));
++    PROPAGATE_ERROR(registerObserver(iSourceSettings, deviceIndex));
+ 
+     // get auto control settings interface
+     Argus::IAutoControlSettings *iAutoControlSettings =
+@@ -1925,7 +1949,8 @@ bool Dispatcher::waitForIdle(Argus::CaptureSession *session)
+     return true;
+ }
+ 
+-bool Dispatcher::getOutputSize(Argus::Size2D<uint32_t> *size) const
++bool Dispatcher::getOutputSize(Argus::Size2D<uint32_t> *size,
++    Argus::ISourceSettings *sourceSettings) const
+ {
+     // if width or height is 0 take the sensor size
+     if ((m_outputSize.get().width() == 0) || (m_outputSize.get().height() == 0))
+@@ -1934,7 +1959,8 @@ bool Dispatcher::getOutputSize(Argus::Size2D<uint32_t> *size) const
+         assert(m_deviceOpen);
+ 
+         Argus::ISensorMode *sensorMode =
+-            Argus::interface_cast<Argus::ISensorMode>(m_sensorModes[m_sensorModeIndex.get()]);
++            Argus::interface_cast<Argus::ISensorMode>(sourceSettings ?
++                sourceSettings->getSensorMode() : m_sensorModes[m_sensorModeIndex.get()]);
+         if (!sensorMode)
+             ORIGINATE_ERROR("Failed to get ISensorMode interface");
+         *size = sensorMode->getResolution();
+@@ -1962,7 +1988,11 @@ bool Dispatcher::createOutputStream(Argus::Request *request, bool enableMetadata
+         ORIGINATE_ERROR("Failed to get IRequest interface");
+ 
+     Argus::Size2D<uint32_t> outputSize;
+-    PROPAGATE_ERROR(getOutputSize(&outputSize));
++    Argus::ISourceSettings *sourceSettings =
++        Argus::interface_cast<Argus::ISourceSettings>(iRequest->getSourceSettings());
++    if (!sourceSettings)
++        ORIGINATE_ERROR("Failed to get source settings for output size");
++    PROPAGATE_ERROR(getOutputSize(&outputSize, sourceSettings));
+ 
+     Argus::ICaptureSession *iCaptureSession =
+         Argus::interface_cast<Argus::ICaptureSession>(session);
+@@ -2041,11 +2071,11 @@ bool Dispatcher::registerObserver(Argus::IEdgeEnhanceSettings *iEdgeEnhanceSetti
+     return true;
+ }
+ 
+-bool Dispatcher::registerObserver(Argus::ISourceSettings *iSourceSettings)
++bool Dispatcher::registerObserver(Argus::ISourceSettings *iSourceSettings, uint32_t deviceIndex)
+ {
+     UniquePointer<SourceSettingsObserver> sourceSettings;
+ 
+-    sourceSettings.reset(new SourceSettingsObserver(iSourceSettings));
++    sourceSettings.reset(new SourceSettingsObserver(iSourceSettings, deviceIndex));
+     if (!sourceSettings)
+         ORIGINATE_ERROR("Out of memory");
+ 
+diff --git a/argus/apps/camera/modules/Dispatcher.h b/argus/apps/camera/modules/Dispatcher.h
+index 6c73dd0..9c52a3f 100644
+--- a/argus/apps/camera/modules/Dispatcher.h
++++ b/argus/apps/camera/modules/Dispatcher.h
+@@ -88,8 +88,10 @@ public:
+      *
+      * @param sensorModeIndex [in]
+      * @param sensorMode [out]
++     * @param deviceIndex [in] fixed session device, or UINT32_MAX for the current device
+      */
+-    bool getSensorMode(uint32_t sensorModeIndex, Argus::SensorMode **sensorMode) const;
++    bool getSensorMode(uint32_t sensorModeIndex, Argus::SensorMode **sensorMode,
++        uint32_t deviceIndex = UINT32_MAX) const;
+ 
+     /**
+      * Returns the range of focuser positions of the current device.
+@@ -112,7 +114,8 @@ public:
+     /**
+      * Get the output size
+      */
+-    bool getOutputSize(Argus::Size2D<uint32_t> *size) const;
++    bool getOutputSize(Argus::Size2D<uint32_t> *size,
++        Argus::ISourceSettings *sourceSettings = NULL) const;
+ 
+     /**
+      * Get the amount of available camera devices
+@@ -147,7 +150,8 @@ public:
+      * @param session [in] capture session (optional, if NULL the internal session is used)
+      */
+     bool createRequest(TrackedUniqueObj<Argus::Request> &request,
+-        Argus::CaptureIntent captureIntent, Argus::CaptureSession *session = NULL);
++        Argus::CaptureIntent captureIntent, Argus::CaptureSession *session = NULL,
++        uint32_t deviceIndex = UINT32_MAX);
+ 
+     /**
+      * create a event queue
+@@ -376,7 +380,8 @@ private:
+     /**
+      * Register an ISourceSettings observer
+      */
+-    bool registerObserver(Argus::ISourceSettings *iSourceSettings);
++    bool registerObserver(Argus::ISourceSettings *iSourceSettings,
++        uint32_t deviceIndex = UINT32_MAX);
+ 
+     /**
+      * Register an IAutoControlSettings observer
+diff --git a/argus/apps/camera/modules/tasks/MultiSession.cpp b/argus/apps/camera/modules/tasks/MultiSession.cpp
+index 03df76d..e229c6c 100644
+--- a/argus/apps/camera/modules/tasks/MultiSession.cpp
++++ b/argus/apps/camera/modules/tasks/MultiSession.cpp
+@@ -78,7 +78,7 @@ bool TaskMultiSession::Session::initialize(uint32_t deviceIndex)
+ 
+     // create the request
+     PROPAGATE_ERROR(dispatcher.createRequest(m_request, Argus::CAPTURE_INTENT_STILL_CAPTURE,
+-        m_session.get()));
++        m_session.get(), deviceIndex));
+ 
+     // Create the preview stream
+     PROPAGATE_ERROR(dispatcher.createOutputStream(m_request.get(), false,  m_outputStream,
+

@@ -1,5 +1,5 @@
 SUMMARY = "Demo-only uncalibrated FRAMOS IMX676/IMX678 NITO and Argus runtime"
-DESCRIPTION = "Opt-in ISP migration baseline for one to four IMX676 cameras or one IMX678 camera on Edge-AI NX16G, ADI v18 and NVIDIA R39.2.1; not FRAMOS factory IQ tuning or a production camera profile."
+DESCRIPTION = "Opt-in ISP migration baseline for one to four IMX676 or IMX678 cameras on Edge-AI NX16G, ADI v18 and NVIDIA R39.2.1. Automatic NITO selection uses a model-specific file for homogeneous connected cameras and experimental per-camera lookup for marked mixed profiles, which needs matching embedded identities. Not FRAMOS factory IQ tuning or a production camera profile."
 HOMEPAGE = "https://developer.nvidia.com/embedded/jetpack/downloads/archive-7.2.1"
 
 # The generated NITO contains parameters from NVIDIA's generic template.
@@ -15,7 +15,13 @@ REQUIRED_DISTRO_FEATURES = "opengl systemd wayland x11"
 COMPATIBLE_MACHINE = "^$"
 COMPATIBLE_MACHINE:edge-ai-framos-argus-demo-profile = "^(edge-ai-nx-16g|edge-ai-nx)$"
 PACKAGE_ARCH = "${MACHINE_ARCH}"
-PR = "r4"
+PR = "r7"
+
+# Auto chooses from the models remaining after optional-link discovery. It
+# keeps homogeneous cameras on their validated model-specific file, even in
+# modular profiles, and permits mixed lookup only for marked modular DTs.
+# Explicit single/per-camera values retain their previous policy semantics.
+EDGE_AI_ARGUS_NITO_SELECTION ?= "auto"
 
 SRC_URI = " \
     file://edgedes-imx676-demo.nito \
@@ -43,6 +49,9 @@ RDEPENDS:${PN} = " \
 "
 
 python __anonymous() {
+    selection = d.getVar("EDGE_AI_ARGUS_NITO_SELECTION")
+    if selection not in ("auto", "single", "per-camera"):
+        bb.fatal("EDGE_AI_ARGUS_NITO_SELECTION must be 'auto', 'single' or 'per-camera'")
     if "edge-ai-framos-argus-demo-profile" not in (d.getVar("OVERRIDES") or "").split(":"):
         return
     if "adi-gmsl-v18" not in (d.getVar("OVERRIDES") or "").split(":"):
@@ -75,12 +84,14 @@ do_install() {
 
     install -d ${D}${libexecdir}
     sed -e 's|@LOCALSTATEDIR@|${localstatedir}|g' \
+        -e 's|@NITO_SELECTION@|${EDGE_AI_ARGUS_NITO_SELECTION}|g' \
         ${S}/edge-ai-argus-framos-demo-check > ${D}${libexecdir}/edge-ai-argus-framos-demo-check
     chmod 0755 ${D}${libexecdir}/edge-ai-argus-framos-demo-check
 
     install -d ${D}${sysconfdir}/systemd/system/nvargus-daemon.service.d
     sed -e 's|@LIBEXECDIR@|${libexecdir}|g' \
         -e 's|@LOCALSTATEDIR@|${localstatedir}|g' \
+        -e 's|@NITO_SELECTION@|${EDGE_AI_ARGUS_NITO_SELECTION}|g' \
         ${S}/90-edgedes-framos-demo.conf.in > \
         ${D}${sysconfdir}/systemd/system/nvargus-daemon.service.d/90-edgedes-framos-demo.conf
 

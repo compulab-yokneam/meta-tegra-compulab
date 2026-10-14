@@ -1,0 +1,50 @@
+EDGEDES IMX678 optional-port extension -- 2026-10-12
+==================================================
+
+Scope
+-----
+Edge-AI Orin NX16G, ADI v18, Linux 6.18.48-yocto-standard-adi-v18 and
+NVIDIA R39.2.1. One model-specific DTB describes IMX678/MAX96793 assemblies
+on ports 0-3 and discovers the connected subset at boot. No sensor-model
+auto-detection, mixed IMX676/IMX678 capture or live cable hotplug is added.
+
+The existing IMX678 port-0 serializer/sensor and deserializer sources are
+preserved byte-for-byte. Previously measured single-port capture/ISP results
+remain historical qualification; they do not validate the new port paths.
+
+Implementation
+--------------
+Add port-1/2/3 single-camera overlay pairs, per-port sensor/serializer source
+fragments and edgedes-adi-v18-framos-imx678-4port.dtso/.dtb. Reuse the common
+FRAMOS transport/NVCSI/VI fragments and the already integrated optional-link
+ADI 0027/0028 and NVIDIA OOT 0103 patches. No additional kernel patch is needed.
+
+Keep the native 3856x2180 RGGB RAW12 mode at 10 FPS, sensor stream/VC0,
+37.125-MHz MCLK, GPIO sequence and 594-MHz sensor link frequency. The
+MAX96724 maps native VC0 to the physical port's output VC0-3 on PHY2/CSI-C,
+four lanes at 2.5 Gb/s/lane. Twelve remote aliases remain unique, and
+serializer addresses are stable across connected-port subsets.
+
+The shared guard accepts one to four homogeneous IMX678 or IMX676 module
+badges and selects the appropriate existing NITO. Both NITO files and vendor
+libraries remain unchanged. Mixed active models are rejected. The generic
+Argus launcher selects physical ports with -d / --port and retains explicit
+compact device indexes with --device. Port mapping uses the native module
+identity, not device-tree order or video-node suffixes.
+
+Validation limits
+-----------------
+Guard fixtures exercise all 16 connected-port masks for each model, sparse
+module numbering, correct NITO selection and invalid/mixed/duplicate cases.
+Device-tree compilation and structural validation check per-port mode data,
+native/output VCs, graph links, module paths, GPIO/clock references and aliases.
+The IMX676 compiled multi-port overlay is unchanged by transport extraction.
+The Yocto DTB deploy and shared Argus package QA tasks passed. The installed
+/boot/dtb contains all eleven complete profiles. Independent reruns passed
+176 real-shell guard checks and 146 compiled-DTB assertions. The IMX676
+multi-port complete DTB also remains byte-identical to the working bootset.
+
+No IMX678 hardware capture was performed for this extension. Port-1/2/3,
+simultaneous capture, cold-power startup, ISP bandwidth and synchronization
+still require hardware validation. Do not interpret compile/fixture checks
+as production qualification or FRAMOS factory IQ calibration.

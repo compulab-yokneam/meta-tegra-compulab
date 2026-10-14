@@ -79,16 +79,33 @@ The existing tegra-libraries-camera and tegra-argus-daemon recipes supply
 proprietary runtime binaries; argus-samples and nvarguscamerasrc are built from
 their existing source recipes. The demo never rebuilds proprietary Argus core.
 The service drop-in uses an ExecCondition and a small shell launcher. The
-helper accepts one active IMX678 module with badge imx678_port0_framos, or
-one to four IMX676 modules with distinct imx676_port0_framos through
-imx676_port3_framos badges. It sets the matching NVCAMERA_NITO_PATH and execs
-the unchanged vendor daemon. Mixed or unsupported profiles skip the service.
+helper's default auto policy selects one to four active homogeneous IMX678 or
+IMX676 modules with
+distinct imx678_port0_framos through imx678_port3_framos badges, or the
+corresponding IMX676 badges. It sets the matching NVCAMERA_NITO_PATH and execs
+the unchanged vendor daemon. Unsupported profiles and mixed profiles without
+the modular marker skip the service.
 One argus_camera, argus_oneshot and nvarguscamerasrc serve both sensors.
 The service guard selects the DT profile, not a probed sensor silicon ID.
-The optional multi-port IMX676 DTB uses boot-time GMSL link discovery and
+Each model-specific optional multi-port DTB uses boot-time GMSL link discovery and
 omits absent module metadata from the live DT before Argus enumeration.
 This requires the matching optional-link ADI and NVIDIA OOT driver patches;
-it does not change either NITO or add mixed-sensor or hot-plug support.
+it does not change either NITO or add hot-plug support.
+New modular overlays permit explicit mixed-model device-tree composition.
+EDGE_AI_ARGUS_NITO_SELECTION=auto uses a forced model-specific file for every
+homogeneous connected subset, even in modular mixed-capable boot profiles.
+It uses default-directory lookup without a global forced-file override only
+when both models remain active and the modular DT marker is present.
+Explicit single preserves homogeneous-only selection. Explicit per-camera
+preserves marked-profile lookup even with one camera; unmarked legacy entries
+retain their forced-file fallback. The selected forced file must be regular
+and readable at both service condition and start. Inherited global selectors
+are replaced or cleared, and effective policy/count/path are logged.
+Automatic baseline NITO identity matching
+is not qualified; file presence is not proof of correct data. Verify or
+regenerate identities with official NVIDIA tools and qualify mixed capture.
+The IMX678 extension retains the qualified native mode and existing port-0
+source. New ports and simultaneous capture require separate hardware tests.
 To restore generic Argus, remove the demo package/drop-in, reload systemd and
 restart nvargus-daemon when no capture process is running. Existing legacy
 NITO files and all driver/DTS/boot settings remain untouched by this package.
