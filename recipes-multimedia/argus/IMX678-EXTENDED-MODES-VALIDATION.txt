@@ -1,0 +1,167 @@
+IMX678 native RAW12 mode extension -- 2026-10-15
+================================================
+
+Scope
+-----
+One FRAMOS IMX678 with FFA-GMSL-SER-V2A on EDGEDES ADI v18 physical port 0,
+Edge-AI Orin NX16G, NVIDIA R39.2.1, Linux 6.18.48-yocto-standard-adi-v18.
+Ports 1-3 were empty. This is a generic, uncalibrated ISP demo, not factory
+IQ qualification or a simultaneous multi-camera bandwidth certification.
+
+Implementation
+--------------
+NVIDIA OOT patch 0106 adds full-frame 30 FPS and two centered crop modes
+from the FRAMOS reference windows. All modes use RGGB12, four sensor lanes
+at 1188 Mb/s/lane, 37.125-MHz MCLK and HMAX 1100. Mode 0 retains the
+existing register sequence and 10-FPS limits. New modes use VMAX 2250 and
+maximum exposure 33212 microseconds. There is no RAW10, binning or HDR mode.
+The mode count is clamped to the booted DT's mode count, retaining support
+for old single-mode DTs. IMX676 is unchanged.
+
+EDGE_AI_IMX678_EXTENDED_MODES defaults to "0". Setting it to "1" selects
+both the four-mode DT definitions and the matching cumulative NITO source
+in edge-ai-argus-framos-demo. The installed IMX678 NITO filename and the
+model-selection helper are unchanged. The original NITO source is retained.
+See files/PROVENANCE.txt for all input/tool hashes and generation commands.
+
+Extended NITO SHA256, size 958476 bytes:
+b029ea2b6f15f0b323fe83b9e6aa31969141d520820ebbd9d8b6be7480bad7c3
+Sensor module SHA256:
+fe41d73fe3def9bb7ceff7e12b39499084f97aaeb649a8a16ad48fa37e1d9601
+gst_camera.sh SHA256:
+57d6db10c312794ddba2ff7bf53205ea7c4fd963bfbf1586753e2f9682c84816
+
+NITO generation and runtime separation
+--------------------------------------
+The stock CONFIG migration path exports the provider's initial mode 0
+before the requested nonzero mode is selected. These identical mode-0
+dumps were rejected as inputs for modes 1-3.
+
+Fresh selected-mode exports used NVIDIA's official migration hotfix
+libnvscf.so through process-local LD_LIBRARY_PATH in an isolated CONFIG
+daemon. Each mode captured a JPEG and exported its own 383108-byte CFG.
+The hotfix installer was not run; installed NVIDIA core libraries were
+never overwritten. No hotfix library or converter is included in the image.
+
+The official converter loaded the generic template, then incorporated the
+four fresh CFG files cumulatively at knobset IDs 0, 1, 2 and 3. All four
+conversions validated UUID/schema/dataSize. Independently reapplying each
+CFG to its own knobset in the completed file produced a byte-identical
+output. The historical source profile caused an opaque converter abort;
+it was preserved, not binary-patched. The extended file regenerates mode 0
+from its fresh CFG; it is not byte-preserved historical tuning.
+
+All following capture/preview/recording checks used the stock libnvscf.so:
+c01f75c7f6988e088f72be32a04aab91c747d66df3e20885e640b266a4b3c3bc
+The daemon's /proc maps confirmed /usr/lib/libnvscf.so, not the private
+migration copy. Its diagnostics confirmed all four native mode geometries,
+RAW12 Bayer input/output and exact mode-to-knobset mappings 0->0 through
+3->3. The template's unused generic entry was not selected for these modes.
+
+Hardware checks
+---------------
+The DUT warm-rebooted into an additional imx678-extended extlinux entry.
+The original entries, base DTB and transport overlay were preserved.
+The four extended sensor leaves were installed under distinct filenames.
+The new module loaded with matching vermagic; only port 0 enumerated.
+
+Mode  Native JPEG    FPS  Capture buffers  Record output  Record buffers
+0     3856x2180      10   100              1920x1080      30
+1     3856x2180      30   300              1920x1080      90
+2     2608x1964      30   300              1434x1080      90
+3     1920x1080      30   300              1920x1080      90
+
+Native JPEG tests used gst_camera.sh capture --sensor-id 0 --sensor-mode N
+with the table's --frames value and a new --output directory. The launcher
+keeps only the last JPEG by default. Every pipeline reached EOS, returned
+zero and reported Argus cleanup success. Capture execution times including
+startup were 10.981, 10.758, 10.743 and 10.722 seconds respectively.
+The original single-mode NITO also passed a separate mode-0 20-frame capture
+after the driver/DT update, before the extended NITO was selected.
+
+Recording used gst_camera.sh record --sensor-id 0 --sensor-mode N
+--duration 3 --output NEW.mp4. All files finalized successfully at EOS.
+Every MP4 also passed on-device qtdemux ! h264parse ! nvv4l2decoder !
+fakesink sync=false to EOS, with exit zero.
+
+Independent host validation fully decoded each native JPEG, checked MP4
+box/sample indexes, H.264 sample framing, seekability, increasing timestamps
+and exact 30/90/90/90 sample counts. MP4 durations were 3.012, 2.996667,
+3.001667 and 3.001667 seconds respectively. Mode 0's median sample rate was
+10 FPS; modes 1-3 averaged approximately 30 FPS, with startup timestamp
+jitter below one frame. Visual comparison showed coherent scene detail and
+the expected crop progression without obvious corruption or a new color
+regression. The original baseline already has muted, low-contrast rendering;
+this qualitative comparison is not calibrated image-quality validation.
+Host media logs: /tmp/edge-ai-imx678-final-media.3beYXQxP
+
+Each mode's gst_camera.sh live command ran through the root-to-Weston
+handoff and Wayland sink, connected its producer, and stopped with SIGINT
+and clean EOS/Argus shutdown. The supervisor's intentional ten-second bound
+includes enumeration/startup; it is not a camera timeout failure.
+
+No VI/CSI timeout, uncorr_err, corr_err, CHANSEL or CSIMUX errors appeared
+in the captured kernel log covering the capture/recording tests.
+
+Software checks
+---------------
+All 64 launcher unit tests pass, including mode metadata validation, mode
+selection through the Weston handoff, output-path safety and failure cases.
+Both NITO package install selections passed isolated tests using the real
+binary files; invalid opt-in values and corrupt NITO inputs fail closed.
+DT compilation/structure checks cover gate-off/gate-on modern and legacy
+sensor overlays, per-port VC identities and all 81 modular compositions.
+The actual DUT base/transport composition also passed all 81 combinations.
+Mode-0 DT property bytes match the original with the gate disabled.
+Read-only review confirmed per-device mode bounds do not mutate the shared
+format table or affect a different camera's advertised mode count.
+
+The initial matching driver/DT/launcher build passed all 4515 tasks.
+With EDGE_AI_IMX678_EXTENDED_MODES = "1", the targeted DT, FRAMOS demo and
+camera-example build passed all 4565 tasks (4534 cached), including package
+QA and all 81 modular DT compositions. It reported 672 warnings, primarily
+pre-existing duplicate UEFI includes and browser license-syntax warnings.
+No complete rootfs/image build was run for this extension.
+
+The generated Debian packages installed on the DUT as:
+  edge-ai-argus-framos-demo 1.0-r8
+  edge-ai-argus-camera-example 1.0-r5
+The packaged IMX678 NITO matches the pinned extended hash. The existing
+model-selection helper and service drop-in are unchanged. The temporary
+diagnostic /run service override was moved into the evidence directory;
+the normal helper service, with no diagnostic environment override, passed
+another 60-frame mode-3 capture. dpkg --audit was clean before and after.
+The exact Yocto-built leaves have identical decompiled DT properties to
+the initially hardware-tested leaves (only binary padding differs).
+
+A final warm reboot used those exact packaged leaves under the distinct
+extended filenames. Boot ID: 8e805a74-aabd-45c6-8f1f-670c2a55dcc2.
+The normal Argus helper started automatically without the diagnostic
+override. All four modes then passed another 60-frame native JPEG capture,
+with clean EOS and the stock runtime library/hash. Mode-0 live preview was
+restored as the temporary edge-ai-imx678-preview.service, running as weston;
+it is not enabled for future boots or added to the image. Stop that preview
+before opening another client on the same camera:
+
+  systemctl stop edge-ai-imx678-preview
+
+Artifact and rollback locations
+-------------------------------
+Host evidence: /tmp/edge-ai-imx678-expanded-validation.gqZAhmHK
+Converter evidence: /tmp/edge-ai-imx678-nito-four.gFgbg8os
+DUT backup/evidence: /var/lib/compulab/imx678-modes.XXqbLiX0
+These are local diagnostic artifacts, not image-installed dependencies.
+Original extlinux, NITO, module and boot DT files have a checked SHA256
+backup manifest. Restore matching originals as a set before rebooting if
+rolling back manually. A future image rollback should rebuild/deploy with
+EDGE_AI_IMX678_EXTENDED_MODES = "0".
+
+Limitations
+-----------
+These are single-camera functional checks, not factory color calibration.
+AE/AWB convergence metadata, lens shading, HDR, cold-power cycles, mixed
+sensors, other physical ports and simultaneous streams require additional
+qualification. Crops reduce field of view; they are not full-field scaling.
+Four full-resolution RAW12 30-FPS streams exceed the shared four-lane
+2.5-Gb/s/lane output's payload budget. Keep mode 0 as the conservative
+multi-camera default. Do not infer unsupported rates from recording caps.

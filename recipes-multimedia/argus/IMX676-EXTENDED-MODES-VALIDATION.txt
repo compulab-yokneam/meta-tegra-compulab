@@ -1,0 +1,183 @@
+IMX676 native RAW12 mode extension -- 2026-10-15
+================================================
+
+Scope
+-----
+One FRAMOS IMX676 on EDGEDES ADI v18 physical port 0 using the existing
+FFA-GMSL-SER-V2A, Edge-AI Orin NX16G, NVIDIA R39.2.1 and Linux
+6.18.48-yocto-standard-adi-v18. Ports 1-3 were empty. This is a generic,
+uncalibrated ISP demo, not FRAMOS factory tuning or production qualification.
+
+Implementation
+--------------
+OOT patch 0107 keeps all six original sensor register arrays, mode-0 write
+order, BLKLEVEL 50, four-lane 720-Mb/s link and 37.125-MHz MCLK unchanged.
+It adds full-frame 15 FPS and the vendor's non-binned 3552x2160 window.
+The crop starts at native (0,698), preserving RGGB parity. RAW10, color
+binning, HDR and faster link rates are not enabled.
+
+Mode 0 retains HMAX 1256/VMAX 5912 and its existing exposure conversion.
+The new HMAX 1320 timing is derived, not a copied vendor timing table.
+It is longer than the reference 1256-clock minimum for this lane rate.
+At 74.25 MHz, VMAX 3750/2250 gives exact nominal 15/25 FPS; both are even
+and exceed the vendor active-height-plus-72 minimum. New exposures use
+exact sensor-clock arithmetic, minimum 36us and maximum 66524/39857us.
+DT line_length 4267 is the nearest integer model of the unchanged 240-MHz
+CSI pixel rate; it does not alter active width or CSI pixel packing.
+
+Checked per-device mode bounds avoid out-of-range DT indexing and do not
+mutate the shared format table. Legacy single-mode DTs retain one mode.
+The CSI descriptor uses selected geometry rather than fixed native size.
+
+EDGE_AI_IMX676_EXTENDED_MODES defaults to "1" since 2026-10-16 and selects
+both additional DT modes and the matching NITO. Initial 2026-10-15 testing
+enabled the same flag explicitly while its original default was "0".
+Setting it to "0" restores the native-only DT/NITO. IMX678's separate flag and
+profiles are preserved. The original source NITOs remain byte-identical.
+Runtime IMX676 filename stays edgedes-imx676-demo.nito under
+/var/nvidia/nvcam/settings; the model-selection helper is unchanged.
+
+NITO and runtime provenance
+---------------------------
+Extended source: files/edgedes-imx676-extended-demo.nito, 958476 bytes.
+SHA256: 6205cd7ef74335f26c81c4182a51d05994a8f93fc6d6a935d310c7514a97d16e
+Installed/package stripped sensor module SHA256:
+0d147eb9876c4fd231c9dbb5a4515a922fd150dff92520ac35c72e94dad3f082
+The pre-package unstripped image SHA256 is
+ed966af8ac085d4a328d7e6d2f5910b5064cafb12bb80dab5d3ea9ebd2f920f9.
+Launcher SHA256:
+2754c85165961030a317aed10a30a8a374672b023fc1cdcdbd049fa996d683ad
+
+Fresh selected-mode CONFIG exports used the official NVIDIA migration
+hotfix libnvscf.so through process-local LD_LIBRARY_PATH in a private
+diagnostic daemon. Each mode captured a JPEG and exported a distinct CFG.
+The hotfix installer was not run and no installed core library changed.
+The official converter generated template->mode0->mode1->mode2 knobsets.
+All UUID/schema/dataSize checks passed. Reapplying each CFG separately to
+the completed profile produced a byte-identical output. Tool/input hashes,
+commands and license notes are in files/PROVENANCE.txt. The converter and
+hotfix library are not included in the image.
+
+All final tests below used the stock libnvscf.so, SHA256:
+c01f75c7f6988e088f72be32a04aab91c747d66df3e20885e640b266a4b3c3bc
+Daemon maps confirmed /usr/lib/libnvscf.so. Diagnostics confirmed exact
+sensor-mode-to-knobset mappings 0->0, 1->1, 2->2. The template's unused generic
+entry was not selected for these modes.
+
+Functional checks
+-----------------
+Before updating, original mode 0 passed 100 native JPEG buffers and a 3-second
+recording with hardware playback. After the module/DT update, mode 0 again
+passed 20 buffers using the original single-mode NITO. New kernel/DT boot
+ID: 59b31c6e-b8f0-48aa-9d44-ecf1d36d5dec. All 3 modes enumerated correctly.
+
+Mode  Native JPEG    FPS  JPEG buffers  MP4 output  MP4 samples  Duration
+0     3552x3556      10   100           1080x1080   30           3.020s
+1     3552x3556      15   150           1080x1080   45           3.008s
+2     3552x2160      25   250           1776x1080   75           3.0012s
+
+All native JPEG and recording pipelines reached EOS and returned zero.
+Every MP4 also decoded on-device through qtdemux ! h264parse !
+nvv4l2decoder ! fakesink sync=false to EOS with exit zero.
+Independent host checks fully decoded the JPEGs and verified native sizes,
+MP4 finalization/indexes/seekability, H.264 sample boundaries, increasing
+timestamps and exact 30/45/75 samples. Median frame periods were 100000000,
+66666667 and 40000000ns (10/15/25 FPS). Small startup timestamp variation
+explains the non-exact 3-second container durations; do not infer precise
+physical rate from container caps alone. Host H.264 decoding was not
+available; the on-device hardware-decoding tests cover playback.
+
+Each mode also passed fullscreen Wayland preview through the root-to-Weston
+handoff and stopped cleanly on SIGINT with EOS/Argus cleanup success.
+The bounded supervisor's 124 result is intentional preview termination,
+not a sensor timeout. No other camera clients were stopped.
+Images retained the original full field for modes 0/1 and the expected
+center vertical crop for mode 2, without visible tearing, stripes or noise.
+The original upside-down physical mounting and muted/purple low-contrast
+rendering remain; these tests do not constitute calibrated IQ validation.
+
+Software checks
+---------------
+All 81 launcher tests pass, including the new IMX676 modes and fullscreen.
+All 26 NITO recipe install fixtures pass: four independent flag combinations,
+corrupted input rejection and invalid boolean rejection. Existing IMX678
+native/extended source hashes remain unchanged.
+DT checks cover all 4 flag combinations, 29 overlays and 81 modular mixed
+compositions each, plus 8 legacy and 2 four-port profiles per combination.
+All 16 original sensor-mode-0 property maps remain byte-identical.
+Actual BitBake-built leaves also passed all 81 combinations against the
+saved actual DUT base/transport, proving both recipe gates reached CPP.
+
+The targeted driver/DT/launcher BitBake build passed 4515 tasks with 4454
+cached, including package QA. It reported 672 warnings, primarily existing
+duplicate UEFI includes and browser license syntax. No full image build
+was required. The new module's vermagic matches the running kernel.
+
+Final package and boot checks
+----------------------------
+The final NITO package build passed all 4149 tasks, with 4130 cached and
+600 warnings. Both extracted package NITOs matched their expected hashes.
+The DUT now has edge-ai-argus-framos-demo 1.0-r9 and camera-example 1.0-r7.
+The private /run service override was moved to the DUT evidence directory,
+not left active. The unchanged normal model-selection helper chose the
+canonical IMX676 profile. A 25-buffer mode-2 capture passed immediately.
+
+After a warm reboot, boot ID 24054945-d291-4845-b774-43e17f4c8de6,
+the normal guarded service started automatically, using the packaged
+canonical IMX676 NITO and stock libnvscf.so. All three modes again passed
+30 native JPEG buffers each, with EOS, exit zero and successful cleanup.
+The last JPEG from each final capture also fully decoded on the host at
+its expected native dimensions, with nontrivial, non-clipped image data.
+The package audit was empty; no capture client remained running. Source
+and DUT launcher hashes match. Installed module bytes match the stripped
+Debian package, and all four deployed extended leaves match the built DTs.
+All original backup-manifest checks passed.
+
+No VI/CSI timeout, corr/uncorr, CHANSEL or CSIMUX errors were found in this
+final boot's kernel log. Argus still logs module/virtual-enumerator and LSC
+diagnostics associated with this demo profile. It also logged a
+HotplugMonitor::close 0x00030003 error while destroying one enumeration
+client; subsequent mode-1/mode-2 captures passed without restarting the
+daemon. This is a remaining cleanup diagnostic, not a claim of clean logs
+or qualified hotplug support.
+
+Default-on build checks -- 2026-10-16
+------------------------------------
+The normal build configuration, without a postread mode override, passed
+all 4589 targeted driver/DT/Argus/sample tasks (4530 cached, 600 warnings).
+Package QA passed. The extracted DT r9 and NITO r10 packages select three
+IMX676 modes and their extended profile by default, while IMX678 retains
+one mode and its original native profile. All 81 compositions of these
+actual packaged DTs passed mode geometry, rates, exposure and VC checks.
+Independent source compilation again passed all four switch combinations
+and the explicit IMX676=0 native fallback, preserving all original mode-0
+property maps. All 81 launcher, 26 ISP recipe and 8 boot-sample tests passed.
+
+The sample r1 package contains the byte-identical updated inactive example
+with real standard DTBO paths and no active extlinux.conf. Extended labels
+do not toggle built mode tables, select FPS or provide a native rollback.
+The default capture mode remains 0. No full image was built and no DUT
+changes were made for this default-on/package verification; the preceding
+hardware evidence still describes the explicitly enabled test bootset.
+Evidence: /tmp/edge-ai-imx67x-default-commits.v7iTDwg4
+
+Evidence and rollback
+---------------------
+Host: /tmp/edge-ai-imx676-expanded-validation.7c9zwJsG
+Converter: /tmp/edge-ai-imx676-nito-three.JHWWw5Eu
+DUT: /var/lib/compulab/imx676-modes.XXFr0lbV
+The original extlinux, NITOs, sensor module, launcher and DT files have
+a checked SHA256 backup manifest; the original module Debian package is
+saved on the host. The DUT uses a separate imx676-extended boot entry and
+distinct extended leaf filenames, preserving original boot entries/files.
+For image rollback, set EDGE_AI_IMX676_EXTENDED_MODES="0", rebuild and
+deploy matching DT/NITO packages, then reboot. Preserve IMX678's flag as
+needed. Do not mix new DT modes with only the old single-mode profile.
+
+Limitations
+-----------
+Only one IMX676 on port 0 was hardware-tested. Other ports, mixed models,
+simultaneous high-rate streams, cold-power reliability, AE/AWB convergence
+metadata, lens shading, factory color and production use remain unqualified.
+30 FPS full resolution requires a faster sensor link than this preserved
+720-Mb/s configuration. Cropping is sensor windowing, not full-field scaling.
