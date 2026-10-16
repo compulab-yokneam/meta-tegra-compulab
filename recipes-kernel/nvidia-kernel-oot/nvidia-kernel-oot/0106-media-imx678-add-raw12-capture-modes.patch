@@ -1,0 +1,361 @@
+Subject: [PATCH] media: imx678: add fixed-rate RAW12 capture modes
+
+Keep mode 0 and its native 3856x2180 RAW12 10-FPS register sequence intact.
+Add full-resolution 30 FPS and the two FRAMOS linear crop windows,
+2608x1964 and 1920x1080, at 30 FPS. Retain four CSI lanes, the qualified
+1188-Mb/s lane rate and HMAX 1100 in every mode.
+
+Use table-selected geometry, frame rate, VMAX and window registers, and
+reject invalid mode IDs, mismatched DT geometry and frame-rate requests.
+Limit each camera's advertised modes to its DT mode count, so legacy
+mode0-only DTs do not expose unsupported mode IDs. Guard every control
+callback before indexing DT mode properties.
+Calculate the ADI frame descriptor length from the selected mode instead
+of reporting native dimensions for every capture.
+
+The crop register values and the minimum/even VMAX constraints come from
+framosimaging/framos-jetson-drivers commit
+4e772feec7f21e5ca3d485142c7df03a95c75f3c, files
+source/nvidia-oot/drivers/media/i2c/fr_imx678_mode_tbls.h and fr_imx678.c.
+VMAX 2250 is even, meets every selected window's active-height + 70
+minimum, and gives exactly 30 FPS at HMAX 1100 and the 74.25-MHz clock.
+RAW10, binning, HDR, faster lane rates and variable frame rates remain
+outside this conservative extension.
+
+Matching DT modeN metadata and ISP mode profiles are required. Full-native
+30-FPS capture is not a four-camera guarantee: four RAW12 streams exceed
+the existing shared four-lane 2.5-Gb/s CSI output before packet overhead.
+These new modes still require device capture and ISP validation.
+
+Upstream-Status: Inappropriate [CompuLab EDGEDES IMX678 integration]
+
+diff --git a/drivers/media/i2c/edgedes-sensors/framos/fr_imx678.c b/drivers/media/i2c/edgedes-sensors/framos/fr_imx678.c
+index ba96c40..b96e46e 100644
+--- a/drivers/media/i2c/edgedes-sensors/framos/fr_imx678.c
++++ b/drivers/media/i2c/edgedes-sensors/framos/fr_imx678.c
+@@ -7,6 +7,7 @@
+  * Adapted for ADI v18 graph and GPIO consumers by CompuLab, 2026-10-04.
+  */
+ #include <nvidia/conftest.h>
++#include <linux/build_bug.h>
+ #include <linux/clk.h>
+ #include <linux/delay.h>
+ #include <linux/gpio/consumer.h>
+@@ -38,6 +39,49 @@ struct imx678 {
+ 	struct mutex power_lock;
+ };
+ 
++struct imx678_mode {
++	u32 width;
++	u32 height;
++	u32 framerate;
++	u32 vmax;
++	const imx678_reg *window;
++};
++
++/* Mode IDs must match imx678_frmfmt and the corresponding DT modeN nodes. */
++static const struct imx678_mode imx678_modes[] = {
++	[IMX678_MODE_FULL_10FPS] = {
++		3856, 2180, 10, IMX678_DEFAULT_VMAX, mode_3864x2180,
++	},
++	[IMX678_MODE_FULL_30FPS] = {
++		3856, 2180, 30, 2250, mode_3864x2180,
++	},
++	[IMX678_MODE_CROP_2608X1964_30FPS] = {
++		2608, 1964, 30, 2250, mode_crop_2608x1964,
++	},
++	[IMX678_MODE_CROP_1920X1080_30FPS] = {
++		1920, 1080, 30, 2250, mode_crop_1920x1080,
++	},
++};
++
++static_assert(ARRAY_SIZE(imx678_modes) == ARRAY_SIZE(imx678_frmfmt));
++
++static const struct imx678_mode *imx678_get_mode(
++		struct camera_common_data *s_data)
++{
++	const struct sensor_image_properties *image;
++	const struct imx678_mode *mode;
++
++	if (!s_data || s_data->mode < 0 ||
++	    s_data->mode >= ARRAY_SIZE(imx678_modes) ||
++	    s_data->mode >= s_data->sensor_props.num_modes)
++		return NULL;
++	mode = &imx678_modes[s_data->mode];
++	image = &s_data->sensor_props.sensor_modes[s_data->mode].image_properties;
++	if (image->width != mode->width || image->height != mode->height)
++		return NULL;
++	return mode;
++}
++
+ static const u32 imx678_ctrl_cids[] = {
+ 	TEGRA_CAMERA_CID_GAIN,
+ 	TEGRA_CAMERA_CID_EXPOSURE,
+@@ -116,10 +160,12 @@ static int imx678_set_group_hold(struct tegracam_device *tc_dev, bool hold)
+ static int imx678_set_gain(struct tegracam_device *tc_dev, s64 val)
+ {
+ 	struct camera_common_data *s_data = tc_dev->s_data;
+-	const struct sensor_control_properties *ctrl =
+-		&s_data->sensor_props.sensor_modes[s_data->mode].control_properties;
++	const struct sensor_control_properties *ctrl;
+ 	u32 gain;
+ 
++	if (!imx678_get_mode(s_data))
++		return -EINVAL;
++	ctrl = &s_data->sensor_props.sensor_modes[s_data->mode].control_properties;
+ 	if (!ctrl->gain_factor || val < 0)
+ 		return -EINVAL;
+ 	/* 0.3 dB steps, fixed low conversion gain, maximum 72 dB. */
+@@ -132,10 +178,12 @@ static int imx678_set_exposure(struct tegracam_device *tc_dev, s64 val)
+ {
+ 	struct imx678 *priv = tegracam_get_privdata(tc_dev);
+ 	struct camera_common_data *s_data = tc_dev->s_data;
+-	const struct sensor_control_properties *ctrl =
+-		&s_data->sensor_props.sensor_modes[s_data->mode].control_properties;
++	const struct sensor_control_properties *ctrl;
+ 	u64 lines;
+ 
++	if (!imx678_get_mode(s_data))
++		return -EINVAL;
++	ctrl = &s_data->sensor_props.sensor_modes[s_data->mode].control_properties;
+ 	if (val < 0 || !ctrl->exposure_factor)
+ 		return -EINVAL;
+ 	lines = div64_u64((u64)val * 1000000000ULL,
+@@ -150,16 +198,20 @@ static int imx678_set_frame_rate(struct tegracam_device *tc_dev, s64 val)
+ {
+ 	struct imx678 *priv = tegracam_get_privdata(tc_dev);
+ 	struct camera_common_data *s_data = tc_dev->s_data;
+-	const struct sensor_control_properties *ctrl =
+-		&s_data->sensor_props.sensor_modes[s_data->mode].control_properties;
++	const struct imx678_mode *mode = imx678_get_mode(s_data);
++	const struct sensor_control_properties *ctrl;
+ 	int err;
+ 
+-	/* Only the qualified 10 FPS native mode is advertised. */
+-	if (val != 10ULL * ctrl->framerate_factor)
++	if (!mode || val <= 0)
++		return -EINVAL;
++	ctrl = &s_data->sensor_props.sensor_modes[s_data->mode].control_properties;
++	/* Each mode has one fixed rate; changing rate requires a mode switch. */
++	if (!ctrl->framerate_factor ||
++	    val != (s64)mode->framerate * ctrl->framerate_factor)
+ 		return -EINVAL;
+-	err = imx678_write_buffered(s_data, VMAX_LOW, 3, IMX678_DEFAULT_VMAX);
++	err = imx678_write_buffered(s_data, VMAX_LOW, 3, mode->vmax);
+ 	if (!err)
+-		priv->frame_length = IMX678_DEFAULT_VMAX;
++		priv->frame_length = mode->vmax;
+ 	return err;
+ }
+ 
+@@ -255,6 +307,7 @@ static int imx678_set_mode(struct tegracam_device *tc_dev)
+ {
+ 	struct imx678 *priv = tegracam_get_privdata(tc_dev);
+ 	struct camera_common_data *s_data = tc_dev->s_data;
++	const struct imx678_mode *mode = imx678_get_mode(s_data);
+ 	static const imx678_reg native_raw12[] = {
+ 		{ DATARATE_SEL, IMX678_DATA_RATE_1188 },
+ 		{ EXTMODE, 0 },
+@@ -265,7 +318,7 @@ static int imx678_set_mode(struct tegracam_device *tc_dev)
+ 	};
+ 	int err;
+ 
+-	if (s_data->mode != 0 || s_data->numlanes != 4 ||
++	if (!mode || s_data->numlanes != 4 ||
+ 	    s_data->colorfmt->code != MEDIA_BUS_FMT_SRGGB12_1X12)
+ 		return -EINVAL;
+ 	err = imx678_set_group_hold(tc_dev, false);
+@@ -274,7 +327,7 @@ static int imx678_set_mode(struct tegracam_device *tc_dev)
+ 	if (!err)
+ 		err = imx678_write_table(priv, imx678_12bit_mode);
+ 	if (!err)
+-		err = imx678_write_table(priv, mode_3864x2180);
++		err = imx678_write_table(priv, mode->window);
+ 	if (!err)
+ 		err = imx678_write_table(priv, native_raw12);
+ 	if (!err)
+@@ -282,9 +335,9 @@ static int imx678_set_mode(struct tegracam_device *tc_dev)
+ 	if (!err)
+ 		err = imx678_write_buffered(s_data, HMAX_LOW, 2, IMX678_HMAX);
+ 	if (!err)
+-		err = imx678_write_buffered(s_data, VMAX_LOW, 3, IMX678_DEFAULT_VMAX);
++		err = imx678_write_buffered(s_data, VMAX_LOW, 3, mode->vmax);
+ 	if (!err) {
+-		priv->frame_length = IMX678_DEFAULT_VMAX;
++		priv->frame_length = mode->vmax;
+ 		s_data->override_enable = true;
+ 	}
+ 	return err;
+@@ -318,7 +371,10 @@ static int imx678_stop_streaming(struct tegracam_device *tc_dev)
+ static int imx678_get_frame_desc(struct v4l2_subdev *sd, unsigned int pad,
+ 			       struct v4l2_mbus_frame_desc *fd)
+ {
+-	if (pad != 0)
++	struct camera_common_data *s_data = to_camera_common_data(sd->dev);
++	const struct imx678_mode *mode = imx678_get_mode(s_data);
++
++	if (pad != 0 || !mode)
+ 		return -EINVAL;
+ 
+ 	memset(fd, 0, sizeof(*fd));
+@@ -327,7 +383,7 @@ static int imx678_get_frame_desc(struct v4l2_subdev *sd, unsigned int pad,
+ 	fd->entry[0].flags = V4L2_MBUS_FRAME_DESC_FL_LEN_MAX;
+ 	fd->entry[0].stream = 0;
+ 	fd->entry[0].pixelcode = MEDIA_BUS_FMT_SRGGB12_1X12;
+-	fd->entry[0].length = 3856 * 2180 * 12 / 8;
++	fd->entry[0].length = mode->width * mode->height * 12 / 8;
+ 	fd->entry[0].bus.csi2.vc = 0;
+ 	fd->entry[0].bus.csi2.dt = MIPI_CSI2_DT_RAW12;
+ 	return 0;
+@@ -403,6 +459,13 @@ static int imx678_probe(struct i2c_client *client, const struct i2c_device_id *i
+ 		return dev_err_probe(dev, err, "tegracam registration failed\n");
+ 	tegracam_set_privdata(tc_dev, priv);
+ 
++	/* Keep legacy mode0-only DTs valid without advertising absent DT modes.
++	 * numfmts belongs to this camera; never shorten the shared sensor ops.
++	 */
++	tc_dev->s_data->numfmts = min_t(unsigned int,
++			ARRAY_SIZE(imx678_modes),
++			tc_dev->s_data->sensor_props.num_modes);
++
+ 	err = imx678_power_on(tc_dev->s_data);
+ 	if (err)
+ 		goto unregister;
+@@ -415,7 +478,8 @@ static int imx678_probe(struct i2c_client *client, const struct i2c_device_id *i
+ 	err = tegracam_v4l2subdev_register(tc_dev, true);
+ 	if (err)
+ 		goto unregister;
+-	dev_info(dev, "FRAMOS IMX678: 3856x2180 RAW12 at 10 FPS\n");
++	dev_info(dev, "FRAMOS IMX678: %d RAW12 modes; default 3856x2180 at 10 FPS\n",
++		 tc_dev->s_data->numfmts);
+ 	return 0;
+ 
+ unregister:
+diff --git a/drivers/media/i2c/edgedes-sensors/framos/fr_imx678_mode_tbls.h b/drivers/media/i2c/edgedes-sensors/framos/fr_imx678_mode_tbls.h
+index 197dc61..6261883 100644
+--- a/drivers/media/i2c/edgedes-sensors/framos/fr_imx678_mode_tbls.h
++++ b/drivers/media/i2c/edgedes-sensors/framos/fr_imx678_mode_tbls.h
+@@ -2,7 +2,7 @@
+  *
+  * Copyright (c) 2024 Framos. All rights reserved.
+  *
+- * Native RAW12 subset of FRAMOS fr_imx678_mode_tbls.h.
++ * Native and cropped RAW12 subset of FRAMOS fr_imx678_mode_tbls.h.
+  */
+ #ifndef FR_IMX678_MODE_TBLS_H
+ #define FR_IMX678_MODE_TBLS_H
+@@ -22,7 +22,15 @@
+ #define HMAX_LOW 0x302c
+ #define FDG_SEL0 0x3030
+ #define FDG_SEL1 0x3031
++#define PIX_HST_LOW 0x303c
++#define PIX_HST_HIGH 0x303d
++#define PIX_HWIDTH_LOW 0x303e
++#define PIX_HWIDTH_HIGH 0x303f
+ #define LANEMODE 0x3040
++#define PIX_VST_LOW 0x3044
++#define PIX_VST_HIGH 0x3045
++#define PIX_VWIDTH_LOW 0x3046
++#define PIX_VWIDTH_HIGH 0x3047
+ #define SHR0_LOW 0x3050
+ #define GAIN_LOW 0x3070
+ #define XVS_XHS_DRV 0x30a6
+@@ -38,6 +46,13 @@
+ #define IMX678_TABLE_END 1
+ #define IMX678_WAIT_MS 10
+ 
++enum imx678_mode_id {
++	IMX678_MODE_FULL_10FPS,
++	IMX678_MODE_FULL_30FPS,
++	IMX678_MODE_CROP_2608X1964_30FPS,
++	IMX678_MODE_CROP_1920X1080_30FPS,
++};
++
+ typedef struct reg_8 imx678_reg;
+ 
+ static const imx678_reg imx678_start[] = {
+@@ -446,6 +461,47 @@ static const imx678_reg mode_3864x2180[] = {
+ 	{IMX678_TABLE_END, 0x0000}
+ };
+ 
++/* Exact linear crop windows from framosimaging/framos-jetson-drivers,
++ * source/nvidia-oot/drivers/media/i2c/fr_imx678_mode_tbls.h, commit
++ * 4e772feec7f21e5ca3d485142c7df03a95c75f3c. Starts are even, preserving RGGB.
++ * All modes here retain four lanes, RAW12 and the 1188-Mb/s data rate.
++ * FRAMOS requires VMAX >= active height + 70, rounded to an even value;
++ * fixed VMAX 2250 and HMAX 1100 give 30 FPS for both cropped windows.
++ */
++static const imx678_reg mode_crop_2608x1964[] = {
++	{WINMODE, 0x04},
++	{ADDMODE, 0x00},
++	{WDMODE, 0x00},
++	{VCMODE, 0x01},
++	{PIX_HST_HIGH, 0x02},
++	{PIX_HST_LOW, 0x74},
++	{PIX_HWIDTH_HIGH, 0x0a},
++	{PIX_HWIDTH_LOW, 0x30},
++	{PIX_VST_HIGH, 0x00},
++	{PIX_VST_LOW, 0x6c},
++	{PIX_VWIDTH_HIGH, 0x07},
++	{PIX_VWIDTH_LOW, 0xac},
++	{IMX678_TABLE_WAIT_MS, IMX678_WAIT_MS},
++	{IMX678_TABLE_END, 0x00},
++};
++
++static const imx678_reg mode_crop_1920x1080[] = {
++	{WINMODE, 0x04},
++	{ADDMODE, 0x00},
++	{WDMODE, 0x00},
++	{VCMODE, 0x01},
++	{PIX_HST_HIGH, 0x03},
++	{PIX_HST_LOW, 0xcc},
++	{PIX_HWIDTH_HIGH, 0x07},
++	{PIX_HWIDTH_LOW, 0x80},
++	{PIX_VST_HIGH, 0x02},
++	{PIX_VST_LOW, 0x24},
++	{PIX_VWIDTH_HIGH, 0x04},
++	{PIX_VWIDTH_LOW, 0x38},
++	{IMX678_TABLE_WAIT_MS, IMX678_WAIT_MS},
++	{IMX678_TABLE_END, 0x00},
++};
++
+ static const imx678_reg mode_disable_pattern_generator[] = {
+ 
+ 	{BLKLEVEL_LOW,		0x32},
+@@ -458,13 +514,35 @@ static const imx678_reg mode_disable_pattern_generator[] = {
+ };
+ 
+ static const int imx678_10fps[] = { 10 };
++static const int imx678_30fps[] = { 30 };
+ static const struct camera_common_frmfmt imx678_frmfmt[] = {
+ 	{
+ 		.size = { IMX678_DEFAULT_WIDTH, IMX678_DEFAULT_HEIGHT },
+ 		.framerates = imx678_10fps,
+ 		.num_framerates = ARRAY_SIZE(imx678_10fps),
+ 		.hdr_en = false,
+-		.mode = 0,
++		.mode = IMX678_MODE_FULL_10FPS,
++	},
++	{
++		.size = { IMX678_DEFAULT_WIDTH, IMX678_DEFAULT_HEIGHT },
++		.framerates = imx678_30fps,
++		.num_framerates = ARRAY_SIZE(imx678_30fps),
++		.hdr_en = false,
++		.mode = IMX678_MODE_FULL_30FPS,
++	},
++	{
++		.size = { 2608, 1964 },
++		.framerates = imx678_30fps,
++		.num_framerates = ARRAY_SIZE(imx678_30fps),
++		.hdr_en = false,
++		.mode = IMX678_MODE_CROP_2608X1964_30FPS,
++	},
++	{
++		.size = { 1920, 1080 },
++		.framerates = imx678_30fps,
++		.num_framerates = ARRAY_SIZE(imx678_30fps),
++		.hdr_en = false,
++		.mode = IMX678_MODE_CROP_1920X1080_30FPS,
+ 	},
+ };
+ 
