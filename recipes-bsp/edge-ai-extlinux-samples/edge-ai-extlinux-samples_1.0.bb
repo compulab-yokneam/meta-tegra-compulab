@@ -1,7 +1,8 @@
 SUMMARY = "CompuLab Edge-AI IMX676/IMX678 extlinux configuration example"
-DESCRIPTION = "Installs an inactive extlinux example with separate IMX676 and IMX678 camera boot entries. It does not replace the active extlinux.conf or enable camera drivers."
+DESCRIPTION = "Installs an inactive extlinux example with separate IMX676 and IMX678 camera boot entries, including build-time extended-mode requirements. It does not replace the active extlinux.conf or enable camera drivers."
 LICENSE = "MIT"
 LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda2f7b4f302"
+PR = "r1"
 
 SRC_URI = "file://extlinux.conf.imx67x.sample"
 S = "${UNPACKDIR}"

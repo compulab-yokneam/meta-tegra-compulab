@@ -1,3 +1,15 @@
+# Inactive NX16G camera example: review before adapting extlinux.conf.
+# Install the matching driver, DT package and per-mode NITO, then reboot.
+# IMX676 modes 0-2: EDGE_AI_IMX676_EXTENDED_MODES = "1" (build default).
+# IMX678 modes 0-3: EDGE_AI_IMX678_EXTENDED_MODES = "1" (opt-in).
+# Build options change the contents of the standard camera DTBO filenames.
+# The imx676/imx676-extended labels use the same built IMX676 mode table;
+# likewise imx678/imx678-extended. These are not baseline rollback entries.
+# Boot labels do not enable modes or select a capture rate: mode 0 remains
+# the application's default. Select another advertised mode in the launcher.
+# The four-port entries allow any subset of the named sensor on ports 0-3;
+# simultaneous high-rate capture still requires transport qualification.
+
 DEFAULT primary
 TIMEOUT 10
 
@@ -19,6 +31,24 @@ LABEL imx676
 
 LABEL imx678
       MENU LABEL primary
+      LINUX /boot/Image
+      FDT /boot/dtb/tegra234-edge-ai-adi-base.dtb
+      OVERLAYS /boot/devicetree/edgedes-adi-v18-transport-4port.dtbo,/boot/devicetree/edgedes-adi-v18-camera-imx678-port0.dtbo,/boot/devicetree/edgedes-adi-v18-camera-imx678-port1.dtbo,/boot/devicetree/edgedes-adi-v18-camera-imx678-port2.dtbo,/boot/devicetree/edgedes-adi-v18-camera-imx678-port3.dtbo
+      INITRD /boot/initrd
+      APPEND ${cbootargs} mminit_loglevel=4 console=ttyTCU0,115200 firmware_class.path=/etc/firmware fbcon=map:0 video=efifb:off console=tty0 efi=runtime nvme.use_threaded_interrupts=1 pci=pcie_bus_perf iomem=relaxed pci=realloc pcie_aspm=off
+
+# Requires the IMX676 extended DT and NITO (enabled by default at build time).
+LABEL imx676-extended
+      MENU LABEL IMX676 extended RAW12 modes 0-2 (10/15/25 FPS)
+      LINUX /boot/Image
+      FDT /boot/dtb/tegra234-edge-ai-adi-base.dtb
+      OVERLAYS /boot/devicetree/edgedes-adi-v18-transport-4port.dtbo,/boot/devicetree/edgedes-adi-v18-camera-imx676-port0.dtbo,/boot/devicetree/edgedes-adi-v18-camera-imx676-port1.dtbo,/boot/devicetree/edgedes-adi-v18-camera-imx676-port2.dtbo,/boot/devicetree/edgedes-adi-v18-camera-imx676-port3.dtbo
+      INITRD /boot/initrd
+      APPEND ${cbootargs} mminit_loglevel=4 console=ttyTCU0,115200 firmware_class.path=/etc/firmware fbcon=map:0 video=efifb:off console=tty0 efi=runtime nvme.use_threaded_interrupts=1 pci=pcie_bus_perf iomem=relaxed pci=realloc pcie_aspm=off
+
+# Requires EDGE_AI_IMX678_EXTENDED_MODES = "1" and its matching rebuilt NITO.
+LABEL imx678-extended
+      MENU LABEL IMX678 extended RAW12 modes 0-3 (10/30/30/30 FPS)
       LINUX /boot/Image
       FDT /boot/dtb/tegra234-edge-ai-adi-base.dtb
       OVERLAYS /boot/devicetree/edgedes-adi-v18-transport-4port.dtbo,/boot/devicetree/edgedes-adi-v18-camera-imx678-port0.dtbo,/boot/devicetree/edgedes-adi-v18-camera-imx678-port1.dtbo,/boot/devicetree/edgedes-adi-v18-camera-imx678-port2.dtbo,/boot/devicetree/edgedes-adi-v18-camera-imx678-port3.dtbo
