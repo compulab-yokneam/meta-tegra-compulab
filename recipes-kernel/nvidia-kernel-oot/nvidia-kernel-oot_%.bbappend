@@ -19,6 +19,7 @@ SRC_URI:append:edge-ai:adi-gmsl-v18 = " \
     file://0104-media-tegra-handle-unconfigured-optional-gmsl-inputs.patch;patchdir=nvidia-oot \
     file://0105-media-tegra-skip-unconfigured-optional-media-sinks.patch;patchdir=nvidia-oot \
     file://0106-media-imx678-add-raw12-capture-modes.patch;patchdir=nvidia-oot \
+    file://0107-media-imx676-add-raw12-capture-modes.patch;patchdir=nvidia-oot \
 "
 
 TEGRA_OOT_EXTRA_CAMERA_DRIVERS:append:edge-ai:adi-gmsl-v18 = " \
