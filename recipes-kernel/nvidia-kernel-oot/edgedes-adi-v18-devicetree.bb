@@ -1,9 +1,26 @@
 SUMMARY = "Single-camera and composable multi-port EDGEDES device trees"
 LICENSE = "GPL-2.0-only"
 LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/GPL-2.0-only;md5=801f80980d171dd6425610833a22dbe6"
-PR = "r6"
+PR = "r9"
 
 inherit tegra-devicetree
+
+# Keep each sensor's advertised modes and per-mode NITO selection synchronized.
+# IMX676 enables the tested extended set; set it to 0 for the native baseline.
+# IMX678 remains opt-in and needs its own matching extended NITO profile.
+EDGE_AI_IMX676_EXTENDED_MODES ?= "1"
+EDGE_AI_IMX678_EXTENDED_MODES ?= "0"
+DTC_PPFLAGS:append = " \
+    ${@'-DEDGE_AI_IMX676_EXTENDED_MODES=1' if d.getVar('EDGE_AI_IMX676_EXTENDED_MODES') == '1' else ''} \
+    ${@'-DEDGE_AI_IMX678_EXTENDED_MODES=1' if d.getVar('EDGE_AI_IMX678_EXTENDED_MODES') == '1' else ''} \
+"
+
+python __anonymous() {
+    for sensor in ("IMX676", "IMX678"):
+        variable = "EDGE_AI_%s_EXTENDED_MODES" % sensor
+        if d.getVar(variable) not in ("0", "1"):
+            bb.fatal("%s must be 0 or 1" % variable)
+}
 
 # These are additional test profiles, not a replacement virtual/dtb provider.
 PROVIDES = ""
@@ -35,6 +52,8 @@ SRC_URI = " \
     file://edgedes-adi-v18-framos-imx678-4port.dtso \
     file://edgedes-adi-v18-framos-imx678-4port-camera-platform.dtsi \
     file://edgedes-adi-v18-framos-imx678-mode.dtsi \
+    file://edgedes-adi-v18-framos-imx678-mode-common.dtsi \
+    file://edgedes-adi-v18-framos-imx678-modes.dtsi \
     file://edgedes-adi-v18-framos-imx678-port0.dtsi \
     file://edgedes-adi-v18-framos-imx678-port1.dtsi \
     file://edgedes-adi-v18-framos-imx678-port2.dtsi \
@@ -56,6 +75,8 @@ SRC_URI = " \
     file://edgedes-adi-v18-framos-imx676-4port-vi.dtsi \
     file://edgedes-adi-v18-framos-imx676-4port-camera-platform.dtsi \
     file://edgedes-adi-v18-framos-imx676-mode.dtsi \
+    file://edgedes-adi-v18-framos-imx676-mode-common.dtsi \
+    file://edgedes-adi-v18-framos-imx676-modes.dtsi \
     file://edgedes-adi-v18-framos-imx676-port0.dtsi \
     file://edgedes-adi-v18-framos-imx676-port1.dtsi \
     file://edgedes-adi-v18-framos-imx676-port2.dtsi \

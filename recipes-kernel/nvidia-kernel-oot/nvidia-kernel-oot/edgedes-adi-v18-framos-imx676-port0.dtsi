@@ -88,13 +88,11 @@ fragment@1 {
 						post_crop_frame_drop = "0";
 						use_decibel_gain = "true";
 						delayed_gain = "false";
-						use_sensor_mode_id = "false";
+						use_sensor_mode_id = "true";
 
-						/* Preserve only the previously qualified native 10-FPS mode. */
-						mode0 {
-							vc_id = "0";
-#include "edgedes-adi-v18-framos-imx676-mode.dtsi"
-						};
+#define EDGEDES_IMX676_VC_ID "0"
+#include "edgedes-adi-v18-framos-imx676-modes.dtsi"
+#undef EDGEDES_IMX676_VC_ID
 
 						ports {
 							#address-cells = <1>;
