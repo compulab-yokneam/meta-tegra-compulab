@@ -26,6 +26,11 @@ Before running it, arrange:
 - No other SDK Manager instance. SDK Manager uses a host-global socket.
 - NVIDIA licenses accepted by an authorized user and access to the pinned
   NVIDIA downloads and signed Ubuntu Noble package repositories.
+- An existing SDK Manager download cache with read, write and directory
+  traversal permissions for the ordinary BitBake user. The recipe does not
+  create this cache; see the preparation instructions below.
+- For a first build, a new SDK output path with a writable parent directory.
+  Do not pre-create the output directory: the workflow creates and marks it.
 
 Even with `host=false`, SDK Manager's **Jetson Linux Image** action runs host
 APT/prerequisite installation and `apply_binaries.sh`. The two enable switches
@@ -51,9 +56,31 @@ EDGE_AI_SDK_ENABLE = "1"
 EDGE_AI_SDK_ACCEPT_LICENSE = "1"
 LICENSE_FLAGS_ACCEPTED += "nvidia-argus-framos-demo"
 
-# Optional: reuse the existing SDK Manager download cache.
+# Optional: reuse an existing, writable SDK Manager download cache.
 EDGE_AI_SDK_DOWNLOAD_DIR = "/home/val/nvidia/sdkm_downloads"
 ```
+
+Before running BitBake, prepare the selected download cache as the ordinary
+build user, not with `sudo`. Without the override above, the default is
+`${DL_DIR}/sdkmanager`. With the usual `DL_DIR = "${TOPDIR}/downloads"`, run
+these commands after sourcing the build environment:
+
+```sh
+mkdir -p -- "${BUILDDIR}/downloads/sdkmanager"
+test -r "${BUILDDIR}/downloads/sdkmanager" && \
+    test -w "${BUILDDIR}/downloads/sdkmanager" && \
+    test -x "${BUILDDIR}/downloads/sdkmanager"
+```
+
+If using a custom `DL_DIR` or `EDGE_AI_SDK_DOWNLOAD_DIR`, prepare and check
+that directory instead. The existing `/home/val/nvidia/sdkm_downloads` cache
+can be reused with the override shown above. On shared storage, ensure the
+mount is writable and the build user's UID/GID has the required permissions.
+SDK Manager rejects a missing cache with
+`Invalid download folder: Path provided does not exit.`
+
+Download and output paths must be absolute and contain only ASCII letters,
+digits and `/._+-`; spaces and shell metacharacters are not supported.
 
 Do not enable `edge-ai-universal-bundle.inc` for this standalone workflow.
 The SDK include enables recipe-owned deploy exports and the twelve firmware
@@ -155,6 +182,21 @@ them manually; there is no automatic recursive deletion or resume guesswork.
 Preparing a new path also updates SDK Manager's shared component inventory and
 global image-directory setting. It does not uninstall the old manually
 prepared SDK, but other SDK Manager operations will see the new inventory.
+
+Even an early failure, such as a missing download cache, leaves an output
+directory containing `.edge-ai-sdk-incomplete`. Fixing the cache alone is not
+enough: a retry with that output path is rejected with
+`Existing/incomplete output will NOT be overwritten`. Preserve the failed
+directory for diagnosis and select a new output path. For example, set these
+to unused paths in `conf/local.conf` before retrying:
+
+```bitbake
+EDGE_AI_SDK_OUTPUT = "${DEPLOY_DIR_IMAGE}/jetpack-7.2.1-image-build-retry1"
+EDGE_AI_SDK_HOST_WORK = "${TOPDIR}/sdk-manager-work/${MACHINE}-retry1"
+```
+
+A fresh host-work path also preserves the earlier private logs. Do not
+pre-create the new output or bypass the incomplete-output safety check.
 
 Kernel exports store modules under `usr/lib/modules`. Before running the
 host's `depmod -b`, conversion creates a relative `lib -> usr/lib` alias in
