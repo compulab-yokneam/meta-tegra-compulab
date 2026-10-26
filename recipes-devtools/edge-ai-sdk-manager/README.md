@@ -80,6 +80,32 @@ Normally `DEPLOY_DIR_IMAGE` is
 another **new** destination. If firmware multiconfigs use custom `TMPDIR`s,
 override `EDGE_AI_SDK_FIRMWARE_INPUTS` with their machine/style/mc/deploy mapping.
 
+## Sourceable host wrapper
+
+The generated SDK contains `compulab-l4t.env` at its root. Source that file
+from a clean Bash shell and run `devshell`, or call its selectors and image/
+flash functions directly. It requires no old R36 wrapper and performs no
+operation when sourced. Offline creation uses a new owned loop image;
+connected operations support QSPI-only or QSPI plus board NVMe, with a
+read-only `--dry-run` and explicit confirmation before writes. Full usage:
+[wrapper guide](files/sdk-source/compulab/host/WRAPPER.md).
+
+The wrapper also provides `prepare_massflash_boot` (QSPI-only) and
+`prepare_massflash_boot_rootfs` (QSPI plus NVMe). They generate native
+`mfi_<target>.tar.gz` packages with `--no-flash`, defaulting to five devices;
+`--massflash N` selects another limit. Use `--dry-run` first and a homogeneous
+module batch. Existing package outputs are never overwritten by the wrapper.
+
+Deploy commands flash by default; `deploy_bootloader --no-flash` and
+`deploy_bootloader_rootfs --no-flash` explicitly select image generation only.
+Unlike `--dry-run`, this still invokes native tools and writes generated files.
+The massflash preparation functions always use `--no-flash`.
+
+Full device deployment explicitly generates images in phase 1, validates fresh
+target/NVMe/logo inputs, and invokes `--flash-only` in phase 2. Its native logs
+are retained in a private host temporary directory printed by the wrapper;
+an inner RCM `--no-flash` message alone does not mean deployment was disabled.
+
 SDK conversion also applies a version/hash-checked R39.2.1 native initrd fix.
 Each device slot gets a fresh extraction directory, preventing the second
 slot's `mkdir: ... File exists` failure and stale per-slot configuration.

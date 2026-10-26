@@ -167,7 +167,7 @@ def baseline(sdk):
         "sha256": hashes, "note": "Private stock boot files; no authentication data included"})
     # Track small vendor sources/configs, not rootfs, binaries or credentials.
     (sdk / ".gitignore").write_text(
-        "/*\n!/*.conf\n!/flash.sh\n!/SDK_BASELINE.json\n!/.gitignore\n!/compulab/\n"
+        "/*\n!/*.conf\n!/flash.sh\n!/compulab-l4t.env\n!/SDK_BASELINE.json\n!/.gitignore\n!/compulab/\n"
         "/compulab/vendor-backup/\n/compulab/receipts/\n/compulab/kernel/*.tar.xz\n"
         "/compulab/boot/provenance/\n/compulab/runtime/sources/\n/compulab/runtime/nito/*.nito\n")
     run("git", "-c", "safe.directory=" + str(sdk), "init", "-b", "compulab/jetpack-7.2.1", cwd=sdk)
@@ -382,6 +382,7 @@ def assemble(configuration, sdk):
         tracked += [p for p in folder.rglob("*") if p.is_file()]
     tracked += [sdk / name for name in ("kernel/Image", "rootfs/boot/Image", "rootfs/boot/initrd",
                  "bootloader/l4t_initrd.img", "rootfs/boot/extlinux/extlinux.conf",
+                 "compulab-l4t.env",
                  "tools/kernel_flash/l4t_initrd_flash_internal.sh",
                  "rootfs/usr/sbin/edge-ai-uefi-update", "rootfs/usr/sbin/edge-ai-select-fdt",
                  "rootfs/usr/bin/oe4t-set-uefi-OSIndications", "rootfs/usr/bin/uefi_common.func")]
@@ -397,7 +398,7 @@ def assemble(configuration, sdk):
     for folder in (sdk / ".git", sdk / "compulab"):
         for path in [folder, *folder.rglob("*")]:
             os.chown(path, uid, gid, follow_symlinks=False)
-    for name in (".gitignore", "SDK_BASELINE.json", "edge-ai-common.conf", "edge-ai.conf",
+    for name in (".gitignore", "SDK_BASELINE.json", "compulab-l4t.env", "edge-ai-common.conf", "edge-ai.conf",
                  *(machine + ".conf" for machine in SKUS)):
         os.chown(sdk / name, uid, gid, follow_symlinks=False)
 

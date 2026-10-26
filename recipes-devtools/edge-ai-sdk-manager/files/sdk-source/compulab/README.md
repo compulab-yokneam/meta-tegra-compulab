@@ -82,7 +82,25 @@ python3 -B compulab/tools/verify-sdk.py --verify --sdk-root "$PWD"
 The SDK has its own Git vendor-baseline commit. Binary/rootfs payloads are
 not represented by that source commit; preserve manifests and backups too.
 
-## Existing raw-image wrapper
+## Sourceable SDK wrapper
+
+Source the SDK root's `compulab-l4t.env` from a clean Bash shell, then run
+`devshell` for the interactive menu or call `select_device`,
+`select_bootloader`, `create_disk_image`, `deploy_bootloader` and
+`deploy_bootloader_rootfs` directly. `prepare_massflash_boot` and
+`prepare_massflash_boot_rootfs` prepare QSPI-only or QSPI/NVMe packages for
+five devices by default, without flashing; `--massflash N` changes the limit.
+The deploy functions flash by default; their optional `--no-flash` flag only
+generates images. It is distinct from the read-only `--dry-run` preview.
+Use `--dry-run` before any operation; writes require confirmation or explicit
+`--yes`. Offline images require an explicit board, while connected flashing
+can use `select_device auto`.
+See [host/WRAPPER.md](host/WRAPPER.md) for supported selectors, safe loop
+creation, QSPI-only/full flashing, massflash preparation and validation limits.
+Sourcing alone does not probe or modify anything. Do not source the old R36
+wrapper first.
+
+## Legacy raw-image wrapper compatibility
 
 See `host/README.md`. Source the existing wrapper first, then source
 `host/legacy-wrapper-compat.sh`; do not run legacy bulk support downloads over
