@@ -1,5 +1,16 @@
 FILESEXTRAPATHS:prepend := "${THISDIR}/${PN}:"
 
+inherit edge-ai-sdk-export
+
+do_deploy() {
+    :
+}
+python edge_ai_sdk_export_oot_task() {
+    edge_ai_sdk_export_oot(d)
+}
+do_deploy[postfuncs] += "edge_ai_sdk_export_oot_task"
+addtask deploy after do_install do_package before do_build
+
 SRC_URI:append:edge-ai = " \
 	file://0001-compulab-dts-Enable-pcie-140c0000-pcie-140e0000.patch \
 	file://0002-compulab-dts-Update-usb-ports-configuration.patch \
