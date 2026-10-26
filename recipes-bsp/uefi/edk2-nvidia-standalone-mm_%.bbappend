@@ -5,3 +5,9 @@
 TEGRA_UEFI_STMM_DEBUG_PRINT_ERROR_LEVEL ?= "0x80000002"
 
 EDK2_EXTRA_BUILD:append = " --pcd gEfiMdePkgTokenSpaceGuid.PcdDebugPrintErrorLevel=${TEGRA_UEFI_STMM_DEBUG_PRINT_ERROR_LEVEL}"
+
+EDGE_AI_SDK_FIRMWARE_ROLE = "standalone-mm"
+# Unlike the general/RCM recipes, upstream StandaloneMM does not inherit
+# l4t_bsp. The shared capsule configuration still needs its release metadata.
+inherit l4t_version
+require recipes-bsp/uefi/edge-ai-sdk-firmware-export.inc

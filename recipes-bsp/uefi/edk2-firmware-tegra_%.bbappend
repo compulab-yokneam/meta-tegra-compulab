@@ -53,3 +53,6 @@ python make_no_logo_black_screen() {
 }
 
 do_configure[prefuncs] += "make_no_logo_black_screen"
+
+EDGE_AI_SDK_FIRMWARE_ROLE = "general"
+require recipes-bsp/uefi/edge-ai-sdk-firmware-export.inc
