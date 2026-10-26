@@ -5,7 +5,10 @@ set -eu
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin
 fail() { printf 'ERROR: %s\n' "$*" >&2; exit 2; }
 backend=${1-}
-case "$backend" in --x11|--wayland) shift ;; *) fail 'use --x11 or --wayland' ;; esac
+case "$backend" in
+    --auto|--x11|--wayland) shift ;;
+    *) fail 'use --auto, --x11 or --wayland' ;;
+esac
 [ "$#" -gt 0 ] || fail 'a command is required'
 if [ "$(id -u)" -eq 0 ]; then
     desktop_user=${EDGE_AI_DESKTOP_USER-}
@@ -14,6 +17,15 @@ if [ "$(id -u)" -eq 0 ]; then
     [ "$desktop_uid" -ne 0 ] || fail 'the desktop user must not be root'
     runtime_dir=/run/user/$desktop_uid
     [ -d "$runtime_dir" ] || fail 'the selected desktop user has no runtime directory'
+    if [ "$backend" = --auto ]; then
+        # The child discovers only this selected user's desktop session.
+        exec runuser -u "$desktop_user" -- env PATH="$PATH" \
+            XDG_RUNTIME_DIR="$runtime_dir" XDG_SESSION_TYPE= \
+            DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime_dir/bus" \
+            DISPLAY="${EDGE_AI_DISPLAY:-${DISPLAY-}}" \
+            XAUTHORITY="${EDGE_AI_XAUTHORITY:-${XAUTHORITY-}}" \
+            WAYLAND_DISPLAY="${EDGE_AI_WAYLAND_DISPLAY:-${WAYLAND_DISPLAY-}}" "$@"
+    fi
     if [ "$backend" = --x11 ]; then
         display=${EDGE_AI_DISPLAY:-${DISPLAY-}}
         authority=${EDGE_AI_XAUTHORITY:-${XAUTHORITY-}}

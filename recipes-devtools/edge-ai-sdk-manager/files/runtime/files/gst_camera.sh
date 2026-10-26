@@ -13,6 +13,7 @@ usage() {
         '  --sensor MODEL     auto, imx676 or imx678 (default auto).' \
         '  --sensor-mode N    Advertised native sensor mode (default 0).' \
         '  --fullscreen       Start live preview fullscreen (default windowed).' \
+        '  --display-backend B Live display: auto (default), x11 or wayland.' \
         '  --output PATH      New MP4 file for record; new directory for capture.' \
         '  --duration SECONDS Stop recording automatically (otherwise Ctrl+C).' \
         '  --encoder MODE    Recording: auto (default), hardware or software.' \
@@ -29,7 +30,8 @@ usage() {
         'Auto identifies the sensor preset from native mode 0, not the crop.' \
         'It identifies the configured mode, not the physical sensor silicon.' \
         'An explicit --sensor also permits offline --dry-run without Argus.' \
-        'Live uses the Ubuntu Wayland session; record/capture need no display.' \
+        'Live uses the Ubuntu X11 or Wayland session; record/capture need no display.' \
+        'SSH can discover the desktop through the calling user manager.' \
         'Capture defaults to ten seconds of frames at the selected native FPS.' \
         'These are native acquisition modes, not resized output formats.' \
         'Close any other application using the selected camera first.' \
@@ -139,6 +141,103 @@ platform_class() {
     '
 }
 
+prepare_live_display() {
+    # Delegate before looking at display state: root is not the desktop user.
+    if [ "$dry_run" -eq 0 ] && [ "$(id -u)" -eq 0 ]; then
+        case "$0" in /*) script=$0 ;; *) script=$(pwd)/$0 ;; esac
+        set -- "$script" live --sensor-id "$sensor_id" \
+            --sensor "$sensor" --sensor-mode "$sensor_mode" \
+            --display-backend "$display_backend"
+        [ "$fullscreen" -eq 0 ] || set -- "$@" --fullscreen
+        exec /usr/libexec/edge-ai-desktop-exec "--$display_backend" "$@"
+    fi
+    if [ "$dry_run" -eq 0 ]; then
+        XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
+        export XDG_RUNTIME_DIR
+        # SSH/serial shells lack desktop variables. Read only the calling
+        # user's manager, not another account, process environment or cookie.
+        # Parse a strict whitelist as literal data; never source/eval it.
+        if { [ -z "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ] ||
+             { [ -n "${DISPLAY:-}" ] && [ -z "${XAUTHORITY:-}" ]; }; } &&
+                command -v systemctl >/dev/null 2>&1; then
+            desktop_environment=$(systemctl --user show-environment 2>/dev/null |
+                sed -n -e '/^DISPLAY=/p' -e '/^XAUTHORITY=/p' \
+                    -e '/^WAYLAND_DISPLAY=/p' -e '/^XDG_SESSION_TYPE=/p') ||
+                desktop_environment=
+            desktop_display=
+            desktop_authority=
+            desktop_wayland=
+            desktop_type=
+            while IFS= read -r entry; do
+                case "$entry" in
+                    DISPLAY=*) desktop_display=${entry#*=} ;;
+                    XAUTHORITY=*) desktop_authority=${entry#*=} ;;
+                    WAYLAND_DISPLAY=*) desktop_wayland=${entry#*=} ;;
+                    XDG_SESSION_TYPE=*) desktop_type=${entry#*=} ;;
+                esac
+            done <<EOF
+$desktop_environment
+EOF
+            DISPLAY=${DISPLAY:-$desktop_display}
+            # Never mix a forwarded/explicit display with another display's
+            # authority. With no override, Xlib retains its normal fallback.
+            if [ "$DISPLAY" = "$desktop_display" ]; then
+                XAUTHORITY=${XAUTHORITY:-$desktop_authority}
+            fi
+            WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-$desktop_wayland}
+            case "${XDG_SESSION_TYPE:-}" in
+                x11|wayland) ;;
+                *) XDG_SESSION_TYPE=$desktop_type ;;
+            esac
+        fi
+    fi
+    if [ "$display_backend" = auto ]; then
+        case "${XDG_SESSION_TYPE:-}" in
+            x11) [ -z "${DISPLAY:-}" ] || display_backend=x11 ;;
+            wayland) display_backend=wayland ;;
+        esac
+        if [ "$display_backend" = auto ]; then
+            if [ -n "${WAYLAND_DISPLAY:-}" ]; then
+                display_backend=wayland
+            elif [ -n "${DISPLAY:-}" ]; then
+                display_backend=x11
+            else
+                display_backend=wayland
+            fi
+        fi
+    fi
+    printf 'Display backend: %s\n' "$display_backend"
+    # Dry runs remain offline, including when explicitly selecting X11.
+    [ "$dry_run" -eq 0 ] || return 0
+    if [ "$display_backend" = x11 ]; then
+        [ -n "${DISPLAY:-}" ] ||
+            fail 'set DISPLAY to the active Ubuntu X11 desktop display'
+        if [ -n "${XAUTHORITY:-}" ]; then
+            [ -r "$XAUTHORITY" ] || fail 'XAUTHORITY is not readable by this user'
+            export XAUTHORITY
+        fi
+        export DISPLAY
+        export GDK_BACKEND=x11
+    else
+        if [ -z "${WAYLAND_DISPLAY:-}" ]; then
+            sockets=0
+            for socket in "$XDG_RUNTIME_DIR"/wayland-*; do
+                [ -S "$socket" ] || continue
+                sockets=$((sockets + 1))
+                WAYLAND_DISPLAY=${socket##*/}
+            done
+            [ "$sockets" -eq 1 ] ||
+                fail 'set WAYLAND_DISPLAY to the active Ubuntu desktop socket, or select an X11 session with DISPLAY'
+        fi
+        case "$WAYLAND_DISPLAY" in
+            /*) socket=$WAYLAND_DISPLAY ;;
+            *) socket=$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY ;;
+        esac
+        [ -S "$socket" ] || fail "Wayland display socket is not available: $socket"
+        export WAYLAND_DISPLAY
+    fi
+}
+
 [ "$#" -gt 0 ] || { usage >&2; exit 2; }
 case "$1" in
     -h|--help) usage; exit 0 ;;
@@ -157,6 +256,7 @@ keep_all=0
 dry_run=0
 fullscreen=0
 encoder=auto
+display_backend=auto
 seen_options=
 while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -164,13 +264,13 @@ while [ "$#" -gt 0 ]; do
         --dry-run) dry_run=1; shift; continue ;;
         --keep-all) keep_all=1; shift; continue ;;
         --fullscreen) fullscreen=1; shift; continue ;;
-        --sensor-id|--sensor|--sensor-mode|--output|--frames|--duration|--encoder)
+        --sensor-id|--sensor|--sensor-mode|--output|--frames|--duration|--encoder|--display-backend)
             [ "$#" -ge 2 ] || fail "$1 requires a value"
             option=$1
             argument=$2
             shift 2
             ;;
-        --sensor-id=*|--sensor=*|--sensor-mode=*|--output=*|--frames=*|--duration=*|--encoder=*)
+        --sensor-id=*|--sensor=*|--sensor-mode=*|--output=*|--frames=*|--duration=*|--encoder=*|--display-backend=*)
             option=${1%%=*}
             argument=${1#*=}
             shift
@@ -201,6 +301,12 @@ while [ "$#" -gt 0 ]; do
                 *) fail '--encoder must be auto, hardware or software' ;;
             esac
             ;;
+        --display-backend)
+            case "$argument" in
+                auto|x11|wayland) display_backend=$argument ;;
+                *) fail '--display-backend must be auto, x11 or wayland' ;;
+            esac
+            ;;
     esac
 done
 
@@ -208,6 +314,10 @@ done
     fail '--fullscreen is only valid for live mode'
 case " $seen_options " in
     *" --encoder "*) [ "$operation" = record ] || fail '--encoder is only valid for record mode' ;;
+esac
+case " $seen_options " in
+    *" --display-backend "*) [ "$operation" = live ] ||
+        fail '--display-backend is only valid for live mode' ;;
 esac
 
 case "$operation" in
@@ -409,14 +519,30 @@ fi
 
 # Paths never enter GStreamer parsing: record uses exclusive FD 3; capture
 # changes into its new directory before using a fixed JPEG filename pattern.
+[ "$operation" != live ] || prepare_live_display
 set -- gst-launch-1.0 -e nvarguscamerasrc \
     "sensor-id=$sensor_id" "sensor-mode=$sensor_mode" wbmode=1 awblock=false
 case "$operation" in
     live)
         set -- "$@" '!' "$caps" '!' nvvidconv '!' \
             "video/x-raw,format=BGRx,width=$live_width,height=$live_height" \
-            '!' waylandsink sync=false
-        [ "$fullscreen" -eq 0 ] || set -- "$@" fullscreen=true
+            '!'
+        if [ "$display_backend" = wayland ]; then
+            set -- "$@" waylandsink sync=false
+            [ "$fullscreen" -eq 0 ] || set -- "$@" fullscreen=true
+        else
+            if [ "$fullscreen" -eq 1 ]; then
+                # NVIDIA's 3D sink works standalone, but does not reliably
+                # embed in a GTK X11 window. Use the standard overlay sink.
+                set -- "$@" videoscale add-borders=true '!' \
+                    ximagesink sync=false name=edge_ai_preview
+                shift 2
+                set -- /usr/libexec/edge-ai-gst-x11-preview --fullscreen \
+                    -- "$@"
+            else
+                set -- "$@" nv3dsink sync=false
+            fi
+        fi
         ;;
     record)
         # The source timeout includes startup and can produce no frames for
@@ -456,32 +582,17 @@ need_plugin nvarguscamerasrc
 case "$operation" in
     live)
         need_plugin nvvidconv
-        need_plugin waylandsink
-        if [ "$(id -u)" -eq 0 ]; then
-            case "$0" in /*) script=$0 ;; *) script=$(pwd)/$0 ;; esac
-            set -- "$script" live --sensor-id "$sensor_id" \
-                --sensor "$sensor" --sensor-mode "$sensor_mode"
-            [ "$fullscreen" -eq 0 ] || set -- "$@" --fullscreen
-            exec /usr/libexec/edge-ai-desktop-exec --wayland "$@"
+        if [ "$display_backend" = x11 ]; then
+            if [ "$fullscreen" -eq 1 ]; then
+                need_plugin ximagesink
+                need_plugin videoscale
+                need_command /usr/libexec/edge-ai-gst-x11-preview
+            else
+                need_plugin nv3dsink
+            fi
+        else
+            need_plugin waylandsink
         fi
-        XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
-        export XDG_RUNTIME_DIR
-        if [ -z "${WAYLAND_DISPLAY:-}" ]; then
-            sockets=0
-            for socket in "$XDG_RUNTIME_DIR"/wayland-*; do
-                [ -S "$socket" ] || continue
-                sockets=$((sockets + 1))
-                WAYLAND_DISPLAY=${socket##*/}
-            done
-            [ "$sockets" -eq 1 ] ||
-                fail 'set WAYLAND_DISPLAY to the active Ubuntu desktop socket'
-        fi
-        case "$WAYLAND_DISPLAY" in
-            /*) socket=$WAYLAND_DISPLAY ;;
-            *) socket=$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY ;;
-        esac
-        [ -S "$socket" ] || fail "Wayland display socket is not available: $socket"
-        export WAYLAND_DISPLAY
         ;;
     record)
         record_encoder=x264enc

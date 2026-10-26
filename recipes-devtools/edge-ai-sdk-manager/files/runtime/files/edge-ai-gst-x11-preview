@@ -1,0 +1,138 @@
+#!/usr/bin/python3
+# SPDX-License-Identifier: MIT
+"""Host a GStreamer video-overlay sink in an Ubuntu X11 GTK window."""
+
+import argparse
+import os
+import signal
+import sys
+
+
+def parse_arguments(arguments):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--fullscreen", action="store_true",
+                        help="request a true desktop fullscreen window")
+    parser.add_argument("pipeline", nargs=argparse.REMAINDER,
+                        help="pipeline tokens, without gst-launch-1.0 or -e")
+    options = parser.parse_args(arguments)
+    if options.pipeline[:1] == ["--"]:
+        options.pipeline = options.pipeline[1:]
+    if not options.pipeline:
+        parser.error("a pipeline with sink name=edge_ai_preview is required")
+    return options
+
+
+def run_pipeline(tokens, fullscreen=False):
+    # This helper deliberately targets X11, including XWayland. Import only
+    # after argument parsing so --help needs neither GI nor a desktop session.
+    os.environ["GDK_BACKEND"] = "x11"
+    import gi
+    gi.require_version("Gtk", "3.0")
+    gi.require_version("Gdk", "3.0")
+    gi.require_version("GdkX11", "3.0")
+    gi.require_version("Gst", "1.0")
+    gi.require_version("GstVideo", "1.0")
+    from gi.repository import Gdk, GdkX11, GLib, Gst, GstVideo, Gtk
+
+    if not os.environ.get("DISPLAY"):
+        raise RuntimeError("DISPLAY is required for X11 preview")
+    initialized, _ = Gtk.init_check()
+    if not initialized or not isinstance(Gdk.Display.get_default(),
+                                         GdkX11.X11Display):
+        raise RuntimeError("cannot open the selected X11 desktop")
+    Gst.init(None)
+    # Keep the shell's individual tokens. Never concatenate or evaluate a
+    # pipeline string; the launcher supplies validated camera properties.
+    pipeline = Gst.parse_launchv(tokens)
+    window = None
+    bus = None
+    bus_handler = None
+    signal_sources = []
+    status = 0
+    stopping = False
+
+    def stop(code=0):
+        nonlocal status, stopping
+        status = max(status, code)
+        if not stopping:
+            stopping = True
+            Gtk.main_quit()
+        return GLib.SOURCE_REMOVE
+
+    def message_received(_bus, message):
+        if message.type == Gst.MessageType.ERROR:
+            error, detail = message.parse_error()
+            print("ERROR: " + str(error), file=sys.stderr)
+            if detail:
+                print(str(detail), file=sys.stderr)
+            stop(1)
+        elif message.type == Gst.MessageType.EOS:
+            stop()
+
+    def key_pressed(_widget, event):
+        if event.keyval == Gdk.KEY_Escape:
+            stop()
+            return True
+        return False
+
+    try:
+        sink = pipeline.get_by_name("edge_ai_preview")
+        if sink is None or not isinstance(sink, GstVideo.VideoOverlay):
+            raise RuntimeError(
+                "sink edge_ai_preview must support video overlay")
+        bus = pipeline.get_bus()
+        if bus is None:
+            raise RuntimeError("the preview requires a GStreamer pipeline")
+        window = Gtk.Window(title="CompuLab camera preview")
+        window.set_default_size(1280, 720)
+        drawing_area = Gtk.DrawingArea()
+        drawing_area.set_can_focus(True)
+        window.add(drawing_area)
+        window.connect("delete-event", lambda *_: (stop(), True)[1])
+        window.connect("key-press-event", key_pressed)
+        window.show_all()
+        drawing_area.realize()
+        native_window = drawing_area.get_window()
+        if not isinstance(native_window, GdkX11.X11Window):
+            raise RuntimeError("the preview window is not an X11 window")
+        GstVideo.VideoOverlay.set_window_handle(
+            sink, GdkX11.X11Window.get_xid(native_window))
+        drawing_area.connect(
+            "draw", lambda *_: GstVideo.VideoOverlay.expose(sink) or False)
+        drawing_area.grab_focus()
+        if fullscreen:
+            window.fullscreen()
+        bus.add_signal_watch()
+        bus_handler = bus.connect("message", message_received)
+        for signum in (signal.SIGINT, signal.SIGTERM):
+            signal_sources.append(GLib.unix_signal_add(
+                GLib.PRIORITY_DEFAULT, signum, stop))
+        start = pipeline.set_state(Gst.State.PLAYING)
+        if start == Gst.StateChangeReturn.FAILURE:
+            raise RuntimeError("GStreamer could not start the preview pipeline")
+        Gtk.main()
+        return status
+    finally:
+        pipeline.set_state(Gst.State.NULL)
+        for source in signal_sources:
+            context = GLib.MainContext.default()
+            if context.find_source_by_id(source) is not None:
+                GLib.source_remove(source)
+        if bus_handler is not None:
+            bus.disconnect(bus_handler)
+            bus.remove_signal_watch()
+        if window is not None:
+            window.destroy()
+
+
+def main(arguments=None):
+    options = parse_arguments(arguments)
+    try:
+        return run_pipeline(options.pipeline, options.fullscreen)
+    except Exception as error:
+        print("ERROR: " + str(error), file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

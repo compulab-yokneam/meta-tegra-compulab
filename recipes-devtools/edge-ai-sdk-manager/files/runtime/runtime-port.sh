@@ -79,9 +79,12 @@ audit_rootfs() {
             bad=1
         fi
     done
-    for package in gstreamer1.0-tools gstreamer1.0-plugins-good \
-        gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly libx264-164 \
-        libgtk-3-0t64 libx11-6; do
+    for package in gstreamer1.0-tools gstreamer1.0-plugins-base \
+        gstreamer1.0-plugins-good \
+        gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly gstreamer1.0-x \
+        libx264-164 \
+        libgtk-3-0t64 libx11-6 python3 python3-gi gir1.2-gtk-3.0 \
+        gir1.2-gstreamer-1.0 gir1.2-gst-plugins-base-1.0; do
         version=$(package_version "$target" "$package")
         case "$version" in installed\ *) ;; *)
             printf 'MISSING: %s\n' "$package" >&2; bad=1 ;;
@@ -246,6 +249,7 @@ case "$action" in
             stage_file "$bundle/files/$script" "opt/compulab/bin/$script" 0755
         done
         stage_file "$bundle/files/edge-ai-desktop-exec" usr/libexec/edge-ai-desktop-exec 0755
+        stage_file "$bundle/files/edge-ai-gst-x11-preview" usr/libexec/edge-ai-gst-x11-preview 0755
         stage_file "$rendered/check" usr/libexec/edge-ai-argus-framos-demo-check 0755
         stage_file "$rendered/service.conf" \
             etc/systemd/system/nvargus-daemon.service.d/90-edgedes-framos-demo.conf 0644

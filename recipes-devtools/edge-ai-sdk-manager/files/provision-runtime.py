@@ -35,8 +35,9 @@ BUILD_PACKAGES = (
     "libgstreamer-plugins-base1.0-dev", "libv4l-dev",
 )
 LAUNCHER_PACKAGES = (
-    "gstreamer1.0-tools", "gstreamer1.0-plugins-good",
-    "gstreamer1.0-plugins-bad", "gstreamer1.0-plugins-ugly", "libx264-164",
+    "gstreamer1.0-tools", "gstreamer1.0-plugins-base", "gstreamer1.0-plugins-good",
+    "gstreamer1.0-plugins-bad", "gstreamer1.0-plugins-ugly", "gstreamer1.0-x",
+    "libx264-164",
     "libgtk-3-0t64", "libx11-6", "xwayland", "python3", "python3-gi",
     "gir1.2-gtk-3.0", "gir1.2-gstreamer-1.0",
     "gir1.2-gst-plugins-base-1.0", "kmod", "util-linux",

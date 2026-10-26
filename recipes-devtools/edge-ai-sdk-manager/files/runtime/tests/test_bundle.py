@@ -149,9 +149,12 @@ class RuntimeBundleTests(unittest.TestCase):
                 ("nvidia-l4t-camera", "nvidia-l4t-gstreamer", "nvidia-l4t-multimedia")
             }
             packages.update({name: "1.0" for name in (
-                "gstreamer1.0-tools", "gstreamer1.0-plugins-good",
+                "gstreamer1.0-tools", "gstreamer1.0-x",
+                "gstreamer1.0-plugins-base", "gstreamer1.0-plugins-good",
                 "gstreamer1.0-plugins-bad", "gstreamer1.0-plugins-ugly",
-                "libx264-164", "libgtk-3-0t64", "libx11-6")})
+                "libx264-164", "libgtk-3-0t64", "libx11-6",
+                "python3", "python3-gi", "gir1.2-gtk-3.0",
+                "gir1.2-gstreamer-1.0", "gir1.2-gst-plugins-base-1.0")})
             status = "".join(
                 "Package: %s\nStatus: install ok installed\nArchitecture: arm64\n"
                 "Version: %s\nMaintainer: Fixture <nobody@example.invalid>\n"

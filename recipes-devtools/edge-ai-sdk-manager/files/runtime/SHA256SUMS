@@ -1,12 +1,12 @@
 8da0a2bb012d2887b7e09910cf39a36e23aa7991b48fa20fd3f38df76e92dc87  ./.gitignore
-0f7c77f3d999df326f9704c27f31b60c573dfc79c26ea57c5de1b1780dfccc3e  ./DEPENDENCIES.txt
+b3d383bac56be382946182b5655d2256593d3ac46e82fb60b0ccc0b7eb69840b  ./DEPENDENCIES.txt
 24a51b960bca48528c2af1aca39aa67b696aa7d19112f38b195405799ef23fb1  ./FULL-ARGUS.txt
 04a856d30abeb7d0e4a032214c1da6ebac52968222d0bed7d1f3bdbe8db3eade  ./GST-PORT.txt
 a40f4861129dbd068d9ae185b852c0c0ce9965cb39756d449190ac213fc694ef  ./NANO-RECORDING.txt
 15fd0f18a9e5cfca610310b649f430dd86e8ab71665ef4aee40083ff24e88bac  ./PORT-MAPPING.txt
 20be8e6f336d05f7d0a0cba3be20c8b6395996d926451d4fd05fd94e1bd0fa48  ./PROVISIONING.txt
 f492417032d7f2e9b329e6f35e429f2b2fd3ac46b4508a5dd8f00726ccb25d17  ./README.txt
-21efb70c45e66dadc3a8958ff489daf723bcae914ef72b01089dd0c752558df0  ./SESSION-ADAPTATION.txt
+811ca3f2b3b8a6800ff8e04cde28a4af958df85bf252a189918e4c746e38223a  ./SESSION-ADAPTATION.txt
 4d62427f62104ba41ecf0e6ab9c25fb0e8f8438d8f4099db51b08c1af0d88984  ./cross-build-argus.sh
 9c8d3a90a2ba2288679e77926dbf36b5142d1976749838720e1fb111a4705ea8  ./cross-build-gst.sh
 06178ffc9ec0fbd71093c1b6903ca2c7f1ba6f9eab7b0749ba4bb13d62906f3c  ./files/90-edgedes-framos-demo.conf.in
@@ -15,8 +15,9 @@ f492417032d7f2e9b329e6f35e429f2b2fd3ac46b4508a5dd8f00726ccb25d17  ./README.txt
 c57cfcbb1a6af654b45eb54c91c0b4e06869b3ec725d9f819afbd09a9b790981  ./files/argus-full-suite.txt
 c160d2da0b53cf1e3eaac7f2002c5501fc803f471392c845c84301c5c7e2f3a5  ./files/argus_camera.sh
 57916c6973e9b93e4b01315815f8811752cda4a382684f7c19d1a644a4147801  ./files/edge-ai-argus-framos-demo-check.in
-c85b3ea9e1e8f61ad5b5a91a93ef541c0841d8631c19f4ed4e7b3c899ee404bd  ./files/edge-ai-desktop-exec
-71e15137ba8951ee499165eabdaf7145f27517017f4e102640c7da4a0440d113  ./files/gst_camera.sh
+4bc9b697f841729e043d95b481017935622d2a7137c7713d0f605bbe5bac0fe8  ./files/edge-ai-desktop-exec
+c49fcc0d8d495b4eddd15618f6b3571ae93b1eaa1a6b3fec34cf3b6dd708f9fa  ./files/edge-ai-gst-x11-preview
+e7c1d83623992a9b24065e72c36fb2f010ab07ed0ee2b644aa5b5c1628553645  ./files/gst_camera.sh
 4807eafc47a2a35ae58d27a44bd2082c6bd930ee39096b72fa01e3758cac61a7  ./gst-port.sh
 c3c741eaec7daa5fb733b5afd1ea36ea9ca4e7238cefd0eb4f90d585f37c417b  ./patches/argus/0001-argus-match-egl-config-to-x11-window.patch
 4262e59bacf7c10aa39107d7d3fb84b6f3a497d6af747eeab95e063301728256  ./patches/argus/0002-argus-camera-report-module-identity.patch
@@ -27,5 +28,7 @@ d570633de79fd59360ae9491ee52ffec7dae4eac1159daa397e088a2005e34a0  ./patches/argu
 1af72f8a72ecd8c2af53c8c958d0533e124ff64c24772c990cc2704015d87931  ./patches/gst/v4l2-0002-bufferpool.patch
 f0228e46ff2fd8bf0a860245ed8978adac4a3aac035b3b3b436f6cef4e614388  ./patches/gst/v4l2-0003-ifdef.patch
 91be940760adbe87e05e57fc1f0096679a5e3c4fe40aad31da32762246fd6275  ./patches/gst/v4l2-0004-pool-check.patch
-65192af2107e522d2481fc65b0135f76d1a6f61276a85e6b66f13d2750fd0a52  ./runtime-port.sh
-ded9f9313522b2c525d9e52738a1789a92968968fa0aad0e87c41987a7e89474  ./tests/test_bundle.py
+20bab3ad61473e67a2ce26b4f1671ba54640f32f8284019296ee07e3292ba966  ./runtime-port.sh
+d8ed6489dc6bd634c4aceba8d769f3e78908c5d16ba69ea6d15f6f2501f7ef84  ./tests/test_bundle.py
+24e3e1e2b1c7ee3b1d770799df9e9afd854bfd3c561653bdd24aa960855c6380  ./tests/test_gst_desktop.py
+25dcf2612592a2542d9092829afc225dc7cfd7dd6afa7fb2a9e0a4a893078cb1  ./tests/test_gst_x11_preview.py

@@ -10,13 +10,17 @@ Runtime packages (install deliberately; this bundle never runs apt):
   nvidia-l4t-gstreamer=39.2.1-20260806224157
   nvidia-l4t-multimedia=39.2.1-20260806224157
   gstreamer1.0-tools
+  gstreamer1.0-plugins-base (videoscale for aspect-correct fullscreen)
   gstreamer1.0-plugins-good
   gstreamer1.0-plugins-bad
   gstreamer1.0-plugins-ugly (x264enc software recording on Nano or NX)
+  gstreamer1.0-x (ximagesink for the X11 fullscreen window)
   libx264-164 (native ARM64 software encoder library)
   libgtk-3-0t64
   libx11-6
   xwayland (for the GTK preview inside a Wayland desktop)
+  python3 python3-gi gir1.2-gtk-3.0 gir1.2-gstreamer-1.0
+  gir1.2-gst-plugins-base-1.0 (GTK/GStreamer X11 fullscreen window)
 
 Build packages, in the Ubuntu aarch64 build environment:
   nvidia-l4t-jetson-multimedia-api=39.2.1-20260806224157
