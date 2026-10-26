@@ -1,0 +1,218 @@
+#!/bin/sh
+# Select a complete installed DTB for entries in the L4T boot configuration.
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 CompuLab Ltd.
+# Ported from meta-tegra-compulab's Edge-AI selector. The SDK port defaults
+# to primary only, preserving camera presets and stock-kernel fallbacks.
+
+set -eu
+
+dtb_dir=${EDGE_AI_DTB_DIR:-/boot/dtb}
+extlinux_conf=${EDGE_AI_EXTLINUX_CONF:-/boot/extlinux/extlinux.conf}
+entry=primary
+all_entries=0
+entry_seen=0
+operation=choose
+operation_seen=0
+requested=
+
+usage() {
+    cat <<EOF
+Usage: $(basename "$0") [--entry LABEL | --all] [DTB-FILE | --uefi | --list | --show]
+
+Without a selection argument, browse installed DTBs interactively.
+DTB-FILE must be the basename of a file in $dtb_dir.
+The default entry is primary; other camera and stock fallbacks are preserved.
+--entry LABEL changes only that boot entry.
+--all explicitly changes every entry, including stock-kernel fallbacks.
+--uefi removes explicit FDT statements so UEFI supplies the device tree.
+Selecting a DTB or --uefi also clears OVERLAYS in the selected entries.
+This selects complete DTBs; it does not configure modular overlay stacks.
+EOF
+}
+
+die() {
+    printf 'ERROR: %s\n' "$*" >&2
+    exit 1
+}
+
+set_operation() {
+    [ "$operation_seen" -eq 0 ] || die 'supply only one selection or action'
+    operation=$1
+    operation_seen=1
+}
+
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        -h|--help) usage; exit 0 ;;
+        --entry)
+            [ "$#" -ge 2 ] || die '--entry requires a boot label'
+            [ "$entry_seen" -eq 0 ] && [ "$all_entries" -eq 0 ] || \
+                die 'use one --entry or --all selection'
+            entry=$2
+            entry_seen=1
+            shift 2
+            ;;
+        --entry=*)
+            [ "$entry_seen" -eq 0 ] && [ "$all_entries" -eq 0 ] || \
+                die 'use one --entry or --all selection'
+            entry=${1#--entry=}
+            entry_seen=1
+            shift
+            ;;
+        --all)
+            [ "$entry_seen" -eq 0 ] && [ "$all_entries" -eq 0 ] || \
+                die 'use one --entry or --all selection'
+            all_entries=1
+            shift
+            ;;
+        --list) set_operation list; shift ;;
+        --show) set_operation show; shift ;;
+        --uefi) set_operation select; requested=--uefi; shift ;;
+        --*) die "unknown option: $1" ;;
+        *) set_operation select; requested=$1; shift ;;
+    esac
+done
+
+case "$entry" in
+    ''|*[!A-Za-z0-9._+-]*) die 'select a safe boot label' ;;
+esac
+
+list_dtbs() {
+    found=0
+    for path in "$dtb_dir"/*.dtb; do
+        [ -f "$path" ] || continue
+        found=1
+        basename "$path"
+    done
+    [ "$found" -eq 1 ] || die "no DTB files found in $dtb_dir"
+}
+
+if [ "$operation" = list ]; then
+    list_dtbs
+    exit 0
+fi
+[ -f "$extlinux_conf" ] || die "$extlinux_conf does not exist"
+if [ "$all_entries" -eq 0 ]; then
+    matches=$(awk -v wanted="$entry" '$1 == "LABEL" && $2 == wanted { count++ } END { print count+0 }' "$extlinux_conf")
+    [ "$matches" -eq 1 ] || die "expected one boot entry named $entry"
+fi
+
+show_current() {
+    awk -v wanted="$entry" -v all="$all_entries" '
+        function finish() {
+            if (active && !have_fdt)
+                printf "FDT (%s): UEFI-provided device tree\n", label
+        }
+        $1 == "LABEL" {
+            finish()
+            label = $2
+            active = all || label == wanted
+            have_fdt = 0
+        }
+        active && $1 == "FDT" {
+            printf "FDT (%s): %s\n", label, $2
+            have_fdt = 1
+        }
+        active && $1 == "OVERLAYS" {
+            overlays = $0
+            sub("^[[:space:]]*OVERLAYS[[:space:]]*", "", overlays)
+            printf "Overlays (%s): %s\n", label, overlays
+        }
+        END { finish() }
+    ' "$extlinux_conf"
+}
+
+if [ "$operation" = show ]; then
+    show_current
+    exit 0
+fi
+
+choose_dtb() {
+    show_current >&2
+    printf '%s\n' '  0) Use the device tree supplied by UEFI' >&2
+    count=0
+    for path in "$dtb_dir"/*.dtb; do
+        [ -f "$path" ] || continue
+        count=$((count + 1))
+        printf '%3d) %s\n' "$count" "$(basename "$path")" >&2
+    done
+    [ "$count" -gt 0 ] || die "no DTB files found in $dtb_dir"
+    while :; do
+        printf 'Select [0-%d]: ' "$count" >&2
+        IFS= read -r selection || die 'selection cancelled'
+        case "$selection" in
+            0) printf '%s\n' --uefi; return ;;
+            *[!0-9]*|'') printf 'Enter a number from 0 through %d.\n' "$count" >&2; continue ;;
+        esac
+        [ "$selection" -le "$count" ] || {
+            printf 'Enter a number from 0 through %d.\n' "$count" >&2
+            continue
+        }
+        index=0
+        for path in "$dtb_dir"/*.dtb; do
+            [ -f "$path" ] || continue
+            index=$((index + 1))
+            if [ "$index" -eq "$selection" ]; then
+                basename "$path"
+                return
+            fi
+        done
+    done
+}
+
+if [ "$operation" = choose ]; then
+    requested=$(choose_dtb)
+fi
+[ "$(id -u)" -eq 0 ] || die 'root privileges are required to update extlinux.conf'
+if [ "$requested" != --uefi ]; then
+    case "$requested" in
+        */*|*[!A-Za-z0-9._+-]*) die "select a DTB basename from $dtb_dir" ;;
+        *.dtb) ;;
+        *) die 'the selected filename must end in .dtb' ;;
+    esac
+    [ -f "$dtb_dir/$requested" ] || die "$requested is not installed in $dtb_dir"
+fi
+if [ "$all_entries" -eq 1 ]; then
+    printf '%s\n' 'WARNING: --all also changes stock-kernel fallbacks; matching DT/kernel compatibility is your responsibility.' >&2
+fi
+
+tmp=$(mktemp "${extlinux_conf}.tmp.XXXXXX") || die 'cannot create a temporary extlinux file'
+trap 'rm -f "$tmp"' EXIT HUP INT TERM
+fdt_path=
+[ "$requested" = --uefi ] || fdt_path="/boot/dtb/$requested"
+awk -v wanted="$entry" -v all="$all_entries" -v fdt="$fdt_path" '
+    BEGIN { active = all }
+    $1 == "LABEL" { active = all || $2 == wanted }
+    active && ($1 == "FDT" || $1 == "OVERLAYS") { next }
+    { print }
+    active && $1 == "LINUX" && fdt != "" { print "\tFDT " fdt }
+' "$extlinux_conf" > "$tmp"
+
+# Tegra signing tools expect a multiple of 16 bytes.
+size=$(wc -c < "$tmp")
+padding=$(( (16 - size % 16) % 16 ))
+while [ "$padding" -gt 0 ]; do
+    printf '\n' >> "$tmp"
+    padding=$((padding - 1))
+done
+chmod 0644 "$tmp"
+if cmp -s "$extlinux_conf" "$tmp"; then
+    printf '%s\n' 'extlinux.conf already has the requested selection.'
+    exit 0
+fi
+if [ ! -e "${extlinux_conf}.bak" ] && [ ! -L "${extlinux_conf}.bak" ]; then
+    cp -p "$extlinux_conf" "${extlinux_conf}.bak"
+fi
+mv -f "$tmp" "$extlinux_conf"
+trap - EXIT HUP INT TERM
+if [ -e "${extlinux_conf}.sig" ]; then
+    printf '%s\n' "WARNING: ${extlinux_conf}.sig was not regenerated; signed-extlinux enforcement may reject this change." >&2
+fi
+if [ "$all_entries" -eq 1 ]; then scope='all entries'; else scope="entry $entry"; fi
+if [ "$requested" = --uefi ]; then
+    printf 'Selected UEFI-provided device tree for %s.\n' "$scope"
+else
+    printf 'Selected %s for %s.\n' "$requested" "$scope"
+fi
+printf '%s\n' 'Cleared OVERLAYS in the selected entries. Reboot to use the new device tree.'

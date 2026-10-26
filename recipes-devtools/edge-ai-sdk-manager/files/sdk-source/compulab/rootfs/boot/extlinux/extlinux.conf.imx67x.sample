@@ -1,0 +1,96 @@
+TIMEOUT 30
+DEFAULT primary
+
+MENU TITLE L4T boot options
+
+LABEL primary
+      MENU LABEL primary kernel
+      LINUX /boot/Image
+      INITRD /boot/initrd
+      APPEND ${cbootargs}
+
+# When testing a custom kernel, it is recommended that you create a backup of
+# the original kernel and add a new entry to this file so that the device can
+# fallback to the original kernel. To do this:
+#
+# 1, Make a backup of the original kernel
+#      sudo cp /boot/Image /boot/Image.backup
+#
+# 2, Copy your custom kernel into /boot/Image
+#
+# 3, Uncomment below menu setting lines for the original kernel
+#
+# 4, Reboot
+
+# LABEL backup
+#    MENU LABEL backup kernel
+#    LINUX /boot/Image.backup
+#    INITRD /boot/initrd
+#    APPEND ${cbootargs}
+
+# CompuLab camera entries below require the configured NX16G ADI v18 profile.
+# Do not select their explicit NX16G DTBs on NX8G or Nano. Empty inputs are
+# optional; sensor models/ports are configured explicitly, not auto-detected.
+# The mixed profile is experimental and needs matching per-camera NITO data.
+# Default remains primary, using the module-specific UEFI DTB on NX or Nano.
+# APPEND inherits Ubuntu/NVIDIA cbootargs. Native flash.sh appends its resolved
+# root-device arguments to all APPEND lines without replacing these entries.
+
+LABEL camera-imx676
+      MENU LABEL IMX676 all ports (NX16G only)
+      LINUX /boot/Image
+      FDT /boot/dtb/edgedes-adi-v18-framos-imx676-4port.dtb
+      INITRD /boot/initrd
+      APPEND ${cbootargs}
+
+LABEL camera-imx678
+      MENU LABEL IMX678 all ports (NX16G only)
+      LINUX /boot/Image
+      FDT /boot/dtb/edgedes-adi-v18-framos-imx678-4port.dtb
+      INITRD /boot/initrd
+      APPEND ${cbootargs}
+
+LABEL camera-mixed
+      MENU LABEL IMX676 port0 plus IMX678 port1 (NX16G only, experimental)
+      LINUX /boot/Image
+      FDT /boot/dtb/tegra234-edge-ai-adi-base.dtb
+      OVERLAYS /boot/devicetree/edgedes-adi-v18-transport-4port.dtbo,/boot/devicetree/edgedes-adi-v18-camera-imx676-port0.dtbo,/boot/devicetree/edgedes-adi-v18-camera-imx678-port1.dtbo
+      INITRD /boot/initrd
+      APPEND ${cbootargs}
+
+LABEL camera-uefi
+      MENU LABEL UEFI-provided DTB fallback (all Edge-AI Orin modules)
+      LINUX /boot/Image
+      INITRD /boot/initrd
+      APPEND ${cbootargs}
+
+# Diagnostic stock-kernel fallbacks retain the original matching module DTB
+# and initrd. They do not promise CompuLab's added kernel/camera functionality.
+# Choose only the entry matching the installed module SKU.
+LABEL nvidia-stock-nx-16g
+      MENU LABEL NVIDIA stock kernel and DTB (NX16G only)
+      LINUX /boot/Image.nvidia-stock
+      FDT /boot/dtb/nvidia-stock-tegra234-p3768-0000+p3767-0000-nv-super.dtb
+      INITRD /boot/initrd.nvidia-stock
+      APPEND ${cbootargs}
+
+LABEL nvidia-stock-nx-8g
+      MENU LABEL NVIDIA stock kernel and DTB (NX8G only)
+      LINUX /boot/Image.nvidia-stock
+      FDT /boot/dtb/nvidia-stock-tegra234-p3768-0000+p3767-0001-nv-super.dtb
+      INITRD /boot/initrd.nvidia-stock
+      APPEND ${cbootargs}
+
+LABEL nvidia-stock-nano-8g
+      MENU LABEL NVIDIA stock kernel and DTB (Nano8G only)
+      LINUX /boot/Image.nvidia-stock
+      FDT /boot/dtb/nvidia-stock-tegra234-p3768-0000+p3767-0003-nv-super.dtb
+      INITRD /boot/initrd.nvidia-stock
+      APPEND ${cbootargs}
+
+LABEL nvidia-stock-nano-4g
+      MENU LABEL NVIDIA stock kernel and DTB (Nano4G only)
+      LINUX /boot/Image.nvidia-stock
+      FDT /boot/dtb/nvidia-stock-tegra234-p3768-0000+p3767-0004-nv-super.dtb
+      INITRD /boot/initrd.nvidia-stock
+      APPEND ${cbootargs}
