@@ -511,6 +511,37 @@ the [SDK generation guide](recipes-devtools/edge-ai-sdk-manager/README.md)
 for enable switches, authentication/host prerequisites and the build command.
 Passwords must not be placed in recipe metadata or `local.conf`.
 
+### Sourceable SDK wrapper
+
+The prepared SDK provides `compulab-l4t.env`: source it from a clean Bash
+shell, then run `devshell` or use its target/logo selectors, offline loop
+image creation and connected QSPI/NVMe flashing functions. Sourcing is
+passive; write operations require confirmation or explicit `--yes`, and
+`--dry-run` checks selections without flashing. See the
+[wrapper guide](recipes-devtools/edge-ai-sdk-manager/files/sdk-source/compulab/host/WRAPPER.md).
+
+### Rebuilding after Yocto layer changes
+
+For the automated `edge-ai-sdk-manager` workflow, make changes to the
+`meta-tegra-compulab` recipes, patches or configuration under `recipes-kernel`
+or `recipes-bsp`, rather than editing the generated SDK. Select unused
+`EDGE_AI_SDK_OUTPUT` and `EDGE_AI_SDK_HOST_WORK` directories in the build's
+`conf/local.conf`, for example
+`EDGE_AI_SDK_OUTPUT = "${DEPLOY_DIR_IMAGE}/jetpack-7.2.1-image-build-r2"`
+and
+`EDGE_AI_SDK_HOST_WORK = "${TOPDIR}/sdk-manager-work/${MACHINE}-r2"`,
+using a new suffix for each changed build, then run
+`bitbake edge-ai-sdk-manager`. For existing exported inputs, BitBake rebuilds
+the affected dependencies automatically; a complete `demo-image-weston`
+build and `cleanall` are normally unnecessary, and download/sstate caches
+can be reused. Use the generated SDK only after `.edge-ai-sdk-ready.json`
+exists, then validate boot and the affected hardware features before
+production deployment. New recipes must be connected to the SDK's
+dependency/export coverage, while kernel/L4T version changes or changes to
+the requested kernel settings require reviewing the SDK's pinned validation
+rules. This workflow deliberately never overwrites an existing SDK; use the
+SDK generated under the new output path instead.
+
 ## Precompiled Images
 * edge-ai-nx-16g
   * [demo-image-weston](https://drive.google.com/drive/folders/1Kj6_xZBRThOyjulUS2X3prKE2pX6xgyA)
