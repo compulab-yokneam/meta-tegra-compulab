@@ -6,7 +6,7 @@ a40f4861129dbd068d9ae185b852c0c0ce9965cb39756d449190ac213fc694ef  ./NANO-RECORDI
 15fd0f18a9e5cfca610310b649f430dd86e8ab71665ef4aee40083ff24e88bac  ./PORT-MAPPING.txt
 20be8e6f336d05f7d0a0cba3be20c8b6395996d926451d4fd05fd94e1bd0fa48  ./PROVISIONING.txt
 f492417032d7f2e9b329e6f35e429f2b2fd3ac46b4508a5dd8f00726ccb25d17  ./README.txt
-811ca3f2b3b8a6800ff8e04cde28a4af958df85bf252a189918e4c746e38223a  ./SESSION-ADAPTATION.txt
+2da1cce5dc1d6a5760532507a905307603a7f2bfd8a3e46d7e090565ffadc16b  ./SESSION-ADAPTATION.txt
 4d62427f62104ba41ecf0e6ab9c25fb0e8f8438d8f4099db51b08c1af0d88984  ./cross-build-argus.sh
 9c8d3a90a2ba2288679e77926dbf36b5142d1976749838720e1fb111a4705ea8  ./cross-build-gst.sh
 06178ffc9ec0fbd71093c1b6903ca2c7f1ba6f9eab7b0749ba4bb13d62906f3c  ./files/90-edgedes-framos-demo.conf.in
@@ -15,7 +15,7 @@ f492417032d7f2e9b329e6f35e429f2b2fd3ac46b4508a5dd8f00726ccb25d17  ./README.txt
 c57cfcbb1a6af654b45eb54c91c0b4e06869b3ec725d9f819afbd09a9b790981  ./files/argus-full-suite.txt
 c160d2da0b53cf1e3eaac7f2002c5501fc803f471392c845c84301c5c7e2f3a5  ./files/argus_camera.sh
 57916c6973e9b93e4b01315815f8811752cda4a382684f7c19d1a644a4147801  ./files/edge-ai-argus-framos-demo-check.in
-4bc9b697f841729e043d95b481017935622d2a7137c7713d0f605bbe5bac0fe8  ./files/edge-ai-desktop-exec
+0e60bcca63ec91ce410ca7fb85533217da337c96172af648b8db55126d04935b  ./files/edge-ai-desktop-exec
 c49fcc0d8d495b4eddd15618f6b3571ae93b1eaa1a6b3fec34cf3b6dd708f9fa  ./files/edge-ai-gst-x11-preview
 e7c1d83623992a9b24065e72c36fb2f010ab07ed0ee2b644aa5b5c1628553645  ./files/gst_camera.sh
 4807eafc47a2a35ae58d27a44bd2082c6bd930ee39096b72fa01e3758cac61a7  ./gst-port.sh
@@ -30,5 +30,6 @@ f0228e46ff2fd8bf0a860245ed8978adac4a3aac035b3b3b436f6cef4e614388  ./patches/gst/
 91be940760adbe87e05e57fc1f0096679a5e3c4fe40aad31da32762246fd6275  ./patches/gst/v4l2-0004-pool-check.patch
 20bab3ad61473e67a2ce26b4f1671ba54640f32f8284019296ee07e3292ba966  ./runtime-port.sh
 d8ed6489dc6bd634c4aceba8d769f3e78908c5d16ba69ea6d15f6f2501f7ef84  ./tests/test_bundle.py
+423f964155ac41eea07439a071b0ba3c0d929ad87be8be6928f7b8f9eb0d9aa9  ./tests/test_desktop_exec.py
 24e3e1e2b1c7ee3b1d770799df9e9afd854bfd3c561653bdd24aa960855c6380  ./tests/test_gst_desktop.py
 25dcf2612592a2542d9092829afc225dc7cfd7dd6afa7fb2a9e0a4a893078cb1  ./tests/test_gst_x11_preview.py

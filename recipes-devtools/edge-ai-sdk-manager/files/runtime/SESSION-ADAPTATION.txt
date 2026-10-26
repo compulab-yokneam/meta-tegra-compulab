@@ -12,16 +12,21 @@ with --display-backend x11 or --display-backend wayland when needed.
 The GTK Argus application uses X11/XWayland and therefore needs DISPLAY
 and the desktop session's normal Xauthority access.
 
-SSH/serial preview as the desktop user: the GStreamer launcher can obtain
-missing display variables from that user's systemctl --user environment.
-Only DISPLAY, XAUTHORITY, WAYLAND_DISPLAY and XDG_SESSION_TYPE are parsed,
-as literal data, without shell evaluation. No UID, account, display number
-or Xauthority path is guessed. If the user manager has no desktop metadata,
-provide the actual DISPLAY/XAUTHORITY or WAYLAND_DISPLAY explicitly.
+SSH/serial preview as the desktop user: both launchers can obtain missing
+display variables from that user's systemctl --user environment. Argus uses
+only DISPLAY and XAUTHORITY; GStreamer also reads WAYLAND_DISPLAY and
+XDG_SESSION_TYPE. Values are parsed as literal data, without shell evaluation.
+No UID, account, display number or Xauthority path is guessed. An explicit
+DISPLAY never receives another display's discovered Xauthority. If the user
+manager has no desktop metadata, log into the Ubuntu desktop first or provide
+the actual DISPLAY/XAUTHORITY or WAYLAND_DISPLAY explicitly. The GTK Argus
+sample also needs a display for --list and physical-port enumeration.
 
 Example, from a terminal belonging to the logged-in desktop user:
   /opt/compulab/bin/gst_camera.sh live --sensor-id 0
   /opt/compulab/bin/gst_camera.sh live --sensor-id 0 --fullscreen
+  /opt/compulab/bin/argus_camera.sh --list
+  /opt/compulab/bin/argus_camera.sh -d 0
 
 Wayland fullscreen uses waylandsink's fullscreen property. X11 fullscreen
 uses /usr/libexec/edge-ai-gst-x11-preview: a GTK3 window with a native video
@@ -32,14 +37,15 @@ Escape, closing the window or Ctrl+C stops the preview. This helper needs
 the Python GTK/GStreamer bindings listed in DEPENDENCIES.txt; SDK runtime
 provisioning installs these dependencies.
 
-Root preview: explicitly provide EDGE_AI_DESKTOP_USER. For GTK also
-provide EDGE_AI_DISPLAY and EDGE_AI_XAUTHORITY from that user's session.
+Root preview: explicitly provide EDGE_AI_DESKTOP_USER. For GTK, optional
+EDGE_AI_DISPLAY and EDGE_AI_XAUTHORITY override that user's session values.
 Do not guess DISPLAY=:0 or assume a fixed UID. For GStreamer an explicit
 EDGE_AI_WAYLAND_DISPLAY may disambiguate multiple sockets. The helper
 requires a real non-root account and existing /run/user/UID, delegates
 through runuser and never evaluates arguments as shell code. GStreamer
-auto mode discovers the selected user's session after delegation; explicit
-X11 mode requires EDGE_AI_DISPLAY and EDGE_AI_XAUTHORITY as above.
+auto mode discovers the selected user's session after delegation, as does
+the GTK Argus X11 helper. Explicit GStreamer X11 mode can use the same
+discovery or accept EDGE_AI_DISPLAY and EDGE_AI_XAUTHORITY overrides.
 
 No helper reads /proc/*/environ, opens credentials, creates an account,
 changes display permissions or uses xhost. X11 socket/session metadata

@@ -27,15 +27,15 @@ if [ "$(id -u)" -eq 0 ]; then
             WAYLAND_DISPLAY="${EDGE_AI_WAYLAND_DISPLAY:-${WAYLAND_DISPLAY-}}" "$@"
     fi
     if [ "$backend" = --x11 ]; then
-        display=${EDGE_AI_DISPLAY:-${DISPLAY-}}
-        authority=${EDGE_AI_XAUTHORITY:-${XAUTHORITY-}}
-        [ -n "$display" ] && [ -n "$authority" ] ||
-            fail 'set EDGE_AI_DISPLAY and EDGE_AI_XAUTHORITY for the selected X11/XWayland session'
-        runuser -u "$desktop_user" -- test -r "$authority" ||
-            fail 'the selected desktop user cannot read the Xauthority file'
+        # Resolve missing metadata only after switching to the explicitly
+        # selected user. Never inspect root's manager or another account.
+        case "$0" in /*) helper=$0 ;; *) helper=$(pwd)/$0 ;; esac
         exec runuser -u "$desktop_user" -- env \
-            PATH="$PATH" XDG_RUNTIME_DIR="$runtime_dir" GDK_BACKEND=x11 \
-            DISPLAY="$display" XAUTHORITY="$authority" "$@"
+            PATH="$PATH" XDG_RUNTIME_DIR="$runtime_dir" \
+            DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime_dir/bus" \
+            DISPLAY="${EDGE_AI_DISPLAY:-${DISPLAY-}}" \
+            XAUTHORITY="${EDGE_AI_XAUTHORITY:-${XAUTHORITY-}}" \
+            "$helper" --x11 "$@"
     fi
     # The GStreamer launcher validates/discovers the selected user's socket.
     exec runuser -u "$desktop_user" -- env PATH="$PATH" \
@@ -45,7 +45,38 @@ fi
 XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
 export XDG_RUNTIME_DIR
 if [ "$backend" = --x11 ]; then
-    [ -n "${DISPLAY-}" ] || fail 'run from the desktop or set DISPLAY/XAUTHORITY explicitly'
+    # SSH/serial shells often lack the desktop variables. Query only this
+    # user's manager and treat the two whitelisted values as literal data.
+    # GTK Argus needs X11/XWayland even when invoked with --info --exit.
+    if { [ -z "${DISPLAY:-}" ] || [ -z "${XAUTHORITY:-}" ]; } &&
+            command -v systemctl >/dev/null 2>&1; then
+        desktop_environment=$(systemctl --user show-environment 2>/dev/null) ||
+            desktop_environment=
+        desktop_display=
+        desktop_authority=
+        while IFS= read -r entry; do
+            case "$entry" in
+                DISPLAY=*) desktop_display=${entry#*=} ;;
+                XAUTHORITY=*) desktop_authority=${entry#*=} ;;
+            esac
+        done <<EOF
+$desktop_environment
+EOF
+        DISPLAY=${DISPLAY:-$desktop_display}
+        # Do not mix a forwarded/explicit display with another session's
+        # credentials. Without an override Xlib keeps its normal fallback.
+        if [ "$DISPLAY" = "$desktop_display" ]; then
+            XAUTHORITY=${XAUTHORITY:-$desktop_authority}
+        fi
+    fi
+    [ -n "${DISPLAY:-}" ] ||
+        fail 'run from the desktop (log into Ubuntu first) or set DISPLAY/XAUTHORITY explicitly'
+    if [ -n "${XAUTHORITY:-}" ]; then
+        [ -r "$XAUTHORITY" ] ||
+            fail 'XAUTHORITY is not readable by the desktop user'
+        export XAUTHORITY
+    fi
+    export DISPLAY
     export GDK_BACKEND=x11
 fi
 exec "$@"
