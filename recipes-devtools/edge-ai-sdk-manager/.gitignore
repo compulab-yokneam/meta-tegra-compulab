@@ -1,0 +1,3 @@
+# Host-side tests must not commit generated Python bytecode.
+__pycache__/
+*.py[cod]
