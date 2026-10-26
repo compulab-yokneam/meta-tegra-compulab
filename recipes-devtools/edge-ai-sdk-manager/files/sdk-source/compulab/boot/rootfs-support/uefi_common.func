@@ -1,0 +1,77 @@
+#!/bin/sh
+
+fab=
+boardsku=
+boardrev=
+chiprev=
+
+set_efi_var() {
+    local varname="$1"
+    local guid="$2"
+    local value="$3"
+    local write_once="$4"
+
+    if [ -z "$1" ] || [ -z "$2" ] || [ -z "$3" ]; then
+        echo "Usage: set_efi_var varname guid value" >&2
+        return 1
+    fi
+
+    if efivar -n "${guid}-$varname" >/dev/null 2>&1 && [ "$write_once" = "write-once" ]; then
+        return 0
+    fi
+    local datatmp
+    if [ -n "$RUNTIME_DIRECTORY" ]; then
+	datatmp=$(TMPDIR=$RUNTIME_DIRECTORY mktemp --tmpdir nvcvar.XXXXXX)
+    else
+	datatmp=$(mktemp)
+    fi
+    printf "%b" "$value" > "$datatmp"
+    efivar -w -f "$datatmp" -n "${guid}-$varname"
+    rm -f "$datatmp"
+}
+
+gen_compat_3701() {
+    boardrev=
+    if [ "$boardsku" = "0000" ]; then
+        if echo "$fab" | egrep -q "^([012][0-9][0-9]|TS|EB)"; then
+            fab="000"
+        else
+            fab="300"
+        fi
+    elif [ "$boardsku" = "0004" -o "$boardsku" = "0005" -o "$boardsku" = "0008" ]; then
+        fab=""
+    fi
+    boardrev=
+    chiprev=
+    return 0
+}
+
+gen_compat_3767() {
+    if [ "$boardsku" = "0000" -o "$boardsku" = "0002" ]; then
+        if ! echo "$fab" | egrep -q "^(TS|EB)"; then
+            fab="000"
+        fi
+    else
+        fab=
+    fi
+    boardrev=
+    chiprev=
+    return 0
+}
+
+gen_compat_3834() {
+    fab=""
+    boardrev=""
+    chiprev=""
+    return 0
+}
+
+# boardspec should be piped into this function
+gen_compat_spec() {
+    IFS=- read boardid fab boardsku boardrev fuselevel chiprev
+    if gen_compat_$boardid 2>/dev/null; then
+        echo "$boardid-$fab-$boardsku-$boardrev-$fuselevel-$chiprev"
+        return 0
+    fi
+    echo ""
+}
