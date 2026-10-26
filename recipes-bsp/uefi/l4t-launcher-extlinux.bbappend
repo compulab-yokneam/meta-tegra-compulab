@@ -11,8 +11,10 @@ RDEPENDS:${PN}:append:edge-ai:adi-gmsl-v18 = " ${@'edgedes-adi-v18-devicetree' i
 # Opt in to label-specific FDT_FILE/FDT_OVERLAYS overrides with FDT_PER_ENTRY.
 # In that mode an empty label-specific FDT_FILE deliberately selects UEFI.
 FDT_PER_ENTRY ?= "0"
+PR:append:edge-ai = ".clabmenu1"
 
 # Catch conflicting ownership before the base class rejects an empty FDT.
+# Prepend bodies are inlined into the task: never return before its generator.
 python do_create_extlinux_config:prepend:edge-ai() {
     if d.getVar("FDT_PER_ENTRY") == "1":
         labels = (d.getVar("UBOOT_EXTLINUX_LABELS") or "").split()
@@ -28,9 +30,8 @@ python do_create_extlinux_config:prepend:edge-ai() {
                          "UBOOT_EXTLINUX_FDTOVERLAYS, not both; "
                          "they use different file ownership and paths "
                          "(boot entry %s)" % label)
-        return
-    if ((d.getVar("FDT_OVERLAYS") or "").split() and
-            (d.getVar("UBOOT_EXTLINUX_FDTOVERLAYS") or "").split()):
+    elif ((d.getVar("FDT_OVERLAYS") or "").split() and
+              (d.getVar("UBOOT_EXTLINUX_FDTOVERLAYS") or "").split()):
         bb.fatal("Use either FDT_OVERLAYS or UBOOT_EXTLINUX_FDTOVERLAYS, "
                  "not both; they use different file ownership and paths")
 }
