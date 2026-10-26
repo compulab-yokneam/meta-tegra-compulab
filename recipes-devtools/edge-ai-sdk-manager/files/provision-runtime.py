@@ -40,7 +40,8 @@ LAUNCHER_PACKAGES = (
     "libx264-164",
     "libgtk-3-0t64", "libx11-6", "xwayland", "python3", "python3-gi",
     "gir1.2-gtk-3.0", "gir1.2-gstreamer-1.0",
-    "gir1.2-gst-plugins-base-1.0", "kmod", "util-linux",
+    "gir1.2-gst-plugins-base-1.0", "kmod", "util-linux", "coreutils",
+    "efivar", "efibootmgr",
 )
 PRESERVE = (
     "boot/Image", "boot/initrd",

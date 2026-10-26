@@ -6,6 +6,7 @@ import fcntl
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import signal
 import shutil
@@ -245,6 +246,10 @@ def inputs(configuration):
                 break
     options = {name: configuration.get(name) for name in
                ("machine", "imx676_extended", "imx678_extended")}
+    options["deb_version"] = configuration.get("deb_version", "39.2.1+compulab1")
+    require(isinstance(options["deb_version"], str) and
+            re.fullmatch(r"39\.2\.1[+~.A-Za-z0-9-]*", options["deb_version"]),
+            "Invalid EDGE_AI_SDK_DEB_VERSION for R39.2.1")
     records["workflow/options"] = hashlib.sha256(
         json.dumps(options, sort_keys=True).encode()).hexdigest()
     return records
@@ -271,7 +276,8 @@ def main():
     work.chmod(0o700)
     require(os.geteuid() != 0, "Run BitBake/SDK Manager as the authenticated ordinary user")
     require(Path(configuration["sdkmanager"]).is_file(), "Install SDK Manager on the host first")
-    for tool in ("sudo", "git", "chroot", "depmod", "lsinitramfs", "fdtget", "fdtput", "rsync"):
+    for tool in ("sudo", "git", "chroot", "depmod", "lsinitramfs", "fdtget", "fdtput", "rsync",
+                 "dpkg-deb", "dpkg-query"):
         require(shutil.which(tool), "Missing host prerequisite: " + tool)
     # SDKM invalidates sudo timestamps; a cached password is insufficient.
     subprocess.run(["sudo", "-k", "-n", "true"], stdin=subprocess.DEVNULL, check=True)

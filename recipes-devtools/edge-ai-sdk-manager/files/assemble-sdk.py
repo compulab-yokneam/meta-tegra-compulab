@@ -190,6 +190,7 @@ def baseline(sdk):
     (sdk / ".gitignore").write_text(
         "/*\n!/*.conf\n!/flash.sh\n!/compulab-l4t.env\n!/SDK_BASELINE.json\n!/.gitignore\n!/compulab/\n"
         "/compulab/vendor-backup/\n/compulab/receipts/\n/compulab/kernel/*.tar.xz\n"
+        "/compulab/packages/*.deb\n"
         "/compulab/boot/provenance/\n/compulab/runtime/sources/\n/compulab/runtime/nito/*.nito\n")
     run("git", "-c", "safe.directory=" + str(sdk), "init", "-b", "compulab/jetpack-7.2.1", cwd=sdk)
     run("git", "-c", "safe.directory=" + str(sdk), "add", ".gitignore", "SDK_BASELINE.json",
@@ -362,6 +363,27 @@ def verify(sdk):
     for relative, expected_hash in runtime["installed_elf_sha256"].items():
         require(digest(sdk / "rootfs" / relative) == expected_hash,
                 "Ubuntu runtime ELF changed: " + relative)
+    package_manifest = sdk / "compulab/packages/manifest.json"
+    require(package_manifest.is_file(), "Native CompuLab package manifest missing")
+    package_receipt = json.loads(package_manifest.read_text())
+    require(package_receipt.get("installed") and len(package_receipt["packages"]) == 9,
+            "CompuLab Debian package installation is incomplete")
+    for package in package_receipt["packages"]:
+        archive = sdk / "compulab/packages" / package["filename"]
+        require(archive.is_file() and digest(archive) == package["sha256"],
+                "Native CompuLab package changed: " + package["name"])
+        status = subprocess.check_output([
+            "dpkg-query", "--admindir=" + str(sdk / "rootfs/var/lib/dpkg"),
+            "-W", "-f=${Status}\t${Version}", package["name"]], text=True)
+        require(status.strip() == "install ok installed\t" + package["version"],
+                "Native CompuLab package is not installed: " + package["name"])
+        installed = set(subprocess.check_output([
+            "dpkg-query", "--admindir=" + str(sdk / "rootfs/var/lib/dpkg"),
+            "--listfiles", package["name"]], text=True).splitlines())
+        for relative, expected_hash in package["files"].items():
+            require("/" + relative in installed and
+                    digest(sdk / "rootfs" / relative) == expected_hash,
+                    "Unowned or changed CompuLab package file: " + relative)
     result = subprocess.check_output([sys.executable, "-B", str(sdk / "compulab/policy/bsp-protection.py"),
                                       "--sdk", str(sdk)], text=True)
     require(json.loads(result)["protected"], "Ubuntu BSP hold/update policy is not active")
@@ -392,6 +414,11 @@ def assemble(configuration, sdk):
         "--assets-dir", configuration["assets"], "--bundle-source", sources / "runtime",
         "--imx676-extended", configuration["imx676_extended"],
         "--imx678-extended", configuration["imx678_extended"], "--execute")
+    run(sys.executable, "-B", sources / "package-rootfs.py", "--sdk-root", sdk,
+        "--artifacts", artifacts,
+        "--work-dir", Path(configuration["work"]) / "ubuntu-debs",
+        "--version", configuration.get("deb_version", "39.2.1+compulab1"),
+        "--execute")
     write_json(sdk / "compulab/export-provenance.json", provenance)
     tracked = [p for p in (sdk / "compulab").rglob("*") if p.is_file()
                and "vendor-backup" not in p.parts and "receipts" not in p.parts

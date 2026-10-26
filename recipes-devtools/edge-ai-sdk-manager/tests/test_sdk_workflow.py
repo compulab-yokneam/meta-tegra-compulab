@@ -150,6 +150,15 @@ class SDKWorkflowTests(unittest.TestCase):
         self.write(Path(self.config["sources"]) / "fixture.txt", b"real source edit")
         self.assertNotEqual(BUILD.inputs(self.config), before)
 
+    def test_debian_package_version_changes_sdk_input_fingerprint(self):
+        self.fingerprint_inputs()
+        before = BUILD.inputs(self.config)
+        self.config["deb_version"] = "39.2.1+compulab2"
+        self.assertNotEqual(BUILD.inputs(self.config), before)
+        self.config["deb_version"] = "39.2.1\nInjected: field"
+        with self.assertRaises(RuntimeError):
+            BUILD.inputs(self.config)
+
     def test_private_log_is_not_echoed_to_task_output(self):
         with mock.patch("builtins.print") as output:
             BUILD.private_run([sys.executable, "-c", "print('PRIVATE-TEST-TEXT')"],

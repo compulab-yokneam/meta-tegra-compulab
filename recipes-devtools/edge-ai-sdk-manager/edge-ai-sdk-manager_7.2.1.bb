@@ -8,6 +8,7 @@ inherit nopackages
 SRC_URI = " \
     file://build-sdk.py \
     file://assemble-sdk.py \
+    file://package-rootfs.py \
     file://sdk-source \
     file://tegra234-edge-ai-gpio-default.dtsi \
     file://tegra234-edge-ai-pinmux.dtsi \
@@ -31,6 +32,8 @@ EDGE_AI_SDK_OUTPUT ?= "${DEPLOY_DIR_IMAGE}/jetpack-${PV}-image-build"
 # Outside WORKDIR/sstate: SDK Manager and chroot create root-owned files.
 EDGE_AI_SDK_HOST_WORK ?= "${TOPDIR}/sdk-manager-work/${MACHINE}"
 EDGE_AI_SDK_TIMEOUT ?= "21600"
+# Bump for a changed, independently upgradeable Ubuntu add-on package set.
+EDGE_AI_SDK_DEB_VERSION ?= "39.2.1+compulab1"
 
 def edge_ai_sdk_firmware_inputs(d):
     result = []
@@ -103,6 +106,7 @@ python do_create_sdk() {
         "firmware": json.loads(d.getVar("EDGE_AI_SDK_FIRMWARE_INPUTS")),
         "timeout": int(d.getVar("EDGE_AI_SDK_TIMEOUT")),
         "machine": d.getVar("MACHINE"),
+        "deb_version": d.getVar("EDGE_AI_SDK_DEB_VERSION"),
         "imx676_extended": d.getVar("EDGE_AI_IMX676_EXTENDED_MODES") or "1",
         "imx678_extended": d.getVar("EDGE_AI_IMX678_EXTENDED_MODES") or "0",
     }
