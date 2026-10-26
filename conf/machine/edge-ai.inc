@@ -45,7 +45,9 @@ FDT_OVERLAYS ?= ""
 EDGE_AI_FALLBACK_FDT_FILE = "tegra234-p3768-0000+p3767-0000-nv-super.dtb"
 L4T_UBOOT_EXTLINUX_EXTRA_FDTS:append = "${@'' if d.getVar('EDGE_AI_FALLBACK_FDT_FILE') in (d.getVar('UBOOT_EXTLINUX_FDT') or '').split() else ' ' + d.getVar('EDGE_AI_FALLBACK_FDT_FILE')}"
 
-TEGRA_DEFAULT_KERNEL = "linux-yocto"
+# tegrademo maps PREFERRED_PROVIDER_virtual/kernel:tegra to this selector.
+# The machine is read before the distro, and an explicit local.conf value wins.
+TEGRA_DEFAULT_KERNEL ?= "linux-noble-nvidia-tegra"
 
 CORE_IMAGE_BASE_INSTALL:append = " \
     edge-ai-fdt-selector \

@@ -97,6 +97,43 @@ UEFI capsule updates on the applicable hardware. Tag the resulting
 `meta-tegra-compulab` commit so downstream builds can select a stable layer
 revision instead of a moving branch.
 
+## Kernel provider
+
+The default kernel provider is `linux-noble-nvidia-tegra`, based on the
+JetPack 7.2.1 / L4T R39.2.1 NVIDIA Ubuntu Noble 6.8.12 sources. The shared
+`linux.inc` is still applied through the two wildcard bbappend symlinks.
+With the ADI camera profile enabled, a separate Noble backport preserves
+the serializer/deserializer framework and existing TI camera consumers.
+
+The original Linux 6.18 integration remains available for comparison and
+rollback. Select it explicitly in `conf/local.conf`:
+
+```bitbake
+TEGRA_DEFAULT_KERNEL = "linux-yocto"
+```
+
+To explicitly select Noble instead:
+
+```bitbake
+TEGRA_DEFAULT_KERNEL = "linux-noble-nvidia-tegra"
+```
+
+The `tegrademo` distro assigns `PREFERRED_PROVIDER_virtual/kernel:tegra`
+from `TEGRA_DEFAULT_KERNEL`. Its `:tegra` override takes precedence over a
+plain `PREFERRED_PROVIDER_virtual/kernel` assignment, so use the selector
+above with this distro. The machine sets it weakly before distro parsing;
+an explicit `TEGRA_DEFAULT_KERNEL` in `local.conf` overrides that default.
+Other distros that select the provider directly can use an explicit
+`PREFERRED_PROVIDER_virtual/kernel` assignment instead.
+
+Rebuild and deploy the kernel, matching NVIDIA modules, DTs and initramfs
+together. A Yocto-built Noble kernel is not a replacement module set for
+the SDK's stock Ubuntu binary kernel. Existing camera hardware validation
+reports describe the Linux 6.18 system until Noble hardware tests are
+recorded separately. See the [Noble integration notes](recipes-kernel/linux/files/adi-gmsl-v18-noble/README.txt)
+for build commands, the development-source override caveat and validation
+scope. This kernel port does not itself replace the Yocto rootfs with Ubuntu.
+
 ## UEFI boot logo options
 
 The default build uses the NVIDIA UEFI boot logo. The following optional
