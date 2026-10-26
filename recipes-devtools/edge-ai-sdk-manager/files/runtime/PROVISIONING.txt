@@ -1,0 +1,93 @@
+Recipe-native runtime provisioning
+=================================
+
+Maintained files in this directory are sources, patches and configuration.
+No prepared host SDK, Yocto userspace ELF, generated log, build receipt,
+NVIDIA source archive or duplicated NITO binary is required from a developer's
+home directory. The source-only SHA256SUMS checks this maintained subset.
+
+edge-ai-sdk-manager-runtime.inc adds 24 immutable inputs to SRC_URI with
+actual download URLs and SHA256s in ../runtime-assets.json:
+  - MMAPI R39.2.1 source .deb and public_sources.tbz2;
+  - ten native runtime .debs: NVIDIA GST, CUDA cudart/configuration/NVJPEG,
+    Noble efivar/libefisec and x264/Ugly;
+  - eight native ARM64 CUDA 13.2.86 development/compiler .debs;
+  - four same-layer existing proprietary generic demo NITO files.
+NITOs retain their existing license flag and provenance; no converter,
+diagnostic hotfix or proprietary core-library replacement is distributed.
+The NVIDIA source archive keeps its original licenses/notices. BitBake
+fetches these inputs normally, including mirrors and DL_DIR reuse.
+
+The parent recipe calls edge_ai_sdk_runtime_prepare_assets(d,destination)
+to collect only fetcher-resolved pinned files. It then calls:
+  provision-runtime.py --sdk-root /path/to/new/Linux_for_Tegra \
+      --work-dir /path/to/new/isolated-runtime-work \
+      --assets-dir /path/to/pinned-assets \
+      --bundle-source /path/to/unpacked/runtime
+The default prints a read-only plan, verifies input hashes/package identities
+and checks the freshly generated Noble R39.2.1 SDK. --execute is root-only,
+explicit, and requires the SDK's own existing Git baseline plus an already
+enabled ARM64 binfmt interpreter with persistent F flag. The helper never
+installs host packages, registers binfmt, calls SDK Manager, accesses a DUT,
+flashes, runs EFI operations or starts services. Those host prerequisites
+must be provided explicitly by the caller; they are not hidden mutations.
+
+On execution it assembles a new SDK compulab/runtime from this source subset,
+the four checksum-verified source subarchives and NITOs. The generated full
+SHA256SUMS now includes these assets and is the immutable build/stage input
+receipt. Existing runtime directories or work directories are not silently
+reused after a partial run.
+
+Runtime provisioning uses only the ten exact local .debs plus missing Noble
+launcher/GI/GStreamer dependencies. A temporary Ubuntu-only sources file
+uses the SDK's Ubuntu archive keyring, signed Noble/update/security indexes
+and HTTPS; actual SDK apt source configuration is not changed. A simulated
+APT plan must contain no removals or NVIDIA package changes other than the
+explicit GST runtime package. Existing 15 BSP package holds are retained;
+the parent applies its reversible BSP policy first so original selections
+remain recorded. Rootfs package script services are suppressed temporarily.
+
+The build root is a non-hardlinked isolated copy of that SDK Ubuntu userspace,
+without pseudo filesystems, kernel modules or original source trees. It gets
+signed Ubuntu development dependencies and only the pinned native ARM64 CUDA
+compiler/development packages. No compiler or new development package is
+copied back into the actual SDK. Ubuntu package versions, signed InRelease
+metadata and input hashes are recorded; changing Ubuntu updates can change
+the build environment, so this is automated and audited, not a claim of
+byte-identical builds forever without an immutable Ubuntu mirror.
+
+Native Ubuntu build-essential/CMake run under existing QEMU binfmt and build
+all 23 Argus sample names plus the three functional GST plugins. CUDA targets
+Orin SM87 and the real R39.2.1 T234 nvgpu driver for linking, never a toolkit
+runtime stub. The cross-build helpers remain optional for a deliberately
+prepared matching Ubuntu cross toolchain, but are not the automated default.
+Native-QEMU compilation can be slow; --jobs bounds parallelism.
+
+Only compiled apps/plugins, launchers, the Argus guard/drop-in and selected
+NITOs are staged. Pass --imx676-extended and --imx678-extended from the parent
+recipe's matched DT configuration. No Nano DT is enabled by the runtime
+helper. The unchanged vendor first-boot GPU selection must publish nvgpu
+runtime paths on T234; hardware-free checks use an explicit library path
+instead of running GPU-selection or module-loading services on the host.
+
+Hardware-free target loader and plugin-registration checks, GI imports and
+launcher dry-runs must pass. QEMU/no-GPU warnings are not camera qualification.
+Image/initrd, libnvscf/libcuda and vendor GPU-selection scripts are hashed
+before and after. The three locally replaced GST plugin files are protected
+by a separately recorded GST hold. Existing holds are never removed.
+All private dev/proc mounts and temporary policy-rc.d are restored on exit.
+Receipts, package provenance, build logs, installed hashes and previous-file
+backups are written under compulab/receipts/runtime-provision, with no prior
+developer-machine absolute receipts imported.
+
+To deliberately upgrade vendor GST, unhold nvidia-l4t-gstreamer, update the
+matched BSP source/runtime inputs, rebuild these local apps/plugins, stage
+and revalidate, then hold it again. To undo only this helper's new holds,
+use receipt.json new_holds as the exact apt-mark unhold list; do not broadly
+unhold the parent's independent BSP policy. Explicit dpkg/reinstall can
+overwrite a held package and is not prevented by this safety policy.
+
+The recipe implementation has unprivileged fixtures and source checks; an
+end-to-end SDK Manager/native-QEMU build and hardware test remain separate
+explicit execution/qualification steps. It does not claim that past manual
+cross-build validation proves this new orchestration has already run.

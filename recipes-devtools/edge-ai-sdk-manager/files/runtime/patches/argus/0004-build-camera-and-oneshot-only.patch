@@ -1,0 +1,26 @@
+Subject: [PATCH] argus: offer an explicit minimal Ubuntu camera build
+
+Keep the complete upstream sample list available. The minimal target contains
+the patched camera application and oneshot, without requiring configuration
+of unrelated CUDA examples. This is not full Argus sample feature parity.
+
+Upstream-Status: Inappropriate [CompuLab Ubuntu integration]
+
+--- a/argus/CMakeLists.txt
++++ b/argus/CMakeLists.txt
+@@ -36,6 +36,15 @@
+ 
+ project (ArgusSamples)
+ 
++option(EDGE_AI_MINIMAL_ARGUS "Build only camera and oneshot" OFF)
++if(EDGE_AI_MINIMAL_ARGUS)
++    add_subdirectory(samples/utils)
++    add_subdirectory(apps/camera)
++    add_subdirectory(samples/oneShot)
++    include(CPack)
++    return()
++endif()
++
+ add_subdirectory(apps/camera)
+ add_subdirectory(samples/bayerAverageMap)
+ add_subdirectory(samples/cudaBayerDemosaic)

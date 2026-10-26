@@ -1,0 +1,109 @@
+Orin Nano / NX recording encoder selection
+==========================================
+
+gst_camera.sh record supports --encoder auto|hardware|software. The default
+auto chooses hardware NVENC for Orin NX and CPU x264 for Orin Nano. Nano
+does not have an NVENC engine, even when gst-inspect lists nvv4l2h264enc in
+the common NVIDIA userspace package. A known Nano rejects forced hardware.
+Software can also be selected explicitly on NX or an unidentified platform.
+An unknown/conflicting platform requires an explicit choice; it never
+silently assumes NVENC availability. Explicit hardware on an unknown board
+is a user request, not confirmation that its hardware is supported.
+
+Examples (after validating the sensor's matching camera DT/profile):
+  /opt/compulab/bin/gst_camera.sh record --sensor-id 0 --duration 10 \
+      --output /tmp/camera-auto.mp4
+  /opt/compulab/bin/gst_camera.sh record --sensor-id 0 --encoder software \
+      --duration 10 --output /tmp/camera-cpu.mp4
+  /opt/compulab/bin/gst_camera.sh record --sensor-id 0 --encoder hardware \
+      --duration 10 --output /tmp/camera-nx.mp4
+Offline pipeline preview without a running camera/board uses an explicit
+sensor preset and encoder, for example:
+  /opt/compulab/bin/gst_camera.sh record --sensor imx678 \
+      --encoder software --duration 2 --dry-run
+--encoder is record-only. Live fullscreen and JPEG capture are unchanged.
+
+Read-only platform classification
+---------------------------------
+The launcher reads live /proc/device-tree/compatible and model properties.
+It recognizes P3767-0000/0001 as NX, P3767-0003/0004 as Nano. P3767-0005, the
+Nano developer-kit variant, is classified as Nano for software selection;
+that recognition does not add an Edge-AI BSP profile for that variant.
+Unambiguous "Orin NX"/"Orin Nano" model names provide a fallback when no
+module SKU appears in compatible. /etc/nv_boot_control.conf TNSPEC and
+COMPATIBLE_SPEC records can provide the fallback module SKU. That file is
+parsed as data, never sourced. Contradictory NX/Nano identities or unknown
+module SKUs fail auto rather than guessing. No nvbootctrl write, EEPROM
+write, kernel module probe, encoder initialization or service action is
+used to identify the platform.
+
+The software path retains the selected Argus acquisition mode and the
+launcher's existing encoded resolution/frame rate:
+  nvarguscamerasrc ! native NVMM/NV12 caps ! nvvidconv !
+  video/x-raw,format=I420,width=...,height=...,pixel-aspect-ratio=1/1 !
+  x264enc bitrate=8000 speed-preset=ultrafast tune=zerolatency
+      key-int-max=<twice-native-fps> ! h264parse ! mp4mux ! fdsink fd=3
+The I420 caps deliberately omit memory:NVMM: x264enc consumes CPU memory.
+Its bitrate unit is kbit/s, so 8000 matches the old NVENC 8000000 bit/s.
+NVENC retains its original NVMM/NV12 pipeline on NX. MP4 exclusive output,
+duration frame limits and Ctrl+C/EOS finalization are unchanged. No automatic
+fallback after a failed recording is attempted, avoiding a misleading
+second run or partially replaced file. CPU encoding can consume substantial
+CPU/bandwidth; realtime throughput at all modes is not promised, especially
+for simultaneous streams. Tune/benchmark on the actual Nano hardware.
+
+Native Ubuntu dependency and provenance
+---------------------------------------
+The original manually prepared SDK already contained these ARM64 runtime
+packages, so that recording change needed no package install/upgrade or
+additional hold. The automated recipe now fetches their exact .debs and
+installs them when missing; see PROVISIONING.txt.
+  gstreamer1.0-plugins-ugly 1.24.1-1build1
+  libx264-164 2:0.164.3108+git31e19f9-1
+Their installed libgstx264.so and libx264.so.164 match byte-for-byte the
+payloads of official Ubuntu packages fetched only for provenance checks.
+Downloaded package SHA256s matched the signed Noble universe ARM64 index:
+  gstreamer1.0-plugins-ugly_1.24.1-1build1_arm64.deb
+    b86c6c6e2d74f566eca3c1e4e9b5488ec44316ba17eab09c8b25c42f8a6cf8dd
+  libx264-164_0.164.3108+git31e19f9-1_arm64.deb
+    3c39d6d99faab1bc07178f0ad64512e8c7301329d24458d7538a28890fd044a2
+Official package URLs:
+  https://ports.ubuntu.com/ubuntu-ports/pool/universe/g/gst-plugins-ugly1.0/gstreamer1.0-plugins-ugly_1.24.1-1build1_arm64.deb
+  https://ports.ubuntu.com/ubuntu-ports/pool/universe/x/x264/libx264-164_0.164.3108+git31e19f9-1_arm64.deb
+Ubuntu Noble InRelease verified with archive key fingerprint
+  F6ECB3762474EDA9D21B7022871920D1991BC93C
+Signed universe/binary-arm64/Packages SHA256 matched the local index:
+  adb1c01115c3b11d2a5cde43b17ce3c53fa7cc48f834b930f63910d2c7dc74f5
+SDK-stripped translation files reported by dpkg --verify are unrelated to
+the unchanged codec ELF payloads; they were not restored or modified.
+
+Validation and remaining qualification
+--------------------------------------
+The bundle suite covers both Nano/NX SKUs, model and boot-control
+fallbacks, identity conflicts, unknown-platform explicit choice, denial of
+Nano NVENC, CPU I420 pipeline, duration/MP4, dry-run no-output behavior and
+unchanged fullscreen preview. Actual-rootfs QEMU checks passed x264 loader
+relocations, plugin/element registration and advertised I420/encoder
+properties, plus deployed-script syntax/software/fullscreen dry runs. No
+pipeline, encoder, camera or service was started. The private /dev mount was
+removed. Image, initrd, libnvscf and T234 nvgpu libcuda hashes and all existing
+15 BSP plus one GST package holds were preserved. See the separate receipt
+under compulab/receipts/runtime-nano-recording/ for exact hashes/logs.
+
+This runtime addition does NOT enable/reuse an NX16 camera DT on Nano. Nano
+must boot an appropriate board DT and a separately built/validated carrier,
+SerDes and sensor configuration. Camera presence, ISP tuning, all sensor
+modes/ports, throughput and mixed/simultaneous capture still need hardware
+qualification. Platform classification is not physical sensor detection.
+
+Source and binary receipt handling
+----------------------------------
+The runtime SHA256SUMS manifest was regenerated for this shell/test/docs
+revision and the deployed launcher matches its maintained source. The 23
+Argus apps and 3 local GST plugin binaries were not rebuilt or changed;
+their original immutable build input manifest and installed ELF receipts
+remain historical evidence for the earlier binary build. They must not be
+relabeled as newly built against this revised bundle. A fresh full build
+is required before runtime-port.sh can stage those binaries from a new
+work directory with a matching current bundle receipt. The new launcher
+revision has its own source/deployment and preserved-payload hash receipt.

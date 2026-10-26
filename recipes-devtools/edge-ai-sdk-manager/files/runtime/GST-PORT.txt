@@ -1,0 +1,57 @@
+NVIDIA GStreamer Ubuntu-native source port
+=========================================
+
+The SDK Manager base rootfs contains the NVIDIA camera runtime but not the
+nvidia-l4t-gstreamer package. Install that exact native R39.2.1 package first.
+It provides nvarguscamerasrc, nvvidconv, nvjpegenc, V4L2 encode/decode and
+libgstnvcustomhelper. Do not replace GLib or GStreamer with the Yocto builds.
+
+To preserve the functional source fixes used by OE4T, recipe assembly adds
+the exact four small NVIDIA source subarchives extracted from the pinned
+Jetson-public_sources-39.2.1.tbz2. They are fetched inputs, not duplicated
+inside the layer's source-only bundle. Original licenses stay in the archives.
+Only these runtime patches are applied:
+  gst-nvvidconv: nvvidconv-caps.patch (NVMM caps fixation/negotiation)
+  gst-v4l2: v4l2-0001..0004 (allocator, bufferpool, ifdef and null-pool checks)
+
+Do not apply the orphan nvvidconv 0003 patch; it is not in the active recipe.
+OE-only install paths and cross-build patches are not applied blindly to
+Ubuntu. gst-port.sh passes explicit native library/include locations to the
+vendor Makefiles, retaining the original source and license notices.
+
+gst-port.sh defaults to check (read-only bundle verification).
+prepare --work-dir NEWDIR unpacks sources and applies the five functional
+patches in a new scratch directory. build --work-dir NEWDIR additionally
+requires Ubuntu 24.04 aarch64, the pinned runtime packages, MMAPI headers,
+libv4l-dev and CUDA runtime development headers/library layout for nvvidconv.
+--mmapi-source and --cuda-path select those explicit dependency locations.
+No package installation, plugin registration or SDK staging occurs here.
+
+The optional build produces three plugins; nvjpeg and the vendor custom
+helper are retained from the matching Ubuntu NVIDIA package. Full plugin
+feature parity still needs native compilation, gst-inspect registration
+and real capture/encode/decode tests. Source patch application is not proof.
+
+runtime-port.sh stage --gst-work-dir DIR opts into replacing the three
+native plugin files, with backups and a matching source-bundle receipt.
+Without that explicit option it leaves all Ubuntu vendor plugins intact.
+No NVIDIA proprietary core library is replaced in either case.
+
+cross-build-gst.sh is the host-cross alternative. It accepts --sysroot,
+--work-dir NEWDIR, --mmapi-source and target --cuda-prefix. All library,
+include and pkg-config paths are constrained to the isolated Ubuntu ARM64
+sysroot; output RUNPATH uses target paths, not the host build directory.
+It never executes a target plugin. Check relocations and gst-inspect under
+the intended Ubuntu loader separately before any real SDK staging.
+CUDA 13.2 SBSA packages use targets/sbsa-linux, not the old aarch64-linux
+toolkit directory. Both build helpers detect the actual pinned toolkit
+target directory and pass explicit include/library paths to the vendor
+Makefile rather than creating a misleading compatibility symlink.
+
+R39.2.1 also stores the T234 CUDA driver payload under
+/opt/nvidia/l4t-gpu-libs/nvgpu. Before first boot it may not be published in
+the ld.so cache: nv-load-gpu-libs.service selects it from the chip identity.
+Cross builds use that exact existing payload as rpath-link only, without
+copying it to /usr/lib or forcing an OpenRM driver based on display-module
+version. Runtime loader checks must select the same nvgpu directory without
+running any GPU-selection or module-loading service on the build host.

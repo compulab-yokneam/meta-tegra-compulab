@@ -1,0 +1,65 @@
+Concrete file and build mapping
+===============================
+
+R39.2.1 source baseline
+----------------------
+MMAPI package SHA256/version are checked before --source-deb extraction:
+  fe88dbe8afe4158f5985e32fd0dddc83768091788b3bd1ffbc8d878492cee30b
+  39.2.1-20260806224157, arm64
+Use the cached nvidia-l4t-jetson-multimedia-api .deb explicitly; do not use
+the already-patched Yocto work source as though it were pristine source.
+
+Ubuntu aarch64 build example (after deliberate dependency installation):
+  bash runtime-port.sh build --work-dir /var/tmp/edge-ai-argus-build \
+      --source-deb /path/to/nvidia-l4t-jetson-multimedia-api_39.2.1-20260806224157_arm64.deb
+
+Explicit host cross-build alternative against an isolated Ubuntu sysroot:
+  bash cross-build-argus.sh build --sysroot /path/to/isolated-ubuntu-rootfs \
+      --work-dir /path/to/new-argus-work \
+      --source-deb /path/to/nvidia-l4t-jetson-multimedia-api_39.2.1-20260806224157_arm64.deb
+This uses host CMake/pkg-config and an aarch64-linux-gnu compiler while
+constraining include/library discovery to the Ubuntu ARM64 sysroot. It
+records ELF dependencies and symbol versions but does not run the app.
+
+Optional plugin source/build examples:
+  bash gst-port.sh prepare --work-dir /var/tmp/edge-ai-gst-source-review
+  bash gst-port.sh build --work-dir /var/tmp/edge-ai-gst-build \
+      --mmapi-source /var/tmp/edge-ai-argus-build/source \
+      --cuda-path /usr/local/cuda-13.2
+Both directories must be new. Do not run prepare and then build into the
+same directory: build creates a clean independently prepared source set.
+
+Explicit SDK staging (only after matched kernel/DT build and Git baseline):
+  sudo bash runtime-port.sh stage --rootfs /path/to/Linux_for_Tegra/rootfs \
+      --work-dir /path/to/native-argus-build \
+      --imx676-extended 1 --imx678-extended 0
+Add --gst-work-dir /path/to/native-gst-build only to replace rebuilt plugins.
+The SDK rootfs must already contain the native Ubuntu/NVIDIA dependencies.
+No host apt/chroot/SDK Manager operation is hidden in these commands.
+
+Owned runtime destinations
+--------------------------
+  Native rebuilt apps -> /usr/bin/argus_camera, /usr/bin/argus_oneshot
+  Adapted scripts -> /opt/compulab/bin/argus_camera.sh, gst_camera.sh
+  Desktop delegation -> /usr/libexec/edge-ai-desktop-exec
+  Guard -> /usr/libexec/edge-ai-argus-framos-demo-check
+  Drop-in -> /etc/systemd/system/nvargus-daemon.service.d/90-edgedes-framos-demo.conf
+  Selected IMX676/IMX678 profiles -> /var/nvidia/nvcam/settings/edgedes-SENSOR-demo.nito
+  Agreement/provenance -> /usr/share/edge-ai-argus-framos-demo/
+  Optional 3 plugins -> /usr/lib/aarch64-linux-gnu/gstreamer-1.0/
+
+Stage backs up existing owned destinations under the explicit native build
+work directory and records installed paths. It refuses a running-host root,
+escaping destination symlinks, missing native receipts or missing SDK Git
+baseline. It never invokes ldconfig, update-initramfs or systemctl on the
+host. Target cache/initramfs generation and boot choice remain deliberate
+parent integration actions. Do not claim rollback is a single file copy:
+restore matched kernel, modules, DT, initramfs, NITO and boot entries.
+
+Not provided by this userspace bundle
+------------------------------------
+Kernel/OOT modules, in-tree ADI backports, board DT/DTBO generation, UEFI,
+pinmux/BCT, QSPI flashing, capsule generation, full CUDA toolkit/sample
+builds, a desktop account/compositor, physical-camera qualification or a
+claim that mixed models have qualified per-camera NITO identities.
+The stock native NVIDIA core runtime libraries remain untouched.

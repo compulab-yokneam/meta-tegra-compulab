@@ -1,0 +1,41 @@
+Full Ubuntu ARM64 Argus sample suite
+===================================
+
+The optional --suite full cross build must produce all 23 executables in
+files/argus-full-suite.txt, matching the current Yocto image by name. The
+two NvAndroid-only samples are not in that Yocto set and remain omitted
+when the vendor NvAndroid API is unavailable. A successful build and ELF
+loader check do not qualify actual camera, CUDA, display or encoder use.
+
+Run cross-build-argus.sh build with the same --sysroot, --source-deb and
+new --work-dir as the minimal build, adding:
+  --suite full --cuda-host /PATH/TO/EXTRACTED/usr/local/cuda-13.2
+
+The host CUDA tree is extracted from NVIDIA's exact 13.2.86-1 amd64 .debs:
+  cuda-nvcc-13-2 (nvcc/cudafe/fatbinary/nvlink/ptxas)
+  libnvvm-13-2 (cicc and libdevice)
+  cuda-crt-13-2 (host compiler support headers)
+Do not use a Yocto-built nvcc helper linked against Yocto's newer glibc.
+These official NVIDIA host tools execute on x86 only; they are never
+installed into the target rootfs. The resulting C++/CUDA host code is
+compiled by Ubuntu's aarch64-linux-gnu-g++ against the Noble ARM64 sysroot.
+
+Both that extracted host tree and the isolated target sysroot also require
+the exact target CUDA headers from ARM64 13.2.86-1 packages:
+  cuda-cudart-dev-13-2, cuda-crt-13-2, cuda-cccl-13-2
+  cuda-nvcc-13-2: extract ONLY targets/sbsa-linux/include/fatbinary_section.h
+The host tree keeps its x86 bin/nvvm tools; do not overwrite them with the
+ARM64 compiler executables. Mechanical .deb extraction does not run package
+scripts. The target sysroot needs cudart/libculibos development libraries
+provided by the cudart development package dependencies. Actual runtime
+needs only cudart and its configuration packages, not the compiler.
+
+FindCUDA in host CMake 3.28 predates the CUDA SBSA layout. Explicit cached
+toolkit paths, including INTERNAL path guards, avoid losing the supplied
+ARM64 paths during discovery. NVCC targets sbsa-linux headers, Orin SM87,
+and forwards --sysroot to the ARM64 C++ compiler. -lcuda resolves to the
+stock R39.2.1 T234 nvgpu driver payload, never a toolkit runtime stub.
+
+The stage action recognizes either minimal or full build receipts and
+installs only the corresponding verified executable name list. Minimal
+builds remain available when the full CUDA toolchain is not prepared.

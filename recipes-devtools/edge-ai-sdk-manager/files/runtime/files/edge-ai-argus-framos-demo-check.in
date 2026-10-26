@@ -1,0 +1,132 @@
+#!/bin/sh
+# Guard the demo override; --start selects the configured NITO lookup and execs
+# the unchanged NVIDIA daemon. No camera/device registers are changed here.
+set -eu
+
+case "${1-}" in
+    ""|--start) ;;
+    *) printf '%s\n' "Usage: $0 [--start]" >&2; exit 2 ;;
+esac
+test "$#" -le 1 || exit 2
+
+skip_demo() {
+    printf '%s\n' "FRAMOS Argus demo skipped: $*. Remove the demo package/drop-in to restore generic Argus." >&2
+    # ExecCondition exit 1 skips the service without a restart failure loop.
+    exit 1
+}
+
+nito_selection_requested="@NITO_SELECTION@"
+case "$nito_selection_requested" in
+    auto|single|per-camera) ;;
+    *) skip_demo "unsupported NITO selection '$nito_selection_requested'" ;;
+esac
+
+dt_platform=/proc/device-tree/tegra-camera-platform
+dt_modules=$dt_platform/modules
+test -d "$dt_modules" || skip_demo "camera modules are absent from the live device tree"
+active_modules=0
+seen_ports=""
+camera_type=""
+for camera_module in "$dt_modules"/module*; do
+    test -d "$camera_module" || continue
+    if test -r "$camera_module/status"; then
+        module_status=$(tr -d '\000' < "$camera_module/status")
+        case "$module_status" in
+            disabled|fail|fail-*) continue ;;
+            okay|ok) ;;
+            *) skip_demo "unexpected camera-module status '$module_status'" ;;
+        esac
+    fi
+    test -r "$camera_module/badge" || skip_demo "an active camera module has no badge"
+    module_badge=$(tr -d '\000' < "$camera_module/badge")
+    module_name=${camera_module##*/}
+    case "$module_name" in
+        module0|module1|module2|module3) ;;
+        *) skip_demo "unsupported camera module '$module_name'" ;;
+    esac
+    case "$module_badge" in
+        imx676_port[0-3]_framos|imx678_port[0-3]_framos)
+            module_type=${module_badge%%_port*}
+            port=${module_badge#*_port}
+            port=${port%_framos}
+            if test -z "$camera_type"; then
+                camera_type=$module_type
+            elif test "$camera_type" != "$module_type"; then
+                camera_type=mixed
+            fi
+            case " $seen_ports " in
+                *" $port "*) skip_demo "duplicate $module_type port-$port module" ;;
+            esac
+            seen_ports="$seen_ports $port"
+            ;;
+        *) skip_demo "unsupported active camera badge '$module_badge'" ;;
+    esac
+    active_modules=$((active_modules + 1))
+done
+
+test "$active_modules" -gt 0 || skip_demo "no supported active camera module was found"
+test "$active_modules" -le 4 || skip_demo "at most four camera modules are supported"
+nito_selection=$nito_selection_requested
+case "$nito_selection_requested" in
+    auto)
+        if test "$camera_type" = mixed; then
+            test -e "$dt_platform/compulab,per-camera-nito" ||
+                skip_demo "mixed modules require a marked modular DT profile"
+            nito_selection=per-camera
+        else
+            # Decide from discovered active modules, not configured overlays.
+            # A mixed overlay with only one connected model uses its fixed NITO.
+            nito_selection=single
+        fi
+        ;;
+    per-camera)
+        if ! test -e "$dt_platform/compulab,per-camera-nito"; then
+            # Preserve the forced-file path for legacy boot-menu fallbacks.
+            nito_selection=single
+        fi
+        ;;
+esac
+
+case "$nito_selection" in
+    single)
+        case "$camera_type" in
+            imx676) profile=edgedes-imx676-demo.nito ;;
+            imx678) profile=edgedes-imx678-demo.nito ;;
+            *) skip_demo "mixed IMX676/IMX678 modules require per-camera NITO selection and a marked modular DT profile" ;;
+        esac
+        nito_path=@LOCALSTATEDIR@/nvidia/nvcam/settings/$profile
+        # Check at ExecCondition as well as --start, avoiding a restart loop.
+        test -f "$nito_path" && test -r "$nito_path" ||
+            skip_demo "missing readable regular NITO '$nito_path'"
+        ;;
+    per-camera)
+        # The vendor daemon uses this default directory without the override.
+        # Presence is a prerequisite, not proof of an embedded identity match.
+        nito_path=/var/nvidia/nvcam/settings
+        test -d "$nito_path" ||
+            skip_demo "missing default NITO directory '$nito_path'"
+        readable_nito=false
+        for nito_profile in "$nito_path"/*.nito; do
+            if test -f "$nito_profile" && test -r "$nito_profile"; then
+                readable_nito=true
+                break
+            fi
+        done
+        "$readable_nito" || skip_demo "no readable NITO in '$nito_path'"
+        ;;
+esac
+
+printf '%s\n' "FRAMOS Argus demo: requested NITO policy=$nito_selection_requested; effective=$nito_selection; active cameras=$active_modules; model=$camera_type; NITO=$nito_path" >&2
+if test "$nito_selection" = per-camera; then
+    printf '%s\n' "FRAMOS Argus demo: per-camera NITO lookup requires matching embedded camera identities; mixed-sensor capture is experimental and unqualified." >&2
+fi
+if test "${1-}" = --start; then
+    # Never let an inherited CONFIG/file override choose another camera's NITO.
+    unset NVCAMERA_NITO_PATH
+    if test "$nito_selection" = single; then
+        NVCAMERA_NITO_PATH=$nito_path
+        export NVCAMERA_NITO_PATH
+    fi
+    exec /usr/sbin/nvargus-daemon
+fi
+exit 0

@@ -1,0 +1,73 @@
+Ubuntu-native camera port dependencies
+=====================================
+
+Exact NVIDIA release: 39.2.1-20260806224157, Ubuntu 24.04 aarch64.
+Keep the installed NVIDIA driver/camera/multimedia libraries from that
+release. Do not copy Yocto GLib, GStreamer, libc or libstdc++ into Ubuntu.
+
+Runtime packages (install deliberately; this bundle never runs apt):
+  nvidia-l4t-camera=39.2.1-20260806224157
+  nvidia-l4t-gstreamer=39.2.1-20260806224157
+  nvidia-l4t-multimedia=39.2.1-20260806224157
+  gstreamer1.0-tools
+  gstreamer1.0-plugins-good
+  gstreamer1.0-plugins-bad
+  gstreamer1.0-plugins-ugly (x264enc software recording on Nano or NX)
+  libx264-164 (native ARM64 software encoder library)
+  libgtk-3-0t64
+  libx11-6
+  xwayland (for the GTK preview inside a Wayland desktop)
+
+Build packages, in the Ubuntu aarch64 build environment:
+  nvidia-l4t-jetson-multimedia-api=39.2.1-20260806224157
+  build-essential cmake pkg-config patch xxd
+  libgtk-3-dev libx11-dev libexpat1-dev
+  libegl-dev libgles-dev libjpeg-dev
+  libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
+
+Alternative for the source package: build --source-deb FILE validates the
+exact cached MMAPI .deb SHA256 and extracts it into the new work directory,
+without installing it. Installing that vendor .deb normally also requires
+libcudart.so.13, libcudart.so.13-dev, libglvnd-dev and libvulkan-dev according
+to its control metadata. The extraction mode does not install or bypass
+runtime/development library requirements of the binaries being compiled.
+
+The original plain SDK rootfs lacked several of those packages. Subsequent
+installation results are in UBUNTU-BUILD-RESULTS.txt. Use exact cached
+NVIDIA .debs or the matching official feed; do not silently upgrade the BSP
+to another release while resolving dependencies.
+
+Minimal build targets: argus_camera and argus_oneshot, with the three
+CompuLab patches and a fourth explicit minimal-build CMake switch. Configure
+CUDA discovery off for this subset. The optional --suite full cross build
+adds all 23 image sample executables, including CUDA examples; its exact
+compiler/header requirements and remaining validation limits are recorded
+in FULL-ARGUS.txt.
+
+NVIDIA GStreamer sources and functional patch mapping are in GST-PORT.txt.
+The optional source rebuild is a separate action, not part of the minimal
+Argus build or the config/data staging step. Stock NVIDIA plugin registration
+must be verified before preview/capture. Host compilation alone cannot test
+GPU or camera access, and no camera daemon is started by these scripts.
+
+Required elements for the launcher:
+  live: nvarguscamerasrc nvvidconv waylandsink
+  record hardware: nvarguscamerasrc nvvidconv nvv4l2h264enc h264parse mp4mux fdsink
+  record software: nvarguscamerasrc nvvidconv x264enc h264parse mp4mux fdsink
+  capture: nvarguscamerasrc nvjpegenc multifilesink
+
+Check each with gst-inspect-1.0 and test every selected sensor mode on the
+actual hardware. A registered nvv4l2h264enc does not give Nano NVENC hardware.
+Nano auto-recording uses CPU-memory I420 and native Ubuntu x264enc instead;
+see NANO-RECORDING.txt. Camera DT/profile support must be qualified separately.
+
+Resolved CUDA dependencies for the optional nvvidconv source rebuild:
+  cuda-cudart-dev-13-2=13.2.86-1
+  cuda-crt-13-2=13.2.86-1 (provides crt/host_config.h)
+  cuda-cccl-13-2=13.2.86-1 (dependency of the development package)
+Only cuda-cudart-13-2=13.2.86-1 plus its three toolkit configuration packages
+are required as added runtime payload. Keep all actual SDK kernel, GPU
+driver and bootloader packages unchanged. The correct T234 CUDA driver
+is already supplied under /opt/nvidia/l4t-gpu-libs/nvgpu by R39.2.1.
+Stock JPEG capture additionally needs libnvjpeg-13-2=13.1.0.59-1 because
+libnvmm_jpeg.so dynamically opens libnvjpeg.so.13; see the actual build report.

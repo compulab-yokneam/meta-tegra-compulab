@@ -1,0 +1,9 @@
+# Demo-only, IMX676/IMX678 port-0..3 ADI profile; NITO selection: @NITO_SELECTION@.
+# Auto uses a model-specific NITO for homogeneous connected cameras.
+# Per-camera lookup requires matching embedded identities; mixed is experimental.
+# Legacy DT profiles retain their validated single-NITO fallback.
+# Remove before using another camera profile to restore generic configuration.
+[Service]
+ExecCondition=@LIBEXECDIR@/edge-ai-argus-framos-demo-check
+ExecStart=
+ExecStart=@LIBEXECDIR@/edge-ai-argus-framos-demo-check --start

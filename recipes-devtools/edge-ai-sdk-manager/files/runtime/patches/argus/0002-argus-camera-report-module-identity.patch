@@ -1,0 +1,25 @@
+Subject: [PATCH] argus: camera: report the identity of each enumerated device
+
+Argus device indexes are compact and must not be inferred from device-tree
+module numbers or video-node suffixes. Print the model and unique module
+string next to the actual device index in --info output so the launcher can
+resolve a physical EDGEDES port using its imx676/imx678 module badge.
+
+This only adds device information; enumeration and capture are unchanged.
+
+Upstream-Status: Inappropriate [CompuLab launcher integration]
+
+diff --git a/argus/apps/camera/modules/Dispatcher.cpp b/argus/apps/camera/modules/Dispatcher.cpp
+--- a/argus/apps/camera/modules/Dispatcher.cpp
++++ b/argus/apps/camera/modules/Dispatcher.cpp
+@@ -1307,6 +1307,10 @@ bool Dispatcher::getInfo(std::string &info) const
+         if (!iCameraProperties)
+             ORIGINATE_ERROR("Failed to get ICameraProperties interface");
+ 
++        stream << "  Model Name: " <<
++            iCameraProperties->getModelName() << std::endl;
++        stream << "  Module String: " <<
++            iCameraProperties->getModuleString() << std::endl;
+         stream << "  Max AE Regions: " <<
+             iCameraProperties->getMaxAeRegions() << std::endl;
+         stream << "  Max AWB Regions: " <<

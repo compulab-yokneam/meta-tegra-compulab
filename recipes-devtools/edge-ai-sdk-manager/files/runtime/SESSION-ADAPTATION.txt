@@ -1,0 +1,27 @@
+Ubuntu preview session adaptation
+================================
+
+The adapted launchers do not create a weston user or compositor. They keep
+the original physical-port/compact-index mapping, simultaneous Argus view,
+IMX676/IMX678 mode presets, GStreamer recording/JPEG and fullscreen options.
+
+Preferred preview: run from a terminal inside the logged-in Ubuntu user's
+Wayland desktop. gst_camera.sh live uses that user's Wayland socket. The
+GTK camera application uses XWayland and therefore needs DISPLAY (and the
+desktop session's normal Xauthority access). XWayland must be available.
+
+Root/SSH preview: explicitly provide EDGE_AI_DESKTOP_USER. For GTK also
+provide EDGE_AI_DISPLAY and EDGE_AI_XAUTHORITY from that user's session.
+Do not guess DISPLAY=:0 or assume a fixed UID. For GStreamer an explicit
+EDGE_AI_WAYLAND_DISPLAY may disambiguate multiple sockets. The helper
+requires a real non-root account and existing /run/user/UID, delegates
+through runuser and never evaluates arguments as shell code.
+
+No helper reads /proc/*/environ, opens credentials, creates an account,
+changes display permissions or uses xhost. X11 socket/session metadata
+must be configured by the administrator from the intended desktop session.
+
+Capture/record do not need a display or this helper. All operations still
+need functioning camera drivers, matching DT/NITO and NVIDIA userspace.
+Session adaptation has only shell/static checks here; it has not been
+tested against GNOME, XWayland, Weston or a camera in this preparation step.

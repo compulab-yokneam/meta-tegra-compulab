@@ -1,0 +1,34 @@
+From ed70ab052975830458ee7069035bfb6b29dfb5bd Mon Sep 17 00:00:00 2001
+From: Ilies CHERGUI <ichergui@nvidia.com>
+Date: Fri, 24 Apr 2026 07:39:04 -0700
+Subject: [PATCH] v4l2allocator: Fix data offset / bytesused size
+ validation
+
+The check was too strict causing spurious warning. Now check for <= so that 0
+sized buffer do not cause a warning.
+
+Part-of: <https://gitlab.freedesktop.org/gstreamer/gst-plugins-good/-/merge_requests/649>
+
+Upstream-Status: Backport [https://gitlab.freedesktop.org/gstreamer/gst-plugins-good/-/merge_requests/649]
+Signed-off-by: Jose Quaresma <quaresma.jose@gmail.com>
+Signed-off-by: Ilies CHERGUI <ilies.chergui@gmail.com>
+---
+ gstv4l2allocator.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/gstv4l2allocator.c b/gstv4l2allocator.c
+index 4d91fdd..38c6c57 100644
+--- a/gstv4l2allocator.c
++++ b/gstv4l2allocator.c
+@@ -1513,7 +1513,7 @@ gst_v4l2_allocator_dqbuf (GstV4l2Allocator * allocator,
+ 
+       offset = group->planes[i].data_offset;
+ 
+-      if (group->planes[i].bytesused > group->planes[i].data_offset) {
++      if (group->planes[i].bytesused >= group->planes[i].data_offset) {
+         size = group->planes[i].bytesused - group->planes[i].data_offset;
+       } else {
+         GST_WARNING_OBJECT (allocator, "V4L2 provided buffer has bytesused %"
+-- 
+2.43.0
+

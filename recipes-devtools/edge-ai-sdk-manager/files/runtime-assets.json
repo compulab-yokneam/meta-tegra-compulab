@@ -1,0 +1,40 @@
+{
+  "schema": 1,
+  "bases": {
+    "nvidia": "https://repo.download.nvidia.com/jetson/common/",
+    "ubuntu": "https://ports.ubuntu.com/ubuntu-ports/",
+    "sources": "https://developer.nvidia.com/downloads/embedded/L4T/r39_Release_v2.1/sources/"
+  },
+  "assets": [
+    {"id":"mmapi","source":"nvidia","path":"pool/main/n/nvidia-l4t-jetson-multimedia-api/nvidia-l4t-jetson-multimedia-api_39.2.1-20260806224157_arm64.deb","sha256":"fe88dbe8afe4158f5985e32fd0dddc83768091788b3bd1ffbc8d878492cee30b","role":"source"},
+    {"id":"publicsources","source":"sources","path":"public_sources.tbz2","file":"Jetson-public_sources-39.2.1.tbz2","sha256":"8346f0371649a92c42293b2d4a7bf3d69e4dd1de23009e1463ea910994a81371","role":"source"},
+    {"id":"gstreamer","source":"nvidia","path":"pool/main/n/nvidia-l4t-gstreamer/nvidia-l4t-gstreamer_39.2.1-20260806224157_arm64.deb","sha256":"5101937ba4df642e2a054b5bc87ff6155703fee21ad1c85c134d6cf2b02b6f33","role":"runtime","package":"nvidia-l4t-gstreamer","version":"39.2.1-20260806224157"},
+    {"id":"cudart","source":"nvidia","path":"pool/main/c/cuda-cudart/cuda-cudart-13-2_13.2.86-1_arm64.deb","sha256":"550a1c3c915637b5c0d6538b9eba87471742c4be854438ab8a050caabdea8001","role":"runtime","package":"cuda-cudart-13-2","version":"13.2.86-1"},
+    {"id":"cudaconfig","source":"nvidia","path":"pool/main/c/cuda-cudart/cuda-toolkit-config-common_13.2.86-1_all.deb","sha256":"7f46bcda9ddc013b2746e872fa86fe24b5fb804cf27f4b4cb2b1f3a1b395e0b5","role":"runtime","package":"cuda-toolkit-config-common","version":"13.2.86-1"},
+    {"id":"cuda13config","source":"nvidia","path":"pool/main/c/cuda-cudart/cuda-toolkit-13-config-common_13.2.86-1_all.deb","sha256":"fa71974c9f87cd427b81dd757380c2d5f9d396b4bded62798089c957fed3a26c","role":"runtime","package":"cuda-toolkit-13-config-common","version":"13.2.86-1"},
+    {"id":"cuda132config","source":"nvidia","path":"pool/main/c/cuda-cudart/cuda-toolkit-13-2-config-common_13.2.86-1_all.deb","sha256":"35d856d59c02d5893c831de201d78895b93a0520b594628cff9af9470b3306cb","role":"runtime","package":"cuda-toolkit-13-2-config-common","version":"13.2.86-1"},
+    {"id":"nvjpeg","source":"nvidia","path":"pool/main/libn/libnvjpeg/libnvjpeg-13-2_13.1.0.59-1_arm64.deb","sha256":"bcc60671b0a0ae7be7eede514b8483ab195aa8210cd1645a47af83d864c2b7f7","role":"runtime","package":"libnvjpeg-13-2","version":"13.1.0.59-1"},
+    {"id":"efivar","source":"ubuntu","path":"pool/main/e/efivar/efivar_38-3.1build1_arm64.deb","sha256":"978dfbca1df652c3d6415aeeb21cceec2888f3fc3b87952eb59ce5dd8a0874b3","role":"runtime","package":"efivar","version":"38-3.1build1"},
+    {"id":"efisec","source":"ubuntu","path":"pool/main/e/efivar/libefisec1t64_38-3.1build1_arm64.deb","sha256":"dbe232e50324ccf212ec7086aff5b11751522d34c2adaeb5fb7c2eb23e0acfb9","role":"runtime","package":"libefisec1t64","version":"38-3.1build1"},
+    {"id":"ugly","source":"ubuntu","path":"pool/universe/g/gst-plugins-ugly1.0/gstreamer1.0-plugins-ugly_1.24.1-1build1_arm64.deb","sha256":"b86c6c6e2d74f566eca3c1e4e9b5488ec44316ba17eab09c8b25c42f8a6cf8dd","role":"runtime","package":"gstreamer1.0-plugins-ugly","version":"1.24.1-1build1"},
+    {"id":"x264","source":"ubuntu","path":"pool/universe/x/x264/libx264-164_0.164.3108+git31e19f9-1_arm64.deb","sha256":"3c39d6d99faab1bc07178f0ad64512e8c7301329d24458d7538a28890fd044a2","role":"runtime","package":"libx264-164","version":"2:0.164.3108+git31e19f9-1"},
+    {"id":"nvcc","source":"nvidia","path":"pool/main/c/cuda-nvcc/cuda-nvcc-13-2_13.2.86-1_arm64.deb","sha256":"f142c71a5dea49fd1f58a97d6899ddf2b80b1cd61da2c5c43eecfb8308121715","role":"build","package":"cuda-nvcc-13-2","version":"13.2.86-1"},
+    {"id":"crt","source":"nvidia","path":"pool/main/c/cuda-crt/cuda-crt-13-2_13.2.86-1_arm64.deb","sha256":"ef5928592f8bc74eddf141f9a9dfb75c7de865985c525e12ad81a32c3832c18f","role":"build","package":"cuda-crt-13-2","version":"13.2.86-1"},
+    {"id":"nvvm","source":"nvidia","path":"pool/main/libn/libnvvm/libnvvm-13-2_13.2.86-1_arm64.deb","sha256":"9fee5e5f5e56390c068afd00921ab38f3fae404acfb69f69b21703fa644b1280","role":"build","package":"libnvvm-13-2","version":"13.2.86-1"},
+    {"id":"nvptxcompiler","source":"nvidia","path":"pool/main/libn/libnvptxcompiler/libnvptxcompiler-13-2_13.2.86-1_arm64.deb","sha256":"5d13f9725f95197b49cb01ec824bca647f074222bb3259f4c0878039235b2f5a","role":"build","package":"libnvptxcompiler-13-2","version":"13.2.86-1"},
+    {"id":"cudartdev","source":"nvidia","path":"pool/main/c/cuda-cudart/cuda-cudart-dev-13-2_13.2.86-1_arm64.deb","sha256":"a9d556536583e12d1662afc930883dd3b3f2a56389081a7d101a44dac1576e45","role":"build","package":"cuda-cudart-dev-13-2","version":"13.2.86-1"},
+    {"id":"cccl","source":"nvidia","path":"pool/main/c/cuda-cccl/cuda-cccl-13-2_13.2.86-1_arm64.deb","sha256":"9f68cd3661fab32a7521eb598bbf0ea1a7bc062ab231c6fbd886ccd738dd0156","role":"build","package":"cuda-cccl-13-2","version":"13.2.86-1"},
+    {"id":"culibosdev","source":"nvidia","path":"pool/main/c/cuda-culibos/cuda-culibos-dev-13-2_13.2.86-1_arm64.deb","sha256":"2b772b411dd80ca397ba8581235c03e045284a9e0fd978fec2fd0f874026537a","role":"build","package":"cuda-culibos-dev-13-2","version":"13.2.86-1"},
+    {"id":"driverdev","source":"nvidia","path":"pool/main/c/cuda-cudart/cuda-driver-dev-13-2_13.2.86-1_arm64.deb","sha256":"e84fa1570d5126311465037f4d5f9e57a4397f18f0610f0d0f8c9d99b213db73","role":"build","package":"cuda-driver-dev-13-2","version":"13.2.86-1"},
+    {"id":"nito676","source":"local","path":"edgedes-imx676-demo.nito","sha256":"61ddaf20d9a6d639fa34d3e368d0c7d86fc469b1602fa2c4f86d591d736d41e3","role":"nito"},
+    {"id":"nito676ext","source":"local","path":"edgedes-imx676-extended-demo.nito","sha256":"6205cd7ef74335f26c81c4182a51d05994a8f93fc6d6a935d310c7514a97d16e","role":"nito"},
+    {"id":"nito678","source":"local","path":"edgedes-imx678-demo.nito","sha256":"fbbe09af35b1fe561b2f0c0995cdd2b916915284bf770ce8500456fb186e5f2f","role":"nito"},
+    {"id":"nito678ext","source":"local","path":"edgedes-imx678-extended-demo.nito","sha256":"b029ea2b6f15f0b323fe83b9e6aa31969141d520820ebbd9d8b6be7480bad7c3","role":"nito"}
+  ],
+  "gst_archives": {
+    "gst-nvarguscamera_src.tbz2": "584148f1fe5bf8c3619120c8c73f2eca37ab08bf6e9b53b0c0004f1c50a12731",
+    "gst-nvvidconv_src.tbz2": "6ca219b0e9543567cdbb7d090c205a045129a5d06ce62e4484a2055a9d4385c0",
+    "gst-nvvideo4linux2_src.tbz2": "7b2573419524fee8978ecf52e900120857fdb2fd60a1cba03b29b85a391c7fe6",
+    "libgstnvcustomhelper_src.tbz2": "a214f7cee7cf56249082ea3c4f1a5130b12b4cea030140375b90dde37635f84c"
+  }
+}

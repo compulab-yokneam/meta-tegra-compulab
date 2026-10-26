@@ -1,0 +1,295 @@
+Shared FRAMOS Argus demo baseline -- NOT factory/production IQ tuning
+
+For IMX678 this package deliberately reuses the byte-identical NITO accepted by the
+previous Edge-AI FRAMOS IMX678 R39.2.0 setup on 2026-09-29. It is a generic ISP
+migration baseline, not sensor/lens-specific FRAMOS calibration. Previous
+capture, AE and AWB success does not qualify a new transport graph or image.
+The R39.2.1 Yocto/ADI graph must be independently capture-tested.
+
+Scope: Edge-AI Orin NX16G/P3767-0000, one DT-selected FRAMOS camera on
+EDGEDES port 0: IMX678 3856x2180 or IMX676 3552x3556, RGGB12 at 10 FPS.
+IMX676 has separately exported native mode data using the same generic template
+and converter; neither profile is factory tuning. See ARGUS-DEMO-VALIDATION.txt
+and IMX676-VALIDATION.txt in the layer for independent sensor results.
+No other modes, HDR, cold-start reliability, factory color accuracy,
+lens shading, or production use are qualified.
+
+IMX678 packaged SHA-256:
+fbbe09af35b1fe561b2f0c0995cdd2b916915284bf770ce8500456fb186e5f2f
+Size: 958476 bytes.
+Original file: imx678_front_framos-uncalibrated.nito
+Runtime file: /var/nvidia/nvcam/settings/edgedes-imx678-demo.nito
+The distinct runtime name preserves any legacy/vendor NITO unchanged.
+
+IMX676 packaged SHA-256:
+61ddaf20d9a6d639fa34d3e368d0c7d86fc469b1602fa2c4f86d591d736d41e3
+Size: 958476 bytes.
+Runtime file: /var/nvidia/nvcam/settings/edgedes-imx676-demo.nito
+Input: imx676-generic.cfg, 383108 bytes, exported on the R39.2.1 Yocto target
+on 2026-10-06 with NVCAMERA_NITO_PATH=CONFIG and an isolated diagnostic
+NVCAMERA_NITO_DUMP_PATH. Export succeeds although capture in CONFIG mode is
+rejected by this runtime; manual official conversion was therefore used.
+Input SHA-256:
+d516af6d2f7637393e724052fbbf45ccd5d4a142eb8c1628e79c2fd4b4eb8ccd
+Native mode metadata: 3552x3556 RGGB12, 10 FPS, knobset 0.
+The converter, library, template, agreement and UUID below are the same as
+for IMX678. No binary patching or proprietary runtime-library replacement.
+
+Generation provenance:
+- Input: previous target's generic-migration-only.cfg, exported through the
+  NVIDIA legacy CONFIG migration path.
+- Input SHA-256:
+  76d8f39aa311376e85adea190e756ae7462ff00b4f2eb501f31d6bf6418c75d7
+- Converter: unmodified official NVIDIA nvcfg2nito v1.0.1, native AArch64
+  executable, run under existing host QEMU and official BSP rootfs.
+- Converter SHA-256:
+  6675a3022373d9f13ea3de0f60dfa5569a8b0db9e3f770ab08da738c818b6a8c
+- Conversion library SHA-256:
+  04b5db05eb54dc9ff6b55270b5ffe99634aaa36ebe168f3bf4b98a401e5b5dd9
+- Missing parameters came only from NVIDIA's nonspecific template.nito;
+  no other sensor's tuned NITO was substituted.
+- Template SHA-256:
+  ff6a2d1a4ef707f6e5034249e466530043e65dbdf439cadfac0729c703839757
+- Official migration archive SHA-256:
+  15976d2e1cdd78d042436c50d743233e101a647b1515ec04517398c5a5b2118c
+- Archive targets R39.2.1 / JetPack 7.2.1; original capture target was R39.2.0.
+- Knobset 0; parameter UUID c8278e24-0e47-44e2-9691-36-3b-df-f4-1a-08.
+- Converter validation succeeded; dataSize 383108.
+- The bundled hotfix installer was NOT used and no core NVIDIA runtime
+  shared library was replaced to create or validate this baseline.
+
+Official sources:
+https://developer.nvidia.com/embedded/jetpack/downloads/archive-7.2.1
+https://developer.nvidia.com/downloads/embedded/l4t/r39_release_v2.1/jetson_customer_iq_migration_tools_r39.2.1_jp_7.2.1_ga.zip
+
+License and notices:
+The unchanged NVIDIA Driver License Agreement accompanying the official
+migration package is retained as
+Tegra_Software_License_Agreement-Tegra-Linux.txt. The profile contains generic
+NVIDIA-template data and is treated as proprietary, not relicensed as open
+source. Selecting this demo is a project build opt-in, not a new NVIDIA license
+grant or a statement that generated-output redistribution rights are settled.
+Use and any distribution remain subject to applicable NVIDIA terms. Retain
+the licenses/notices supplied by the existing NVIDIA runtime/application
+recipes as well. Do not distribute the converter, hotfix, or vendor archive
+as part of this package.
+
+Integration and rollback:
+The existing tegra-libraries-camera and tegra-argus-daemon recipes supply
+proprietary runtime binaries; argus-samples and nvarguscamerasrc are built from
+their existing source recipes. The demo never rebuilds proprietary Argus core.
+The service drop-in uses an ExecCondition and a small shell launcher. The
+helper's default auto policy selects one to four active homogeneous IMX678 or
+IMX676 modules with
+distinct imx678_port0_framos through imx678_port3_framos badges, or the
+corresponding IMX676 badges. It sets the matching NVCAMERA_NITO_PATH and execs
+the unchanged vendor daemon. Unsupported profiles and mixed profiles without
+the modular marker skip the service.
+One argus_camera, argus_oneshot and nvarguscamerasrc serve both sensors.
+The service guard selects the DT profile, not a probed sensor silicon ID.
+Each model-specific optional multi-port DTB uses boot-time GMSL link discovery and
+omits absent module metadata from the live DT before Argus enumeration.
+This requires the matching optional-link ADI and NVIDIA OOT driver patches;
+it does not change either NITO or add hot-plug support.
+New modular overlays permit explicit mixed-model device-tree composition.
+EDGE_AI_ARGUS_NITO_SELECTION=auto uses a forced model-specific file for every
+homogeneous connected subset, even in modular mixed-capable boot profiles.
+It uses default-directory lookup without a global forced-file override only
+when both models remain active and the modular DT marker is present.
+Explicit single preserves homogeneous-only selection. Explicit per-camera
+preserves marked-profile lookup even with one camera; unmarked legacy entries
+retain their forced-file fallback. The selected forced file must be regular
+and readable at both service condition and start. Inherited global selectors
+are replaced or cleared, and effective policy/count/path are logged.
+Automatic baseline NITO identity matching
+is not qualified; file presence is not proof of correct data. Verify or
+regenerate identities with official NVIDIA tools and qualify mixed capture.
+The IMX678 extension retains the qualified native mode and existing port-0
+source. New ports and simultaneous capture require separate hardware tests.
+To restore generic Argus, remove the demo package/drop-in, reload systemd and
+restart nvargus-daemon when no capture process is running. Existing legacy
+NITO files and all driver/DTS/boot settings remain untouched by this package.
+
+Separate opt-in IMX678 extended-mode profile, generated 2026-10-15:
+
+The preceding native-baseline provenance remains unchanged. The following
+profile is a separate, regenerated generic migration profile; it is NOT FRAMOS
+factory IQ tuning or a byte-preserved copy of the historical mode-0 profile.
+The original edgedes-imx678-demo.nito source and its pinned hash are retained.
+
+Source file: edgedes-imx678-extended-demo.nito
+Build opt-in: EDGE_AI_IMX678_EXTENDED_MODES = "1"
+Default: "0", retaining the original native-only profile above.
+With the opt-in enabled, the recipe installs the extended source at the same
+runtime path used by the existing model-specific selection helper:
+/var/nvidia/nvcam/settings/edgedes-imx678-demo.nito
+No global NITO-selection policy or proprietary runtime binary is changed.
+Disable the opt-in and rebuild to restore the original profile and mode set.
+
+Extended profile SHA-256:
+b029ea2b6f15f0b323fe83b9e6aa31969141d520820ebbd9d8b6be7480bad7c3
+Size: 958476 bytes.
+Mode/knobset 0: 3856x2180 RGGB12, 10 FPS.
+Mode/knobset 1: 3856x2180 RGGB12, 30 FPS.
+Mode/knobset 2: 2608x1964 RGGB12, 30 FPS, sensor window crop.
+Mode/knobset 3: 1920x1080 RGGB12, 30 FPS, sensor window crop.
+
+All four inputs were freshly exported on the R39.2.1 Yocto target with the
+matching extended driver and device-tree mode definitions. Each input is
+383108 bytes. Export logs explicitly identify sensorModeIndex and knobSetId;
+provider-initialization dumps of mode 0 are not used for modes 1 through 3.
+
+Mode 0 input: mode0_0.cfg
+SHA-256:
+1c585a544c5e9a52533484d0ce66c63eb0fe30611a56070c5e77bc40f9043401
+Mode 1 input: mode1_1.cfg
+SHA-256:
+27fb7ec37afb7ed46ba39ac093714a49267d9ecd7a150164bb1f82053a039225
+Mode 2 input: mode2_2.cfg
+SHA-256:
+1ce81d4cb52deb4fc21fa62bc40d988c4f4b600d9c47e70c2c6bc7b08fb6a484
+Mode 3 input: mode3_3.cfg
+SHA-256:
+3a308fffd4e51cd4cca092038ffed0d0d468685228d7e3cfaa17e418363bb8b7
+
+Export used NVIDIA's official R39.2.1 migration hotfix libnvscf.so only in a
+private diagnostic directory, selected by LD_LIBRARY_PATH for an isolated
+CONFIG-mode daemon process. Its SHA-256 is:
+bd4f82c502563f5b793ec6e4eb0ec8179c1a20d06317c0c7b7138a398d29127c
+The hotfix installer was NOT used. No installed core runtime library was
+replaced; the isolated daemon was stopped and the stock runtime restored.
+The hotfix library, converter and archive are not installed or distributed
+by this recipe. Capture validation below used the stock runtime libraries.
+
+Generation used the same official converter, conversion library and generic
+template, with the hashes recorded in the native-baseline section above.
+The native AArch64 converter ran under host QEMU with the matching Yocto
+R39.2.1 image rootfs. TUNING_LIBRARY below denotes the unmodified official
+libnvm_cam_tuning_l4t_cfg2nito.so. Each output is a new file and the next
+conversion uses the preceding cumulative output as its source:
+
+  nvcfg2nito -v -t "$TUNING_LIBRARY" -s template.nito \
+      -i mode0_0.cfg -k 0 -o imx678-modes-0.nito
+  nvcfg2nito -v -t "$TUNING_LIBRARY" -s imx678-modes-0.nito \
+      -i mode1_1.cfg -k 1 -o imx678-modes-01.nito
+  nvcfg2nito -v -t "$TUNING_LIBRARY" -s imx678-modes-01.nito \
+      -i mode2_2.cfg -k 2 -o imx678-modes-012.nito
+  nvcfg2nito -v -t "$TUNING_LIBRARY" -s imx678-modes-012.nito \
+      -i mode3_3.cfg -k 3 -o imx678-modes-0123.nito
+
+The final output is packaged unchanged as edgedes-imx678-extended-demo.nito.
+All four conversions exited successfully and validated parameter UUID
+c8278e24-0e47-44e2-9691-36-3b-df-f4-1a-08, dataSize 383108, and schema:
+fd7f5d329b307419b9b76e56cf241b7f83617a4f15f22889050939529070f6d0
+Reapplying each input separately to the final file at its corresponding
+knobset, always writing a new output, produced a byte-identical final hash
+in all four cases. No binary patching was performed. The original baseline
+was not overwritten; its converter source-load abort has no established
+root cause and is not attributed to any particular tuning parameter.
+
+On one IMX678 connected to EDGEDES port 0, the stock runtime passed a
+100-frame mode-0 native capture and 300-frame native captures for each new
+mode. Stock-daemon logs confirmed mode-to-knobset mappings 0 through 3.
+See IMX678-EXTENDED-MODES-VALIDATION.txt for the detailed capture results.
+These tests do not qualify factory color accuracy, lens shading, HDR,
+cold-start reliability, mixed-sensor or simultaneous multi-port operation,
+or production use. The shared transport bandwidth still limits the set of
+simultaneous modes; four full-resolution 30-FPS streams are not supported.
+
+Separate IMX676 extended-mode profile, generated 2026-10-15:
+
+The preceding native IMX676 and both IMX678 profiles remain unchanged. This
+is a separate generic migration profile, not factory FRAMOS IQ tuning or
+a byte-preserved copy of the historical IMX676 mode-0 profile. The original
+edgedes-imx676-demo.nito source and its pinned SHA-256 above remain the
+native-only rollback baseline.
+
+Source file: edgedes-imx676-extended-demo.nito
+Build selection: EDGE_AI_IMX676_EXTENDED_MODES = "1"
+Default since 2026-10-16: "1", selecting the three-mode IMX676 profile.
+Originally opt-in during the 2026-10-15 single-port validation. Setting
+"0" retains the original native-only IMX676 profile and mode set.
+With extended modes enabled, the matching driver/device-tree modes and this
+profile must be selected together. The recipe installs the extended source
+at the canonical path used by the existing model-specific selection helper:
+/var/nvidia/nvcam/settings/edgedes-imx676-demo.nito
+No global NITO-selection policy or proprietary runtime binary is changed.
+Set the switch to "0" and rebuild/redeploy matching DT/NITO packages to
+restore the original profile and mode set, then reboot.
+
+Extended IMX676 profile SHA-256:
+6205cd7ef74335f26c81c4182a51d05994a8f93fc6d6a935d310c7514a97d16e
+Size: 958476 bytes.
+Mode/knobset 0: 3552x3556 RGGB12, 10 FPS, unchanged sensor mode-0 timing.
+Mode/knobset 1: 3552x3556 RGGB12, 15 FPS.
+Mode/knobset 2: 3552x2160 RGGB12, 25 FPS, sensor window crop.
+
+All three CFG inputs were freshly exported on the R39.2.1 Yocto target
+with the matching extended driver and device-tree definitions. Each input
+is 383108 bytes; export logs confirm sensorModeIndex 0, 1 or 2 respectively.
+Provider-initialization dumps of mode 0 are not used for the new modes.
+
+Mode 0 input: mode0_0.cfg
+SHA-256:
+d1216a66daa9cff67cf873243ceb1de054845dbc78c2d118a6dabf16ceacde4b
+Mode 1 input: mode1_1.cfg
+SHA-256:
+0bf08f0d29c4fec01de38302d71884fe02c5db33b2de822e974f6ffe5b705eea
+Mode 2 input: mode2_2.cfg
+SHA-256:
+30b01b983f382d07cbf48b598429b720499ca0ae71c56d391eea123d66435b7a
+
+Export used the same official R39.2.1 hotfix libnvscf.so as the separate
+IMX678 extension, only in a private diagnostic CONFIG-daemon process via
+LD_LIBRARY_PATH. Its SHA-256 remains:
+bd4f82c502563f5b793ec6e4eb0ec8179c1a20d06317c0c7b7138a398d29127c
+The bundled installer was NOT used. No installed core runtime library was
+replaced. The isolated exporter was stopped and the stock daemon restored;
+the installed stock libnvscf.so retained SHA-256:
+c01f75c7f6988e088f72be32a04aab91c747d66df3e20885e640b266a4b3c3bc
+The hotfix, converter and archive are not distributed by this recipe.
+
+Generation used the same unmodified official nvcfg2nito v1.0.1 converter,
+libnvm_cam_tuning_l4t_cfg2nito.so, generic template.nito and migration
+archive whose hashes are recorded in the native-baseline section above.
+The native AArch64 converter ran under host QEMU with the matching Yocto
+R39.2.1 image rootfs. TUNING_LIBRARY denotes the official conversion library.
+Each output was new; the next conversion used the preceding cumulative
+output as its source, never the historical IMX676 NITO:
+
+  nvcfg2nito -v -t "$TUNING_LIBRARY" -s template.nito \
+      -i mode0_0.cfg -k 0 -o imx676-through-mode0.nito
+  nvcfg2nito -v -t "$TUNING_LIBRARY" -s imx676-through-mode0.nito \
+      -i mode1_1.cfg -k 1 -o imx676-through-mode1.nito
+  nvcfg2nito -v -t "$TUNING_LIBRARY" -s imx676-through-mode1.nito \
+      -i mode2_2.cfg -k 2 -o edgedes-imx676-extended-demo.nito
+
+All three conversions exited successfully and validated parameter UUID
+c8278e24-0e47-44e2-9691-36-3b-df-f4-1a-08, dataSize 383108, and schema:
+fd7f5d329b307419b9b76e56cf241b7f83617a4f15f22889050939529070f6d0
+Reapplying each of the three inputs separately to its corresponding
+knobset in the final candidate, always writing a new file, produced the
+same byte-identical final hash. All input, template, converter, conversion
+library and notice-file hashes remained unchanged. No binary patching was
+performed; generated NITO data retain the NVIDIA terms recorded above.
+
+Sensor mode 0 retains HMAX 1256 and VMAX 5912. The new modes retain the
+720-Mb/s/lane RAW12 link, four CSI lanes and 37.125-MHz external clock,
+using the sensor's 74.25-MHz internal timing clock. Their HMAX 1320 is a
+derived, longer-line configuration, NOT a vendor-provided timing table.
+VMAX 3750 gives 15 FPS; VMAX 2250 gives 25 FPS. Both are even and exceed
+the reference active-height-plus-72-lines minimum. The 3552x2160 crop
+window comes from the pinned FRAMOS reference. Full hardware/ISP validation
+is required before treating these inferred timing combinations as qualified.
+
+On one IMX676 connected to physical port 0, all three modes passed stock-
+runtime native JPEG captures of 100/150/250 frames, three-second H.264
+recordings, hardware playback/decode and fullscreen Wayland preview.
+Daemon diagnostics confirmed each sensor mode selects its own knobset ID.
+Independent media checks confirmed native JPEG dimensions, MP4 integrity,
+exact 30/45/75 encoded frame counts and median 10/15/25-FPS timestamps.
+See IMX676-EXTENDED-MODES-VALIDATION.txt for final tests and their scope.
+This remains generic, uncalibrated demo IQ; no higher lane rates, color
+binning, HDR, factory color accuracy, lens shading, mixed-sensor or
+simultaneous multi-port operation, cold-start reliability, or production
+use is established by these single-camera functional checks.
