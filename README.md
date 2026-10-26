@@ -511,6 +511,14 @@ the [SDK generation guide](recipes-devtools/edge-ai-sdk-manager/README.md)
 for enable switches, authentication/host prerequisites and the build command.
 Passwords must not be placed in recipe metadata or `local.conf`.
 
+CompuLab Ubuntu rootfs additions are installed as native Debian packages.
+The generated SDK retains them in `Linux_for_Tegra/compulab/packages/`,
+including an independently upgradeable `compulab-edge-ai-uefi-capsules`
+package. On the target, `dpkg-query -W 'compulab-edge-ai*'` lists the add-ons
+and `dpkg -S /usr/share/compulab/uefi-update-capsules` identifies their owner.
+See the SDK guide for package groups, versioning, conffile preservation,
+vendor-file diversions and legacy-rootfs migration limits.
+
 ### Sourceable SDK wrapper
 
 The prepared SDK provides `compulab-l4t.env`: source it from a clean Bash

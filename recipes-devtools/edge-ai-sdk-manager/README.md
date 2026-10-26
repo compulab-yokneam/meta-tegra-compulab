@@ -21,8 +21,9 @@ Before running it, arrange:
   prerequisites and the conversion helper. A cached `sudo -v` is insufficient:
   SDK Manager invalidates sudo timestamps. The recipe never edits sudoers.
 - Host tools including Git, Python 3.12+, rsync, kmod/depmod, initramfs-tools,
-  device-tree-compiler, mount/chroot and working QEMU ARM64 binfmt registration
-  with the persistent `F` flag. SDK Manager may install additional host tools.
+  dpkg-deb/dpkg-query, device-tree-compiler, mount/chroot, and working QEMU
+  ARM64 binfmt registration with the persistent `F` flag. SDK Manager may
+  install additional host tools.
 - No other SDK Manager instance. SDK Manager uses a host-global socket.
 - NVIDIA licenses accepted by an authorized user and access to the pinned
   NVIDIA downloads and signed Ubuntu Noble package repositories.
@@ -169,6 +170,93 @@ are still NX16G profiles: adding the other three boot targets does not qualify
 their camera hardware. Mixed-camera/NITO and real-time CPU encoding behavior
 still require hardware validation. No secure-boot production signing keys are
 introduced; existing development signing policy is retained.
+
+## Package-managed Ubuntu additions
+
+CompuLab rootfs additions are published as native Ubuntu `.deb` packages,
+not left as unowned files in the final image. The intermediate converted
+rootfs is a build staging tree: before SDK publication, the workflow builds
+packages, installs them through the target Ubuntu `dpkg`, checks package
+status and file ownership, and runs `dpkg --audit`.
+
+The SDK retains the installable archives, `SHA256SUMS` and the installed
+package/file inventory in `Linux_for_Tegra/compulab/packages/`. These are
+build artifacts, excluded from the SDK's source Git repository. They are
+native Debian packages, not Yocto-generated Ubuntu userspace binaries.
+
+| Package | Contents |
+| --- | --- |
+| `compulab-edge-ai-kernel` | Matched kernel, modules, initrd and stock boot fallbacks |
+| `compulab-edge-ai-device-trees` | DTBs, overlays, aliases and stock DTB fallbacks |
+| `compulab-edge-ai-uefi-capsules` | Complete four-module, three-logo capsule bundle |
+| `compulab-edge-ai-boot-tools` | Capsule/FDT helpers, sample and extlinux menu |
+| `compulab-edge-ai-argus` | All 23 Ubuntu-built Argus applications |
+| `compulab-edge-ai-gstreamer` | Three rebuilt NVIDIA GStreamer plugins |
+| `compulab-edge-ai-camera-support` | Launchers, desktop helpers, NITOs and service drop-in |
+| `compulab-edge-ai-bsp-policy` | Protection configuration, APT pins and policy helper |
+| `compulab-edge-ai` | Coordinated add-on dependencies and build inventory |
+
+Kernel/ELF packages use `Architecture: arm64`; data and script packages use
+`all`. NVIDIA and CUDA dependencies remain Ubuntu packages. The coordinated
+components are version-pinned; capsules may advance independently so a logo
+bundle update does not require reinstalling the kernel or camera runtime.
+
+Set a new package version for a changed release, for example:
+
+```bitbake
+EDGE_AI_SDK_DEB_VERSION = "39.2.1+compulab2"
+```
+
+The default is `39.2.1+compulab1`. Package version affects the SDK input
+fingerprint. Keep the R39.2.1 base, increase the CompuLab revision for an
+upgrade, and select fresh SDK output/work paths before rebuilding. Kernel
+or L4T version changes still require reviewing the pinned ABI rules.
+
+On the generated Ubuntu system:
+
+```sh
+dpkg-query -W 'compulab-edge-ai*'
+dpkg -S /usr/share/compulab/uefi-update-capsules
+dpkg -S /opt/compulab/bin/gst_camera.sh
+```
+
+The capsule directory is owned by `compulab-edge-ai-uefi-capsules`. Copy a
+new package archive from the SDK to the DUT and install it using Ubuntu's
+package manager, for example:
+
+```sh
+sudo apt install ./compulab-edge-ai-uefi-capsules_39.2.1+compulab2_all.deb
+```
+
+Installing the capsule package only updates files. It does not stage an EFI
+capsule, change BootNext, flash QSPI or reboot. A firmware update remains an
+explicit `edge-ai-uefi-update` command followed by the requested reboot.
+Packaging rejects stale capsule payload versions and incomplete checksum
+coverage before publishing the SDK.
+
+NVIDIA-owned kernel/initrd/plugin replacements use package-specific
+`dpkg-divert` records rather than `--force-overwrite`. Before the first
+installation, the workflow verifies and restores pristine vendor bytes from
+the SDK baseline/runtime backup, so a diversion never mistakes an already
+modified CompuLab file for NVIDIA's original. Unknown ownership collisions
+or missing original backups stop preparation. Do not remove kernel/DTB
+packages while their kernel or boot entry is in use; preserve a tested
+vendor fallback and inspect dependencies before removing platform support.
+
+The active extlinux menu, initrd override, service drop-in and BSP settings
+are conffiles, preserving administrator edits on upgrade. BSP policy package
+scripts manage only configuration while `dpkg` owns its database lock;
+exact-version APT pins protect the NVIDIA set without nested package-manager
+writes. Existing SDK holds and their original selections are retained in
+private lifecycle state. Full explicit hold restoration, when needed, must
+run outside `apt`/`dpkg`, before removing the policy helper. Generated caches,
+state, package holds and vendor configuration edits remain package-managed
+operational state, not fabricated dpkg ownership lists.
+
+This workflow prepares new SDKs. It does not automatically migrate a running
+DUT or modify an existing immutable SDK. A legacy rootfs that already has
+unpackaged replacements needs a separately reviewed migration and verified
+original backups; do not install the complete kernel/plugin set blindly.
 
 ## Repeat runs, failures and verification
 

@@ -55,6 +55,26 @@ module-specific full firmware capsule. Read its output and the capsule guide
 before rebooting; firmware updates are real persistent device operations.
 Generating this SDK does not issue them.
 
+## Ubuntu add-on packages
+
+The generated SDK stores native Debian archives and their installed-file
+manifest in `compulab/packages/`. Rootfs add-ons are installed through Ubuntu
+`dpkg`, including the kernel/DT set, camera applications/plugins/NITOs,
+launchers, boot helpers and UEFI capsule bundle. On the target, use:
+
+```sh
+dpkg-query -W 'compulab-edge-ai*'
+dpkg -S /usr/share/compulab/uefi-update-capsules
+```
+
+`compulab-edge-ai-uefi-capsules` can be updated independently using its new
+`.deb` and `sudo apt install ./<package>.deb`. Package installation never
+stages a capsule, writes EFI variables, flashes firmware or reboots.
+NVIDIA-owned replacements are preserved with verified package diversions;
+administrator boot/configuration changes are retained as conffiles. Review
+the full SDK recipe guide before upgrading/removing the coordinated kernel
+and camera packages or migrating an old unpackaged rootfs.
+
 ## Protection and verification
 
 First-boot GPU selection remains unchanged. A version/hash-checked patch to
