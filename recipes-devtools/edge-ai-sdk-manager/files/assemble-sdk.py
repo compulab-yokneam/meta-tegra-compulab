@@ -147,7 +147,8 @@ def baseline(sdk):
             "Only NVIDIA L4T R39.2.1 is supported")
     require('ID=ubuntu' in (sdk / "rootfs/etc/os-release").read_text(), "NVIDIA Ubuntu required")
     backup = sdk / "compulab/vendor-backup"
-    paths = ["flash.sh", "tools/kernel_flash/l4t_flash_from_kernel.sh", "kernel/Image",
+    paths = ["flash.sh", "tools/kernel_flash/l4t_flash_from_kernel.sh",
+             "tools/kernel_flash/l4t_initrd_flash_internal.sh", "kernel/Image",
              "rootfs/boot/Image", "rootfs/boot/initrd", "rootfs/boot/extlinux/extlinux.conf"]
     paths.extend("kernel/dtb/tegra234-p3768-0000+p3767-%s-nv-super.dtb" % sku
                  for sku in SKUS.values())
@@ -322,6 +323,8 @@ def verify(sdk):
     baseline_data = json.loads((sdk / "SDK_BASELINE.json").read_text())
     for name in ("flash.sh", "tools/kernel_flash/l4t_flash_from_kernel.sh"):
         require(digest(sdk / name) == baseline_data["sha256"][name], "Vendor flashing tool changed: " + name)
+    run(sys.executable, "-B", sdk / "compulab/tools/apply-massflash-initrd-fix.py",
+        "--sdk-root", sdk, "--verify")
     expected = json.loads((sdk / "compulab/integration-files.json").read_text())
     for relative, checksum in expected.items():
         require(digest(sdk / relative) == checksum, "SDK integration drift: " + relative)
@@ -350,6 +353,8 @@ def assemble(configuration, sdk):
     sources = Path(configuration["sources"])
     baseline(sdk)
     carrier_files(sources, sdk)
+    run(sys.executable, "-B", sdk / "compulab/tools/apply-massflash-initrd-fix.py",
+        "--sdk-root", sdk, "--apply")
     copy(sources / "assemble-sdk.py", sdk / "compulab/tools/verify-sdk.py", executable=True)
     artifacts, provenance = prepare_artifacts(configuration)
     firmware(configuration, sdk)
@@ -377,6 +382,7 @@ def assemble(configuration, sdk):
         tracked += [p for p in folder.rglob("*") if p.is_file()]
     tracked += [sdk / name for name in ("kernel/Image", "rootfs/boot/Image", "rootfs/boot/initrd",
                  "bootloader/l4t_initrd.img", "rootfs/boot/extlinux/extlinux.conf",
+                 "tools/kernel_flash/l4t_initrd_flash_internal.sh",
                  "rootfs/usr/sbin/edge-ai-uefi-update", "rootfs/usr/sbin/edge-ai-select-fdt",
                  "rootfs/usr/bin/oe4t-set-uefi-OSIndications", "rootfs/usr/bin/uefi_common.func")]
     tracked.append(sdk / "compulab/receipts/runtime-provision/receipt.json")

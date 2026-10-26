@@ -80,6 +80,12 @@ Normally `DEPLOY_DIR_IMAGE` is
 another **new** destination. If firmware multiconfigs use custom `TMPDIR`s,
 override `EDGE_AI_SDK_FIRMWARE_INPUTS` with their machine/style/mc/deploy mapping.
 
+SDK conversion also applies a version/hash-checked R39.2.1 native initrd fix.
+Each device slot gets a fresh extraction directory, preventing the second
+slot's `mkdir: ... File exists` failure and stale per-slot configuration.
+The original script is backed up, and preflight checks the exact reviewed
+patched script; existing baseline manifests are not refreshed to hide drift.
+
 ## Included functionality
 
 - NX16G, NX8G, Nano8G and Nano4G board profiles, correct per-module memory/BPMP

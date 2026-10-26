@@ -1,0 +1,30 @@
+Subject: [PATCH] kernel_flash: isolate each massflash initrd working tree
+
+generate_flash_initrd() reuses the parent's working_dir for every massflash
+instance. The second invocation extracts over the first initrd, encounters
+an existing usr/share/misc directory, and aborts. Making mkdir idempotent
+alone would retain stale files and append multiple instance configurations.
+
+Allocate a fresh child working directory on every invocation and shadow
+working_dir locally. This also handles repeated calls for instance zero.
+The existing parent cleanup retains ownership of all temporary children.
+
+Upstream-Status: Pending
+
+diff --git a/tools/kernel_flash/l4t_initrd_flash_internal.sh b/tools/kernel_flash/l4t_initrd_flash_internal.sh
+--- a/tools/kernel_flash/l4t_initrd_flash_internal.sh
++++ b/tools/kernel_flash/l4t_initrd_flash_internal.sh
+@@ -466,6 +466,13 @@
+ generate_flash_initrd()
+ {
+ 	local dev_instance="$1"
+ 
++	# Repeated massflash calls must not share an extracted initrd tree.
++	# Parent cleanup still owns every uniquely allocated child directory.
++	local initrd_working_dir
++	initrd_working_dir="$(mktemp -d \
++		"${working_dir}/flash-initrd-${dev_instance}.XXXXXX")" || return
++	local working_dir="${initrd_working_dir}"
++
+ 	pushd "${working_dir}"
+ 

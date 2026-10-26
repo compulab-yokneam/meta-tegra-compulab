@@ -57,7 +57,10 @@ Generating this SDK does not issue them.
 
 ## Protection and verification
 
-Vendor flashing tools and first-boot GPU selection remain unchanged.
+First-boot GPU selection remains unchanged. A version/hash-checked patch to
+the native initrd generator isolates each massflash device's temporary tree;
+the original script is preserved under `patches/`. Other vendor flashing
+tools are unchanged, and preflight rejects unreviewed changes.
 Coordinated BSP packages and rebuilt GStreamer are held so an ordinary APT
 upgrade cannot silently replace the matched custom kernel/firmware/plugins.
 `policy/bsp-protection.py` defaults to read-only inspection; explicit `apply`

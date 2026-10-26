@@ -113,6 +113,7 @@ class DeviceTreeSidecars(unittest.TestCase):
     def stock_sdk(self):
         sdk = self.root / "sdk"
         for name in ("flash.sh", "tools/kernel_flash/l4t_flash_from_kernel.sh",
+                     "tools/kernel_flash/l4t_initrd_flash_internal.sh",
                      "kernel/Image", "rootfs/boot/Image", "rootfs/boot/initrd",
                      "rootfs/boot/extlinux/extlinux.conf"):
             self.put(sdk / name)
@@ -134,6 +135,27 @@ class DeviceTreeSidecars(unittest.TestCase):
         for suffix in (".sig", ".signed"):
             self.assertEqual((backup / "kernel/dtb" / (name + suffix)).read_text(), suffix)
         self.assertNotIn("kernel/dtb/" + self.dtb_name("0001") + ".sig", receipt["sha256"])
+
+    def test_baseline_preserves_native_internal_before_local_fix(self):
+        sdk = self.stock_sdk()
+        relative = "tools/kernel_flash/l4t_initrd_flash_internal.sh"
+        native = sdk / relative
+        original = native.read_bytes()
+        original_hash = ASSEMBLE.digest(native)
+        with mock.patch.object(ASSEMBLE, "run"):
+            ASSEMBLE.baseline(sdk)
+        baseline = sdk / "SDK_BASELINE.json"
+        recorded = baseline.read_bytes()
+        receipt = json.loads(recorded)
+        backup = Path(receipt["vendor_backup"]) / relative
+        self.assertEqual(receipt["sha256"][relative], original_hash)
+        self.assertEqual(backup.read_bytes(), original)
+        # A reviewed local fix must not relabel modified bytes as the vendor
+        # baseline or overwrite the pristine rollback copy.
+        native.write_bytes(b"fixture reviewed native change\n")
+        self.assertNotEqual(ASSEMBLE.digest(native), original_hash)
+        self.assertEqual(baseline.read_bytes(), recorded)
+        self.assertEqual(backup.read_bytes(), original)
 
     def test_install_preserves_custom_alias_and_stock_companions(self):
         sdk = self.stock_sdk()
