@@ -47,6 +47,7 @@ class DeviceTreeSidecars(unittest.TestCase):
 
     def fake_export(self, deploy, name, target):
         target.mkdir(parents=True)
+        (target / "usr/lib/modules" / RELEASE).mkdir(parents=True)
         self.put(target / "metadata/kernel.release", RELEASE + "\n")
         if name == "kernel":
             self.put(target / "boot/Image", b"image")

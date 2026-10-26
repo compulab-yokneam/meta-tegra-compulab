@@ -156,6 +156,14 @@ Preparing a new path also updates SDK Manager's shared component inventory and
 global image-directory setting. It does not uninstall the old manually
 prepared SDK, but other SDK Manager operations will see the new inventory.
 
+Kernel exports store modules under `usr/lib/modules`. Before running the
+host's `depmod -b`, conversion creates a relative `lib -> usr/lib` alias in
+the private matched-artifact staging root, matching NVIDIA Ubuntu's usrmerge
+layout. This also works with older kmod versions without `depmod -m`. An
+unexpected existing `lib` entry or a symlinked module directory is rejected,
+not overwritten. After a failure here, preserve the partial SDK and select
+both fresh output and host-work paths as described above.
+
 Private host work and logs default to `${TOPDIR}/sdk-manager-work/${MACHINE}`
 (directory mode 0700, SDK Manager logs mode 0600). SDK Manager output is not
 streamed into BitBake logs or exported into deploy/sstate. Review its own

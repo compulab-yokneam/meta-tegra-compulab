@@ -98,6 +98,27 @@ def merge_modules(base, oot):
     shutil.copytree(oot, base, dirs_exist_ok=True, symlinks=True)
 
 
+def prepare_module_indexes(artifacts):
+    """Expose usrmerged exports at depmod's portable /lib/modules path."""
+    require(artifacts.is_absolute() and artifacts != Path("/") and
+            artifacts.is_dir() and artifacts.resolve() == artifacts,
+            "Module staging must be a canonical absolute directory")
+    modules = artifacts / "usr/lib/modules" / RELEASE
+    require(modules.is_dir() and modules.resolve() == modules,
+            "Missing or symlinked staged module directory: " + str(modules))
+    lib = artifacts / "lib"
+    if lib.is_symlink():
+        require(lib.readlink() == Path("usr/lib"),
+                "Unexpected staged lib symlink: " + str(lib))
+    else:
+        require(not lib.exists(),
+                "Refusing to replace staged lib entry: " + str(lib))
+        lib.symlink_to("usr/lib", target_is_directory=True)
+    # Older host kmod versions cannot select /usr/lib/modules with -m.
+    # The relative alias also matches the NVIDIA Ubuntu rootfs layout.
+    run("depmod", "-b", artifacts, RELEASE)
+
+
 def prepare_artifacts(configuration):
     deploy = Path(configuration["deploy"])
     work = Path(configuration["work"])
@@ -136,7 +157,7 @@ def prepare_artifacts(configuration):
                 require(len({digest(path) for path in companions}) == 1,
                         "Conflicting companions of identical module DTBs: " + name + extension)
                 copy(companions[0], dtb / (name + extension))
-    run("depmod", "-b", artifacts, RELEASE)
+    prepare_module_indexes(artifacts)
     return artifacts, {"kernel": base_manifest, "nvidia-kernel-oot": oot_manifest}
 
 
