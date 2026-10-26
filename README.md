@@ -499,6 +499,18 @@ configuration and boot-control machine name during startup. Do not interchange
 the individual profile directories manually; the QSPI/BCT payloads remain
 module-specific.
 
+## NVIDIA Ubuntu SDK generation
+
+The standalone `edge-ai-sdk-manager` recipe prepares JetPack 7.2.1 with the
+installed NVIDIA SDK Manager CLI and applies this layer's matched kernel,
+four board profiles, firmware/logo variants, capsules and Ubuntu-native camera
+runtime. It does not flash devices or replace NVIDIA Ubuntu with Yocto.
+
+This is an explicitly privileged host workflow, not an image package. Read
+the [SDK generation guide](recipes-devtools/edge-ai-sdk-manager/README.md)
+for enable switches, authentication/host prerequisites and the build command.
+Passwords must not be placed in recipe metadata or `local.conf`.
+
 ## Precompiled Images
 * edge-ai-nx-16g
   * [demo-image-weston](https://drive.google.com/drive/folders/1Kj6_xZBRThOyjulUS2X3prKE2pX6xgyA)
