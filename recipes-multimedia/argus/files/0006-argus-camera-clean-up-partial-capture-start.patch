@@ -1,0 +1,167 @@
+Subject: [PATCH] argus: camera: clean up partially started capture controls
+
+Capture setup can fail after its configuration grid has been added to the
+parent, but before m_running is set. The old stop path then did nothing,
+and shutdown deleted the grid while its parent retained a dangling child.
+Destroying that parent crashed in gtk_container_remove, hiding the actual
+capture or EGL initialization error. A capture-stop error had the same
+effect by returning before detaching the controls.
+
+Track GUI attachment and key observation independently of capture state.
+Roll back unsuccessful start calls, build controls transactionally, and
+attempt GUI/observer cleanup even when capture stop fails. Keep reporting
+capture-stop failure rather than turning it into a successful stop. Never
+delete a child still owned by its parent if detachment itself fails.
+
+Upstream-Status: Inappropriate [CompuLab Argus sample integration]
+
+diff --git a/argus/apps/camera/ui/capture/AppModuleCapture.cpp b/argus/apps/camera/ui/capture/AppModuleCapture.cpp
+--- a/argus/apps/camera/ui/capture/AppModuleCapture.cpp
++++ b/argus/apps/camera/ui/capture/AppModuleCapture.cpp
+@@ -84,5 +84,7 @@ AppModuleCapture::AppModuleCapture()
+     : m_initialized(false)
+     , m_running(false)
++    , m_keyObserverRegistered(false)
++    , m_guiAttached(false)
+     , m_guiContainerConfig(NULL)
+     , m_guiConfig(NULL)
+ {
+@@ -123,11 +125,18 @@ bool AppModuleCapture::shutdown()
+ 
+     PROPAGATE_ERROR_CONTINUE(m_stillCapture.shutdown());
+ 
+-    delete m_guiConfig;
++    // A failed detach must not leave the parent with a freed child. In
++    // that exceptional case the parent retains ownership of the controls.
++    if (!m_guiAttached)
++        delete m_guiConfig;
++    else
++        REPORT_ERROR("Capture controls remain owned by their parent");
+     m_guiConfig = NULL;
+ 
+     m_guiContainerConfig = NULL;
++    m_guiAttached = false;
++    m_running = false;
+ 
+     m_initialized = false;
+     return true;
+ }
+@@ -138,20 +147,28 @@ bool AppModuleCapture::start(Window::IGuiMenuBar *iGuiMenuBar,
+     if (m_running)
+         return true;
+ 
+-    // register key observer
+-    PROPAGATE_ERROR(Window::getInstance().registerObserver(this));
++    // Capture setup can fail after registering controls or an observer.
++    // Roll back those resources even though capture is not running yet.
++    ScopedGuard<AppModuleCapture> startGuard(this, &AppModuleCapture::stop);
++    if (!m_keyObserverRegistered)
++    {
++        PROPAGATE_ERROR(Window::getInstance().registerObserver(this));
++        m_keyObserverRegistered = true;
++    }
+ 
+     // initialize the GUI
+     if (iGuiContainerConfig && !m_guiContainerConfig)
+     {
+         // create a grid container
+-        PROPAGATE_ERROR(Window::IGuiContainerGrid::create(&m_guiConfig));
++        Window::IGuiContainerGrid *config = NULL;
++        PROPAGATE_ERROR(Window::IGuiContainerGrid::create(&config));
++        UniquePointer<Window::IGuiContainerGrid> createdConfig(config);
+ 
+         // create the elements
+         UniquePointer<Window::IGuiElement> element;
+         Dispatcher &dispatcher = Dispatcher::getInstance();
+ 
+-        Window::IGuiContainerGrid::BuildHelper buildHelper(m_guiConfig);
++        Window::IGuiContainerGrid::BuildHelper buildHelper(createdConfig.get());
+ 
+ #define CREATE_GUI_ELEMENT_COMBO_BOX(_NAME, _VALUE, _FROMTYPE, _TOTYPE)             \
+         assert(sizeof(_FROMTYPE) == sizeof(_TOTYPE));                               \
+@@ -171,35 +188,62 @@ bool AppModuleCapture::start(Window::IGuiMenuBar *iGuiMenuBar,
+         PROPAGATE_ERROR(buildHelper.append(element.get(), 2/*width*/));
+         element.release();
+ 
++        m_guiConfig = createdConfig.release();
+         m_guiContainerConfig = iGuiContainerConfig;
+     }
+ 
+-    if (m_guiContainerConfig)
++    if (m_guiContainerConfig && !m_guiAttached)
++    {
+         PROPAGATE_ERROR(m_guiContainerConfig->add(m_guiConfig));
++        m_guiAttached = true;
++    }
+ 
+     PROPAGATE_ERROR(m_stillCapture.start());
+ 
+     m_running = true;
++    startGuard.cancel();
+ 
+     return true;
+ }
+ 
+ bool AppModuleCapture::stop()
+ {
+-    if (!m_running)
+-        return true;
+-
+-    PROPAGATE_ERROR(m_stillCapture.stop());
++    bool success = true;
++    if (m_running)
++    {
++        if (m_stillCapture.stop())
++            m_running = false;
++        else
++        {
++            REPORT_ERROR("Failed to stop capture");
++            success = false;
++        }
++    }
+ 
+-    if (m_guiContainerConfig)
+-        PROPAGATE_ERROR(m_guiContainerConfig->remove(m_guiConfig));
++    // GUI/observer lifetimes are not conditional on successful capture.
++    if (m_guiAttached)
++    {
++        if (m_guiContainerConfig->remove(m_guiConfig))
++            m_guiAttached = false;
++        else
++        {
++            REPORT_ERROR("Failed to detach capture controls");
++            success = false;
++        }
++    }
+ 
+-    // unregister key observer
+-    PROPAGATE_ERROR(Window::getInstance().unregisterObserver(this));
++    if (m_keyObserverRegistered)
++    {
++        if (Window::getInstance().unregisterObserver(this))
++            m_keyObserverRegistered = false;
++        else
++        {
++            REPORT_ERROR("Failed to unregister capture key observer");
++            success = false;
++        }
++    }
+ 
+-    m_running = false;
+-
+-    return true;
++    return success;
+ }
+ 
+ bool AppModuleCapture::onKey(const Key &key)
+diff --git a/argus/apps/camera/ui/capture/AppModuleCapture.h b/argus/apps/camera/ui/capture/AppModuleCapture.h
+--- a/argus/apps/camera/ui/capture/AppModuleCapture.h
++++ b/argus/apps/camera/ui/capture/AppModuleCapture.h
+@@ -65,5 +65,7 @@ private:
+     bool m_initialized;                 ///< set if initialized
+     bool m_running;                     ///< set if running
++    bool m_keyObserverRegistered;       ///< registered independently of capture
++    bool m_guiAttached;                 ///< controls are owned by their parent
+     TaskStillCapture m_stillCapture;    ///< still capure task
+ 
+     Window::IGuiContainer *m_guiContainerConfig; ///< configuration GUI container

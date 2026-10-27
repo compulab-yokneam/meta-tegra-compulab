@@ -19,6 +19,22 @@ Neither is FRAMOS factory IQ tuning. Single-camera tests do not qualify mixed
 cameras, simultaneous ports or cold-power startup, and the demo option does
 not grant new NVIDIA redistribution rights.
 
+## GTK preview EGL compatibility
+
+The camera compositor matches the realized GTK/X11 visual and accepts an
+EGL configuration without a depth buffer, because its 2D preview does not
+use depth testing. This also supports NVIDIA Ubuntu desktops whose GTK
+visual has no 24-bit-depth EGL configuration. Other Argus GL applications
+retain the existing 24-bit depth requirement; native-visual matching and
+the no-multisampling check remain in place.
+
+Capture controls are detached before deletion even when capture startup
+or stopping fails, preserving the original error instead of crashing
+later in `gtk_container_remove()`. Both fixes are included in the Yocto
+`argus-samples` recipe and the Ubuntu SDK runtime patch bundle. Rebuild
+`argus-samples` for Yocto or `edge-ai-sdk-manager` for a new Ubuntu SDK;
+no kernel, DTB, NITO or bootloader change is needed for these two fixes.
+
 ## IMX678 native video modes
 
 Sensor formats, ISP output and recording codecs are separate layers. The

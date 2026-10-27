@@ -1,0 +1,81 @@
+GTK camera preview and failed-start cleanup validation
+=====================================================
+
+Date: 2026-10-27
+Platform: Edge-AI NX16G, Ubuntu 24.04 / NVIDIA R39.2.1
+Kernel: 6.8.12-l4t-r39.2.1-1021.21-clab-adi-v18
+Camera: one IMX676 on EDGEDES port 0, camera-imx676 boot profile
+Desktop: GNOME X11, NVIDIA EGL 1.5, GLES 3.2
+
+Original failure
+----------------
+The core's GTK camera view uses X11 visual 0x2b. NVIDIA EGL configuration
+0x22 matches that visual with RGB888, no depth buffer and no multisampling.
+GLContext's mandatory 24-bit depth rejected it before preview startup.
+The resulting startup error also left deleted capture controls attached
+to their parent, causing a secondary SIGSEGV in gtk_container_remove().
+
+Fix and offline checks
+----------------------
+Patch 0005 makes depth size an explicit window-context argument. The
+camera Composer opts out with EGL_DONT_CARE; other callers default to
+24 bits. Window-surface, exact native-visual and no-multisampling rules
+remain unchanged. Patch 0006 rolls back partial capture GUI startup and
+cleans controls independently of capture-stop success.
+
+Both patch copies are identical between recipes-multimedia/argus/files
+and the SDK runtime bundle. They apply to the pinned MMAPI source with
+fuzz disabled, including the Yocto profile's later visual-match patch.
+The corrected native Ubuntu ARM64 camera and static sample utilities
+compile and link successfully; native loader relocation checks pass.
+
+Offline suites:
+  recipes-multimedia/argus/tests: 98 passed
+    Includes 9 executed EGL-selection and 8 capture-lifecycle regressions.
+  recipes-devtools/edge-ai-sdk-manager/tests: 360 passed, 1 skipped
+  SDK files/runtime/tests: 68 passed, 1 skipped
+  SDK runtime SHA256SUMS: all entries pass
+
+Run SDK tests with PYTHONDONTWRITEBYTECODE=1 so read-only helper checks do
+not observe import-cache files created by Python during the test itself.
+The lifecycle harness copies vendor source to a temporary directory and
+uses mocked camera/GUI interfaces. Set ARGUS_CAPTURE_SOURCE to an unpacked
+R39.2.1 jetson_multimedia_api directory outside this standard workspace.
+
+DUT validation
+--------------
+Installed the corrected camera through compulab-edge-ai-argus, retaining
+the existing 23-binary package and leaving the other 22 binaries intact.
+The temporary package keeps version 39.2.1+compulab1 because installed
+CompuLab packages require that exact version. Its SHA256 distinguishes it:
+  3ee6095f4bac9a2690e3a816851e1eb61663357e01f65dbb47a67cfe8de10c6a
+Corrected argus_camera build ID:
+  bafecbb90f3a0e5ef1f8016e7d68ab6e79082259
+
+The physical-port launcher preview ran for 20 seconds at approximately
+10 FPS with zero reported frame drops. SIGINT stopped capture and closed
+the device cleanly. A second preview after the forced-error test also
+started successfully and exited with status 0 on SIGINT.
+
+A process-local LD_PRELOAD test shim deliberately made every EGL native
+visual incompatible, reproducing 'No suitable EGLConfig found'. The
+application reported the startup error and exited with status 1 rather
+than SIGSEGV. No new core dump was produced by either failure or preview.
+The shim was never installed system-wide or added to the environment of
+ordinary camera invocations.
+
+dpkg --audit and dpkg -V compulab-edge-ai-argus are clean. The camera stays
+owned by compulab-edge-ai-argus, and nvargus-daemon remains active. The
+original three core dumps and original stderr were preserved. No service
+restart, kernel/DT/NITO replacement, reboot or flashing was required.
+
+Temporary DUT logs and both hotfix/rollback packages are retained under:
+  /tmp/argus-egl-fix.OGj8oL/
+Those diagnostic files may be removed by normal temporary-file cleanup.
+
+Scope
+-----
+This qualifies this single-camera preview and failure-cleanup path, not
+all sensors/ports/modes, image quality or the rest of the Argus suite.
+The existing ready SDK output was not modified. Rebuild argus-samples for
+Yocto or edge-ai-sdk-manager for a new Ubuntu SDK containing the fixes.
