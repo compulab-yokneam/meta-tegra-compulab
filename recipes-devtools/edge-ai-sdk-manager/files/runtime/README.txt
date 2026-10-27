@@ -20,7 +20,12 @@ the actual SDK rootfs concurrently with its kernel/initramfs installer.
 The default minimal Argus build produces argus_camera and argus_oneshot.
 The optional cross-build --suite full builds the complete 23-app image
 sample set, including CUDA SM87 samples; see FULL-ARGUS.txt. Both preserve
-the three CompuLab application patches and keep libnvscf/libnvargus intact.
+the CompuLab application patches and keep libnvscf/libnvargus intact.
+
+The camera's 2D compositor accepts depthless EGL configurations when they
+match its realized GTK/X11 visual. Other GL renderers retain the 24-bit
+depth requirement. Capture GUI cleanup also handles unsuccessful startup
+and stopping without leaving freed controls attached to their parent.
 
 The NITO files are generic uncalibrated demo profiles, not FRAMOS factory
 tuning. Their original proprietary notices and provenance are included.

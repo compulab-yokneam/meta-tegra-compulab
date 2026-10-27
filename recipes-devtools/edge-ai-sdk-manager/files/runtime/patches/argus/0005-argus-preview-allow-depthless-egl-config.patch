@@ -1,0 +1,94 @@
+Subject: [PATCH] argus: allow depthless EGL configurations for camera preview
+
+The Ubuntu NVIDIA X11 desktop can give the GTK camera view visual 0x2b.
+Its matching EGL configuration provides RGB888 with no depth buffer. The
+camera compositor only draws flat textured quads, but GLContext requires
+exactly 24 depth bits and rejects this otherwise compatible configuration.
+
+Let the window-context caller explicitly opt out of the depth requirement
+with EGL_DONT_CARE. Use that option only for the camera compositor. Keep
+the existing 24-bit default for other samples, including depth-tested GL
+renderers, and retain native-visual matching and no multisampling.
+
+Upstream-Status: Pending
+
+diff --git a/argus/samples/utils/GLContext.h b/argus/samples/utils/GLContext.h
+--- a/argus/samples/utils/GLContext.h
++++ b/argus/samples/utils/GLContext.h
+@@ -73,7 +73,10 @@
+      * @param [in] window
+      * @param [in] sharingContext   Context to share with
++     * @param [in] depthBits        Required depth size, or EGL_DONT_CARE
++     *                              when the renderer does not use depth
+      */
+-    bool initialize(Window *window, const GLContext *sharingContext = NULL);
++    bool initialize(Window *window, const GLContext *sharingContext = NULL,
++        EGLint depthBits = 24);
+ 
+     /**
+      * Cleanup
+@@ -175,7 +178,8 @@
+     /**
+      * Initialize
+      */
+-    bool initializeInternal(const GLContext *sharingContext);
++    bool initializeInternal(const GLContext *sharingContext,
++        EGLint depthBits = 24);
+ 
+     /**
+      * Creates and compiles a shader.
+diff --git a/argus/samples/utils/GLContext.cpp b/argus/samples/utils/GLContext.cpp
+--- a/argus/samples/utils/GLContext.cpp
++++ b/argus/samples/utils/GLContext.cpp
+@@ -84,7 +84,8 @@
+     return true;
+ }
+ 
+-bool GLContext::initialize(Window *window, const GLContext *sharingContext)
++bool GLContext::initialize(Window *window, const GLContext *sharingContext,
++    EGLint depthBits)
+ {
+     if (m_initialized)
+         ORIGINATE_ERROR("Already initialized");
+@@ -93,12 +94,13 @@
+ 
+     m_window = window;
+     m_display = eglGetDisplay(window->getEGLNativeDisplay());
+-    PROPAGATE_ERROR(initializeInternal(sharingContext));
++    PROPAGATE_ERROR(initializeInternal(sharingContext, depthBits));
+ 
+     return true;
+ }
+ 
+-bool GLContext::initializeInternal(const GLContext *sharingContext)
++bool GLContext::initializeInternal(const GLContext *sharingContext,
++    EGLint depthBits)
+ {
+     assert(!m_initialized);
+ 
+@@ -165,7 +167,7 @@
+ 
+                 // Depth bits.
+                 eglGetConfigAttrib(m_display, configs[config], EGL_DEPTH_SIZE, &attrib);
+-                if (attrib != 24)
++                if (depthBits != EGL_DONT_CARE && attrib != depthBits)
+                     continue;
+ 
+                 // Samples.
+diff --git a/argus/apps/camera/renderer/Composer.cpp b/argus/apps/camera/renderer/Composer.cpp
+--- a/argus/apps/camera/renderer/Composer.cpp
++++ b/argus/apps/camera/renderer/Composer.cpp
+@@ -221,8 +221,11 @@
+ 
+ bool Composer::threadInitialize()
+ {
+-    // Initialize the GL context and make it current.
+-    PROPAGATE_ERROR(m_context.initialize(&Window::getInstance()));
++    // This compositor draws 2D quads without depth testing. A GTK visual
++    // can have only a depthless EGL config, which is sufficient here.
++    PROPAGATE_ERROR(m_context.initialize(&Window::getInstance(), NULL,
++        EGL_DONT_CARE));
++    // Make the GL context current.
+     PROPAGATE_ERROR(m_context.makeCurrent());
+ 
+     // Create the shader program.

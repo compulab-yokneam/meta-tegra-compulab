@@ -5,7 +5,7 @@ b3d383bac56be382946182b5655d2256593d3ac46e82fb60b0ccc0b7eb69840b  ./DEPENDENCIES
 a40f4861129dbd068d9ae185b852c0c0ce9965cb39756d449190ac213fc694ef  ./NANO-RECORDING.txt
 15fd0f18a9e5cfca610310b649f430dd86e8ab71665ef4aee40083ff24e88bac  ./PORT-MAPPING.txt
 20be8e6f336d05f7d0a0cba3be20c8b6395996d926451d4fd05fd94e1bd0fa48  ./PROVISIONING.txt
-f492417032d7f2e9b329e6f35e429f2b2fd3ac46b4508a5dd8f00726ccb25d17  ./README.txt
+ae53f34cdd4870a274aff7f6a42ca2a82b9fbd53b4fbd940004191447500e63e  ./README.txt
 2da1cce5dc1d6a5760532507a905307603a7f2bfd8a3e46d7e090565ffadc16b  ./SESSION-ADAPTATION.txt
 4d62427f62104ba41ecf0e6ab9c25fb0e8f8438d8f4099db51b08c1af0d88984  ./cross-build-argus.sh
 9c8d3a90a2ba2288679e77926dbf36b5142d1976749838720e1fb111a4705ea8  ./cross-build-gst.sh
@@ -23,6 +23,8 @@ c3c741eaec7daa5fb733b5afd1ea36ea9ca4e7238cefd0eb4f90d585f37c417b  ./patches/argu
 4262e59bacf7c10aa39107d7d3fb84b6f3a497d6af747eeab95e063301728256  ./patches/argus/0002-argus-camera-report-module-identity.patch
 ed9f602990a1ab0052381c11be448369ada1d5bdac633ccc7b0b7842952b3f29  ./patches/argus/0003-argus-camera-use-per-session-sensor-modes.patch
 d570633de79fd59360ae9491ee52ffec7dae4eac1159daa397e088a2005e34a0  ./patches/argus/0004-build-camera-and-oneshot-only.patch
+5e35e0ad1efcba561c5cd264f8f68b71f220770f74c04bb08090a39e24f051fb  ./patches/argus/0005-argus-preview-allow-depthless-egl-config.patch
+866c7e47a1073c2673e8f0d8bb9aa3e118a155168416955decb30f6788750768  ./patches/argus/0006-argus-camera-clean-up-partial-capture-start.patch
 8c4b76fb18e8683cdf23f6a4a3efb835d918f5eafcfeee4a643c1a6670dbd7c3  ./patches/gst/nvvidconv-caps.patch
 41f26f998901769f442c309678688984efbaaaa428fb782e244978f942a7e605  ./patches/gst/v4l2-0001-allocator.patch
 1af72f8a72ecd8c2af53c8c958d0533e124ff64c24772c990cc2704015d87931  ./patches/gst/v4l2-0002-bufferpool.patch
