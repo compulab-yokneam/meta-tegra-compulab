@@ -58,7 +58,7 @@ EDGE_AI_SDK_ACCEPT_LICENSE = "1"
 LICENSE_FLAGS_ACCEPTED += "nvidia-argus-framos-demo"
 
 # Optional: reuse an existing, writable SDK Manager download cache.
-EDGE_AI_SDK_DOWNLOAD_DIR = "/home/val/nvidia/sdkm_downloads"
+EDGE_AI_SDK_DOWNLOAD_DIR = "/path/to/nvidia/sdkm_downloads"
 ```
 
 Before running BitBake, prepare the selected download cache as the ordinary
@@ -74,8 +74,8 @@ test -r "${BUILDDIR}/downloads/sdkmanager" && \
 ```
 
 If using a custom `DL_DIR` or `EDGE_AI_SDK_DOWNLOAD_DIR`, prepare and check
-that directory instead. The existing `/home/val/nvidia/sdkm_downloads` cache
-can be reused with the override shown above. On shared storage, ensure the
+that directory instead. Replace `/path/to/nvidia/sdkm_downloads` with the
+actual existing cache directory. On shared storage, ensure the
 mount is writable and the build user's UID/GID has the required permissions.
 SDK Manager rejects a missing cache with
 `Invalid download folder: Path provided does not exit.`

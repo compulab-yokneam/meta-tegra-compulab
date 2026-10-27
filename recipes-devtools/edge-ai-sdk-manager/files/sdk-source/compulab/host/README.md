@@ -16,10 +16,10 @@ or approved by this shim; do not use them to replace the prepared artifacts.
 
 Use Bash as your normal user, with the original wrapper stored outside this
 SDK. Do not extract the legacy support archive into the SDK first. Replace
-only the original-wrapper path below with its actual location:
+the SDK and original-wrapper paths below with their actual locations:
 
 ```bash
-clab_sdk=/home/val/nvidia/jetpack-7.2.1-image-build
+clab_sdk=/path/to/nvidia/jetpack-7.2.1-image-build
 clab_sdk+=/JetPack_7.2.1_Linux_JETSON_ORIN_NX_TARGETS/Linux_for_Tegra
 cd "$clab_sdk"
 source /path/to/original/compulab-l4t.env
