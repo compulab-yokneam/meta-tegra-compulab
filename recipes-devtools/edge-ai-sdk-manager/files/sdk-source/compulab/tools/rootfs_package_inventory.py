@@ -99,6 +99,47 @@ def own(package, version):
     return "compulab-edge-ai-" + package + " (= " + version + ")"
 
 
+def argus_dependencies():
+    """Shared Ubuntu dependencies for SDK and standalone Argus packages."""
+    return (nvidia("nvidia-l4t-camera"), nvidia("nvidia-l4t-multimedia"),
+            "libgtk-3-0t64", "libx11-6", "libexpat1", "libegl1", "libgles2",
+            "cuda-cudart-13-2 (= 13.2.86-1)")
+
+
+def component_dependencies(component, version, versions=None):
+    """Shared dependency policy for SDK and standalone Ubuntu archives."""
+    versions = versions or {}
+    def required(name):
+        return own(name, versions.get(name, version))
+    definitions = {
+        "argus": argus_dependencies(),
+        "kernel": (nvidia("nvidia-l4t-core"),
+                   "nvidia-l4t-kernel (= " + NVIDIA_KERNEL_VERSION + ")",
+                   nvidia("nvidia-l4t-initrd"), "kmod"),
+        "device-trees": (required("kernel"),),
+        "uefi-capsules": (),
+        "boot-tools": (required("kernel"), required("device-trees"),
+                       "compulab-edge-ai-uefi-capsules", "efibootmgr", "efivar",
+                       "util-linux", "coreutils"),
+        "gstreamer": (nvidia("nvidia-l4t-gstreamer"), nvidia("nvidia-l4t-camera"),
+                      nvidia("nvidia-l4t-multimedia"), "libgstreamer1.0-0",
+                      "libgstreamer-plugins-base1.0-0",
+                      "cuda-cudart-13-2 (= 13.2.86-1)"),
+        "camera-support": (required("argus"), required("gstreamer"), "python3",
+                           "python3-gi", "gir1.2-gtk-3.0", "gir1.2-gstreamer-1.0",
+                           "gir1.2-gst-plugins-base-1.0", "gstreamer1.0-tools",
+                           "gstreamer1.0-plugins-base", "gstreamer1.0-plugins-good",
+                           "gstreamer1.0-plugins-bad", "gstreamer1.0-plugins-ugly",
+                           "gstreamer1.0-x", "libx264-164", "xwayland"),
+        "bsp-policy": ("python3", "dpkg"),
+    }
+    if component == "meta":
+        return tuple("compulab-edge-ai-" + name +
+                     (" (>= " if name == "uefi-capsules" else " (= ") +
+                     versions.get(name, version) + ")" for name in definitions)
+    return definitions[component]
+
+
 def device_tree_paths(root, artifacts):
     paths = set()
     for folder in ("dtb", "devicetree"):
@@ -157,13 +198,11 @@ def collect_packages(sdk: Path, artifacts: Path, version: str) -> list:
         "etc/nv-update-initrd/list.d/modules.override",
     ) + module_paths
     add("kernel", "arm64", kernel,
-        depends=(nvidia("nvidia-l4t-core"),
-                 "nvidia-l4t-kernel (= " + NVIDIA_KERNEL_VERSION + ")",
-                 nvidia("nvidia-l4t-initrd"), "kmod"),
+        depends=component_dependencies("kernel", version),
         conffiles=("etc/nv-update-initrd/list.d/modules.override",))
 
     add("device-trees", "all", device_tree_paths(root, artifacts),
-        depends=(own("kernel", version),))
+        depends=component_dependencies("device-trees", version))
 
     capsule_directory = "usr/share/compulab/uefi-update-capsules"
     capsules = tree_files(root, capsule_directory)
@@ -180,9 +219,7 @@ def collect_packages(sdk: Path, artifacts: Path, version: str) -> list:
         "usr/bin/oe4t-set-uefi-OSIndications", "usr/bin/uefi_common.func",
         "boot/extlinux/extlinux.conf.imx67x.sample",
         "boot/extlinux/extlinux.conf",
-    ), depends=(own("kernel", version), own("device-trees", version),
-                "compulab-edge-ai-uefi-capsules", "efibootmgr", "efivar",
-                "util-linux", "coreutils"),
+    ), depends=component_dependencies("boot-tools", version),
         conffiles=("boot/extlinux/extlinux.conf",))
 
     manifest = sdk / "compulab/runtime/files/argus-full-suite.txt"
@@ -193,19 +230,12 @@ def collect_packages(sdk: Path, artifacts: Path, version: str) -> list:
             set(applications) == set(ARGUS_APPS),
             "Expected the complete 23-application Argus suite")
     add("argus", "arm64", ("usr/bin/" + app for app in applications),
-        depends=(nvidia("nvidia-l4t-camera"),
-                 nvidia("nvidia-l4t-multimedia"), "libgtk-3-0t64",
-                 "libx11-6", "libexpat1", "libegl1", "libgles2",
-                 "cuda-cudart-13-2 (= 13.2.86-1)"))
+        depends=argus_dependencies())
 
     add("gstreamer", "arm64", (
         "usr/lib/aarch64-linux-gnu/gstreamer-1.0/" + name
         for name in PLUGINS),
-        depends=(nvidia("nvidia-l4t-gstreamer"),
-                 nvidia("nvidia-l4t-camera"),
-                 nvidia("nvidia-l4t-multimedia"), "libgstreamer1.0-0",
-                 "libgstreamer-plugins-base1.0-0",
-                 "cuda-cudart-13-2 (= 13.2.86-1)"))
+        depends=component_dependencies("gstreamer", version))
 
     dropin = "etc/systemd/system/nvargus-daemon.service.d/" + \
              "90-edgedes-framos-demo.conf"
@@ -219,13 +249,7 @@ def collect_packages(sdk: Path, artifacts: Path, version: str) -> list:
         "usr/share/edge-ai-argus-framos-demo/PROVENANCE.txt",
         "usr/share/edge-ai-argus-framos-demo/" +
         "Tegra_Software_License_Agreement-Tegra-Linux.txt",
-    ), depends=(own("argus", version), own("gstreamer", version),
-                "python3", "python3-gi", "gir1.2-gtk-3.0",
-                "gir1.2-gstreamer-1.0", "gir1.2-gst-plugins-base-1.0",
-                "gstreamer1.0-tools", "gstreamer1.0-plugins-base",
-                "gstreamer1.0-plugins-good", "gstreamer1.0-plugins-bad",
-                "gstreamer1.0-plugins-ugly", "gstreamer1.0-x",
-                "libx264-164", "xwayland"), conffiles=(dropin,))
+    ), depends=component_dependencies("camera-support", version), conffiles=(dropin,))
 
     seen = set()
     for package in packages:

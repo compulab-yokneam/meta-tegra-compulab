@@ -108,6 +108,23 @@ Normally `DEPLOY_DIR_IMAGE` is
 another **new** destination. If firmware multiconfigs use custom `TMPDIR`s,
 override `EDGE_AI_SDK_FIRMWARE_INPUTS` with their machine/style/mc/deploy mapping.
 
+## Standalone Ubuntu package rebuilds
+
+All package groups can now be regenerated independently of SDK creation.
+Use `bitbake edge-ai-debs` to build/verify the complete nine-package set,
+or the individual recipes listed in the
+[standalone package guide](../edge-ai-debs/README.md). They share the
+Debian dependency/packaging policy with this workflow and preserve the
+original SDK. Kernel/DT/firmware recipes build only their required inputs;
+Ubuntu native application builds reuse a private prepared-environment copy.
+
+To rebuild only the Ubuntu Argus Debian package after a successful SDK
+build, use `bitbake edge-ai-argus-deb`. It snapshots the prepared Ubuntu
+ARM64 builder and rebuilds all 23 applications with current layer patches,
+without SDK Manager, APT, kernel/firmware builds or SDK/DUT installation.
+See the [standalone Argus guide](../edge-ai-debs/ARGUS.md) for inputs,
+output paths and exact-version dependency constraints.
+
 ## Sourceable host wrapper
 
 The generated SDK contains `compulab-l4t.env` at its root. Source that file
