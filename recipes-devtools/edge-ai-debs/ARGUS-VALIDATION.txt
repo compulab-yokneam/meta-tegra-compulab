@@ -1,0 +1,69 @@
+Standalone Ubuntu Argus package validation
+=========================================
+
+Date: 2026-10-27
+Build machine: edge-ai-nx-16g
+Source environment: successful SDK retry5 Ubuntu ARM64 builder
+NVIDIA userspace: R39.2.1 (39.2.1-20260806224157)
+CUDA toolkit: 13.2.86-1, native ARM64 compiler under persistent QEMU binfmt
+
+Prior camera fixes were committed before implementing this target:
+  1f519c1 recipes-devtools: edge-ai-sdk-manager: fix GTK camera startup
+  e885c97 recipes-multimedia: argus: fix depthless preview and failed startup
+
+Actual command in the existing configured build shell:
+  bitbake edge-ai-argus-deb
+
+Result: exit status 0. All 186 tasks succeeded; 170 were already current.
+The task graph did not build SDK Manager, kernel, device trees, firmware,
+capsules or an image. The existing multiconfig configuration was parsed,
+but no multiconfig firmware build was required.
+
+All 23 applications were freshly compiled from the pinned MMAPI source
+with the current runtime patch queue. No executable was copied from a
+Yocto image or from the source builder's previous build output.
+
+Independent package audit:
+  23 AArch64 ELF applications, all native loader relocation checks pass
+  2 license documents, 25 total payload files
+  Ubuntu/NVIDIA/CUDA package dependencies, version and architecture match
+  Every payload SHA256, Debian md5sum and archive ownership verified
+  SHA256SUMS and staged source/helper/runtime provenance verified
+  Published artifacts owned by val:val with mode 0644
+
+Package version: 39.2.1+compulab1
+Input fingerprint:
+  b2c4a1411fa69f5438baa5b5c4d013ce58789b47de70227d572b56156f78242a
+Package SHA256:
+  2e6c893a6a791fe98c5631ceeeb5b139851d1f1f11d3eef8e7b529c4ccb6df71
+Output beneath the configured DEPLOY_DIR_IMAGE:
+  edge-ai-argus-deb/<input-fingerprint>/
+    compulab-edge-ai-argus_39.2.1+compulab1_arm64.deb
+    manifest.json
+    SHA256SUMS
+
+The original prepared builder was unchanged: all 188,144 audited metadata
+records and all 6,148 original work-file hashes matched the pre-build
+baseline. Its package database, 2,110 installed package records and critical
+toolchain/library hashes matched as well. The source builder, SDK rootfs,
+existing SDK archives and DUT were not modified. No private mounts remain.
+
+Reinvoking the same execution helper/configuration verified the cached
+publication without creating another clone or changing archive, manifest
+or checksum-file inodes, sizes, modification times or change times.
+
+Offline regressions: 574 passed, 2 skipped; no failures or errors.
+  Standalone target: 48 passed
+  SDK packaging/provisioning: 360 passed, 1 skipped
+  Runtime bundle: 68 passed, 1 skipped
+  Multimedia Argus: 98 passed
+All 37 maintained runtime bundle checksums passed.
+
+This is build/package/loader validation, not qualification of all camera,
+CUDA, display or encoder applications on hardware. No new DUT package was
+installed by this target or its validation.
+
+The later nine-package integration regenerated Argus with shared dependency
+metadata and a current.json receipt. See VALIDATION.txt for
+that build, its newer publication, cache reuse and final task preflights.
+The earlier immutable publication recorded above remains available.

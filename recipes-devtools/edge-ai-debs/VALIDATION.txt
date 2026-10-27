@@ -1,0 +1,124 @@
+Standalone Ubuntu component package validation
+==============================================
+
+Date: 2026-10-27
+Build machine: edge-ai-nx-16g
+Source SDK and prepared Ubuntu builder: successful SDK retry5
+NVIDIA Ubuntu: 24.04, R39.2.1 (39.2.1-20260806224157)
+Package version: 39.2.1+compulab1
+
+Actual command in the existing configured build shell:
+  bitbake -k edge-ai-debs
+
+Result: exit status 0. All 64,090 tasks succeeded; 64,037 were current.
+The aggregate created all nine archives and a verified collection. No
+edge-ai-sdk-manager:do_create_sdk, SDK Manager, APT or OS-image build ran.
+Required kernel/DT/firmware exports were reused from the configured cache;
+the capsule collection was freshly deployed from its multiconfig outputs.
+Argus and GStreamer were freshly built in private Ubuntu ARM64 copies.
+Kernel packaging regenerated Ubuntu initrds in a private SDK/rootfs copy.
+
+The existing 12-configuration firmware cache caused a long normal-output
+quiet interval while BitBake processed cached tasks. After every requested
+task succeeded, BitBake emitted 11,043 "Runqueue deadlocked on deferred
+tasks" cleanup warnings and drained those deferred entries successfully.
+There were no failed tasks or ERROR messages. This run therefore validates
+the package build, but is not evidence of a warning-free multiconfig cache.
+No BitBake/core scheduler changes were made for this packaging feature.
+
+Verified payloads, 1,984 regular files in total:
+  argus:          25 files, 23 AArch64 applications and 2 license documents
+  gstreamer:       7 files, 3 AArch64 plugins and 4 license documents
+  kernel:      1,585 files, including 1,555 matched kernel modules
+  device-trees:  332 files, including four module variants and camera DTs
+  uefi-capsules:  15 files, including all 12 machine/logo capsules
+  boot-tools:      6 files, including the Ubuntu boot menu and camera sample
+  camera-support: 10 files, including selected NITOs and Ubuntu launchers
+  bsp-policy:      3 files, without a copied private target-state snapshot
+  meta:            1 file, with coordinated component dependencies
+
+Kernel release:
+  6.8.12-l4t-r39.2.1-1021.21-clab-adi-v18
+All 109 requested kernel settings, CONFIG_MODVERSIONS and module ABI/CRC
+checks passed. Fresh kernel/OOT/deploy exports, rather than an old SDK
+custom kernel or module tree, supplied the package payload.
+
+Every capsule payload matched its fresh deploy counterpart byte for byte.
+All twelve parsed as firmware version 0x270201, with canonical FMP GUID:
+  bf0d4599-20d4-414e-b2c5-3595b1cda402
+This validates package contents, not capsule acceptance by hardware.
+
+Independent archive and aggregate audit:
+  Actual Package, Version, Architecture and Depends fields match
+  All payload SHA256, Debian md5sums, file modes and root:root entries pass
+  SHA256SUMS, package manifests and embedded original manifests match
+  Nine component inventories are nonoverlapping
+  Guarded kernel/plugin diversions and expected conffiles are present
+  Published files belong to val:val, mode 0644
+
+Aggregate output beneath DEPLOY_DIR_IMAGE:
+  edge-ai-debs/bundle/<input-fingerprint>/
+Input fingerprint:
+  02fa9441273321859f0d8f766ddb2efba449cae28935a20bd884e750c839bc8b
+Aggregate manifest SHA256:
+  1a18fdf98955d1dc59dffdfa5dcd9353738ddd5746beada4235eb380d9114116
+The directory includes all nine .deb files, manifest.json and SHA256SUMS.
+Component roots and the bundle root have current.json selection receipts.
+Argus retains its separate edge-ai-argus-deb publication root.
+
+Preservation audit:
+  All 188,145 prepared-builder metadata records matched the baseline
+  All 6,148 original builder work-file hashes matched
+  All 2,110 installed builder package records and tool hashes matched
+  All 26 critical SDK boot/vendor/dpkg/package checksums matched
+  The original SDK readiness JSON matched
+  No private build mounts or source-SDK mounts remained
+
+The whole-SDK metadata digest was not identical to its initial baseline:
+transient rootfs/tmp, rootfs/run/blkid and rootfs/boot/efi directory ctimes
+changed at 14:53-14:54 UTC, before standalone helpers started at 15:07 UTC.
+Their cause was not established. No SDK metadata changed after helper
+startup, and critical file bytes/readiness data remained unchanged. The
+audit does not claim that every original SDK metadata record was identical.
+
+No generated package was installed, no DUT was accessed, and no device was
+flashed or rebooted. Native loader/package validation does not qualify
+camera combinations, displays, encoders, boot media or upgrade/downgrade
+procedures on hardware.
+
+Offline regression suites: 683 passed, 2 skipped; no failures or errors.
+  Standalone component/collector/path preflights: 109 passed
+  Standalone Argus: 48 passed
+  Existing SDK packaging/provisioning: 360 passed, 1 skipped
+  Maintained Ubuntu runtime bundle: 68 passed, 1 skipped
+  Multimedia Argus: 98 passed
+All 37 maintained runtime bundle checksums passed.
+
+The final ordinary-user task preflights reject overlapping SDK/builder/
+source/work/output paths before filesystem writes, reject unmarked or
+invalid existing private work before chmod, and create publication parents
+as the ordinary user. Regression fixtures exercise both inline task bodies
+and intercept every privileged boundary without invoking sudo.
+
+Actual cache reuse was tested for all ten staged execution helpers (nine
+components and the aggregate). Every invocation exited 0 with the same
+fingerprint. All 52 immutable publication entries retained exact bytes,
+inodes, device, ownership, modes, sizes and mtime/ctime values. The eleven
+existing private run directories were unchanged; no new clones or mounts
+were created. Only atomic current.json receipt refreshes were permitted.
+
+After the final inline safety changes, this normal BitBake invocation
+also exited 0 with all 202 tasks successful (176 already current):
+  bitbake edge-ai-bsp-policy-deb edge-ai-argus-deb
+Both publication fingerprints stayed unchanged. This exercised the shared
+class and the separate Argus task without the firmware multiconfig graph.
+
+Argus directory consolidation (same date):
+  Recipe/helper/tests now live in recipes-devtools/edge-ai-debs
+  Argus documentation is ARGUS.md and ARGUS-VALIDATION.txt
+  Recipe and helper SHA256 values were unchanged by their relocation
+  The combined common-directory test suite passed all 157 tests
+  bitbake edge-ai-argus-deb edge-ai-bsp-policy-deb exited 0
+  All 202 tasks succeeded; 198 were already current, with no warnings
+  Both component publication fingerprints stayed unchanged
+Target names, aggregate dependencies and deploy output paths are unchanged.
