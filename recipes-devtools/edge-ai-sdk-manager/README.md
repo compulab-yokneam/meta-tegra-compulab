@@ -135,6 +135,15 @@ connected operations support QSPI-only or QSPI plus board NVMe, with a
 read-only `--dry-run` and explicit confirmation before writes. Full usage:
 [wrapper guide](files/sdk-source/compulab/host/WRAPPER.md).
 
+`customize_rootfs` offers an interactive or scripted chroot into the SDK's
+rootfs, with confirmation, read-only preview and temporary-mount cleanup.
+It never flashes a device or updates existing generated images. See the
+wrapper guide for host prerequisites and managed-file verification limits.
+The wrapper and helper ship with newly generated SDK outputs. Updating this
+layer alone does not replace files in an existing SDK. Do not overwrite its
+recorded wrapper or refresh integrity receipts merely to accept new files;
+an existing verified SDK needs a separately reviewed integration update.
+
 The wrapper also provides `prepare_massflash_boot` (QSPI-only) and
 `prepare_massflash_boot_rootfs` (QSPI plus NVMe). They generate native
 `mfi_<target>.tar.gz` packages with `--no-flash`, defaulting to five devices;

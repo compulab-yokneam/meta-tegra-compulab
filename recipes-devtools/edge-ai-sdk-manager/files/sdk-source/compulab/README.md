@@ -107,7 +107,10 @@ not represented by that source commit; preserve manifests and backups too.
 Source the SDK root's `compulab-l4t.env` from a clean Bash shell, then run
 `devshell` for the interactive menu or call `select_device`,
 `select_bootloader`, `create_disk_image`, `deploy_bootloader` and
-`deploy_bootloader_rootfs` directly. `prepare_massflash_boot` and
+`deploy_bootloader_rootfs` directly. `customize_rootfs` opens a guarded root
+chroot in this SDK's rootfs, or runs an explicit command there; changes
+persist in the SDK rootfs, not on a DUT or in existing generated images.
+`prepare_massflash_boot` and
 `prepare_massflash_boot_rootfs` prepare QSPI-only or QSPI/NVMe packages for
 five devices by default, without flashing; `--massflash N` changes the limit.
 The deploy functions flash by default; their optional `--no-flash` flag only
@@ -116,7 +119,8 @@ Use `--dry-run` before any operation; writes require confirmation or explicit
 `--yes`. Offline images require an explicit board, while connected flashing
 can use `select_device auto`.
 See [host/WRAPPER.md](host/WRAPPER.md) for supported selectors, safe loop
-creation, QSPI-only/full flashing, massflash preparation and validation limits.
+creation, rootfs customization, QSPI-only/full flashing, massflash preparation
+and validation limits.
 Sourcing alone does not probe or modify anything. Do not source the old R36
 wrapper first.
 

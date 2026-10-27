@@ -71,6 +71,8 @@ class SourceableWrapperTests(unittest.TestCase):
         self.check_log = self.root / "checks.txt"
         self.images_log = self.root / "images.jsonl"
         self.events_log = self.root / "events.jsonl"
+        self.rootfs_check_log = self.root / "rootfs-checks.jsonl"
+        self.rootfs_execute_log = self.root / "rootfs-execute.jsonl"
         self.environment = {
             "PATH": str(self.bin) + ":/usr/bin:/bin",
             "HOME": str(self.root), "LC_ALL": "C", "SDK_ROOT": str(self.sdk),
@@ -80,8 +82,23 @@ class SourceableWrapperTests(unittest.TestCase):
             "TMPDIR": str(self.temp),
             "MOCK_IMAGES_LOG": str(self.images_log),
             "MOCK_EVENT_LOG": str(self.events_log),
+            "MOCK_ROOTFS_CHECK_LOG": str(self.rootfs_check_log),
+            "MOCK_ROOTFS_EXECUTE_LOG": str(self.rootfs_execute_log),
             "MOCK_SUDO_RENEW_FILE": str(self.root / "sudo-renewed"),
         }
+        customization = self.sdk / "compulab/tools/customize-rootfs.py"
+        # Only the read-only checker may run. sudo below intercepts every
+        # execution request, so no actual mount, chroot or rootfs work occurs.
+        customization.write_text('''#!/usr/bin/python3
+import json, os, sys
+args = sys.argv[1:]
+if "--check" not in args or "--execute" in args:
+    sys.exit(97)
+with open(os.environ["MOCK_ROOTFS_CHECK_LOG"], "a") as stream:
+    stream.write(json.dumps({"argv": args, "cwd": os.getcwd()}) + "\\n")
+print(json.dumps({"mode": "read-only plan"}))
+sys.exit(int(os.environ.get("MOCK_ROOTFS_CHECK_RC", "0")))
+''')
         images = self.sdk / "compulab/tools/check-deployment-images.py"
         images.write_text('''#!/usr/bin/python3
 import json, os, sys
@@ -123,6 +140,14 @@ if args == ["-v"]:
 if (args[:3] == ["-n", "/usr/bin/python3", "-B"] and
         any(value.endswith("/prepare-massflash-package.py") for value in args)):
     sys.exit(int(os.environ.get("MOCK_PACKAGE_RC", "0")))
+if (args[:3] == ["-n", "/usr/bin/python3", "-B"] and
+        any(value.endswith("/customize-rootfs.py") for value in args)):
+    entry = {"stdin_isatty": sys.stdin.isatty()}
+    if os.environ.get("MOCK_ROOTFS_READ_STDIN") == "1":
+        entry["stdin"] = sys.stdin.read()
+    with open(os.environ["MOCK_ROOTFS_EXECUTE_LOG"], "a") as stream:
+        stream.write(json.dumps(entry) + "\\n")
+    sys.exit(int(os.environ.get("MOCK_ROOTFS_EXECUTE_RC", "0")))
 allowed = ("/flash.sh", "/l4t_initrd_flash.sh")
 if args[:2] == ["-n", "env"] and any(
         value.endswith(allowed) for value in args):
@@ -201,6 +226,18 @@ sys.exit(98)
         return [json.loads(line) for line in self.events_log.read_text().splitlines()] \
             if self.events_log.exists() else []
 
+    def rootfs_checks(self):
+        return [json.loads(line) for line in self.rootfs_check_log.read_text().splitlines()] \
+            if self.rootfs_check_log.exists() else []
+
+    def rootfs_calls(self):
+        return [call for call in self.calls() if any(
+            value.endswith("/customize-rootfs.py") for value in call["argv"])]
+
+    def rootfs_executions(self):
+        return [json.loads(line) for line in self.rootfs_execute_log.read_text().splitlines()] \
+            if self.rootfs_execute_log.exists() else []
+
     def no_backend(self):
         self.assertFalse(self.calls(), "Unexpected sudo invocation")
         self.assertFalse(self.guard_log.exists(), "Unexpected device/mount/loop operation")
@@ -222,13 +259,14 @@ test "$L4T_ROOT" = "$SDK_ROOT" || exit 74
 for fn in select_device select_target current_device select_bootloader \
           current_bootloader detect_device create_disk_image \
           deploy_bootloader deploy_bootloader_rootfs \
-          prepare_massflash_boot prepare_massflash_boot_rootfs; do
+          prepare_massflash_boot prepare_massflash_boot_rootfs customize_rootfs; do
     declare -F "$fn" >/dev/null || exit 75
 done
 ''', setup=False)
         self.assertEqual(before, sorted(str(path.relative_to(self.sdk))
                                         for path in self.sdk.rglob("*")))
         self.no_backend()
+        self.assertEqual(self.rootfs_checks(), [])
 
     def test_source_preserves_strict_shell_options(self):
         self.successful(r'''
@@ -935,7 +973,7 @@ deploy_bootloader_rootfs --yes
     def test_unknown_and_injected_operation_arguments_are_rejected(self):
         for function in ("deploy_bootloader", "deploy_bootloader_rootfs",
                          "create_disk_image", "prepare_massflash_boot",
-                         "prepare_massflash_boot_rootfs"):
+                         "prepare_massflash_boot_rootfs", "customize_rootfs"):
             for argument in ("--external-only", "--direct", "--yes;touch injected"):
                 with self.subTest(function=function, argument=argument):
                     result = self.shell('"$FUNCTION" "$ARGUMENT"',
@@ -1286,7 +1324,7 @@ prepare_massflash_boot --yes
         self.assertFalse(self.guard_log.exists())
 
     def test_massflash_menu_lists_both_actions_without_running_them(self):
-        result = self.terminal('select_device NX16; devshell', "9\n")
+        result = self.terminal('select_device NX16; devshell', "10\n")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         output = result.stdout + result.stderr
         self.assertIn("prepare_massflash_boot", output)
@@ -1298,7 +1336,7 @@ prepare_massflash_boot --yes
             with self.subTest(choice=choice):
                 self.sudo_log.unlink(missing_ok=True)
                 result = self.terminal('select_device NX16; devshell',
-                                       choice + "\nYES\n9\n")
+                                       choice + "\nYES\n10\n")
                 self.assertEqual(result.returncode, 0,
                                  result.stdout + result.stderr)
                 calls = self.flash_calls()
@@ -1308,6 +1346,201 @@ prepare_massflash_boot --yes
                 self.assertEqual(len(package), 1)
                 argv = package[0]["argv"]
                 self.assertEqual(argv[argv.index("--scope") + 1], scope)
+        self.assertFalse(self.guard_log.exists())
+
+    def test_customize_dry_run_checks_only_pinned_root_without_sudo_or_usb(self):
+        result = self.successful(r'''
+_compulab_recovery_devices() { return 97; }
+customize_rootfs --dry-run
+''')
+        self.assertIn(str(self.sdk / "rootfs"), result.stdout)
+        self.assertEqual(len(self.rootfs_checks()), 1)
+        self.assertEqual(self.rootfs_checks()[0]["argv"],
+                         ["--sdk-root", str(self.sdk), "--check"])
+        self.no_backend()
+
+    def test_customize_dry_run_does_not_modify_sdk_files(self):
+        def snapshot():
+            return {str(path.relative_to(self.sdk)): (
+                        path.lstat().st_mode,
+                        path.read_bytes() if path.is_file() else None)
+                    for path in self.sdk.rglob("*")}
+        before = snapshot()
+        self.successful('customize_rootfs --dry-run -- /usr/bin/true')
+        self.assertEqual(snapshot(), before)
+        self.no_backend()
+
+    def test_customize_no_command_requires_terminal_even_with_yes(self):
+        result = self.shell('customize_rootfs --yes', stdin="exit\n")
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.assertEqual(self.rootfs_checks(), [])
+        self.no_backend()
+
+    def test_customize_noninteractive_command_requires_explicit_yes(self):
+        result = self.shell('customize_rootfs -- /usr/bin/true', stdin="")
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.no_backend()
+
+    def test_customize_explicit_command_is_one_privileged_helper_invocation(self):
+        self.successful('customize_rootfs --yes -- /usr/bin/true')
+        self.assertEqual(len(self.rootfs_checks()), 1)
+        self.assertEqual(self.calls()[0]["argv"], ["-n", "true"])
+        calls = self.rootfs_calls()
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0]["argv"], [
+            "-n", "/usr/bin/python3", "-B",
+            str(self.sdk / "compulab/tools/customize-rootfs.py"),
+            "--sdk-root", str(self.sdk), "--execute", "--", "/usr/bin/true"])
+        self.assertEqual(calls[0]["cwd"], str(self.other))
+        self.assertFalse(self.guard_log.exists())
+
+    def test_customize_command_arguments_are_literal_and_keep_boundaries(self):
+        payload = 'a b; touch injected; $(touch injected2)'
+        self.successful(r'''
+customize_rootfs --yes -- /usr/bin/printf '%s\n' "$PAYLOAD" 'two words'
+''', env={"PAYLOAD": payload})
+        self.assertEqual(self.rootfs_calls()[0]["argv"][-4:],
+                         ["/usr/bin/printf", "%s\\n", payload, "two words"])
+        self.assertFalse((self.other / "injected").exists())
+        self.assertFalse((self.other / "injected2").exists())
+        self.assertFalse(self.guard_log.exists())
+
+    def test_customize_legacy_command_runs_in_target_bash_not_host_eval(self):
+        legacy = 'printf legacy; touch injected; $(touch injected2)'
+        self.successful('customize_rootfs --yes', env={"chroot_command": legacy})
+        self.assertEqual(self.rootfs_calls()[0]["argv"][-5:],
+                         ["/bin/bash", "--noprofile", "--norc", "-c", legacy])
+        self.assertFalse((self.other / "injected").exists())
+        self.assertFalse((self.other / "injected2").exists())
+        self.assertFalse(self.guard_log.exists())
+
+    def test_customize_explicit_arguments_override_legacy_command(self):
+        self.successful('customize_rootfs --yes -- /usr/bin/true',
+                        env={"chroot_command": "touch should-not-run"})
+        self.assertEqual(self.rootfs_calls()[0]["argv"][-2:], ["--", "/usr/bin/true"])
+        self.assertFalse((self.other / "should-not-run").exists())
+
+    def test_customize_command_failure_status_is_preserved(self):
+        result = self.shell('customize_rootfs --yes -- /usr/bin/false',
+                            env={"MOCK_ROOTFS_EXECUTE_RC": "42"})
+        self.assertEqual(result.returncode, 42, result.stdout + result.stderr)
+        self.assertEqual(len(self.rootfs_calls()), 1)
+        self.assertFalse(self.guard_log.exists())
+
+    def test_customize_read_only_preflight_failure_never_reaches_sudo(self):
+        result = self.shell('customize_rootfs --yes -- /usr/bin/true',
+                            env={"MOCK_ROOTFS_CHECK_RC": "43"})
+        self.assertEqual(result.returncode, 43, result.stdout + result.stderr)
+        self.no_backend()
+
+    def test_customize_sudo_preflight_failure_does_not_execute_chroot(self):
+        result = self.shell('customize_rootfs --yes -- /usr/bin/true',
+                            env={"MOCK_SUDO_PREFLIGHT_RC": "1"})
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(self.rootfs_calls(), [])
+        self.assertEqual(self.rootfs_executions(), [])
+        self.assertEqual([call["argv"] for call in self.calls()], [["-n", "true"]])
+        self.assertFalse(self.guard_log.exists())
+
+    def test_customize_refuses_changed_sdk_or_rootfs_before_helper_check(self):
+        for setting in ('L4T_ROOT="$SDK_ROOT/../unrelated"', 'ROOTFS=/tmp',
+                        'ROOTFS="$SDK_ROOT/rootfs/../rootfs"'):
+            with self.subTest(setting=setting):
+                result = self.shell(setting + '; customize_rootfs --dry-run')
+                self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+                self.assertEqual(self.rootfs_checks(), [])
+                self.no_backend()
+
+    def test_customize_missing_or_symlinked_helper_refuses_before_sudo(self):
+        helper = self.sdk / "compulab/tools/customize-rootfs.py"
+        saved = helper.read_bytes()
+        helper.unlink()
+        result = self.shell('customize_rootfs --yes -- /usr/bin/true')
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.no_backend()
+        alternate = self.other / "alternate-helper.py"
+        alternate.write_bytes(saved)
+        helper.symlink_to(alternate)
+        result = self.shell('customize_rootfs --yes -- /usr/bin/true')
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.assertEqual(self.rootfs_checks(), [])
+        self.no_backend()
+
+    def test_customize_root_shell_execution_is_refused(self):
+        result = self.shell(r'''
+id() { printf '0\n'; }
+customize_rootfs --yes -- /usr/bin/true
+''')
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.no_backend()
+
+    def test_customize_root_shell_dry_run_remains_read_only(self):
+        self.successful(r'''
+id() { printf '0\n'; }
+customize_rootfs --dry-run
+''')
+        self.no_backend()
+
+    def test_customize_empty_delimiter_and_unknown_arguments_are_refused(self):
+        for arguments in ('--yes --', '--unexpected', '/usr/bin/true'):
+            with self.subTest(arguments=arguments):
+                result = self.shell('customize_rootfs ' + arguments)
+                self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+                self.assertEqual(self.rootfs_checks(), [])
+                self.no_backend()
+
+    def test_customize_preserves_caller_state_with_strict_shell_options(self):
+        self.successful(r'''
+set -euo pipefail
+select_device NX8
+select_bootloader nvidia-logo
+trap ':' TERM
+before_pwd=$PWD
+before_options=$(set +o)
+before_traps=$(trap -p)
+before_rootfs=$ROOTFS
+customize_rootfs --yes -- /usr/bin/true || exit $?
+test "$PWD" = "$before_pwd" || exit 71
+test "$(set +o)" = "$before_options" || exit 72
+test "$(trap -p)" = "$before_traps" || exit 73
+test "$ROOTFS" = "$before_rootfs" || exit 74
+test "$(current_device)" = edge-ai-nx-8g || exit 75
+test "$(current_bootloader)" = nvidia-logo || exit 76
+''')
+        self.assertFalse(self.guard_log.exists())
+
+    def test_customize_command_inherits_stdin_without_a_terminal(self):
+        self.successful('customize_rootfs --yes -- /usr/bin/true',
+                        env={"MOCK_ROOTFS_READ_STDIN": "1"}, stdin="fixture input\n")
+        self.assertEqual(self.rootfs_executions(),
+                         [{"stdin_isatty": False, "stdin": "fixture input\n"}])
+
+    def test_customize_interactive_decline_never_calls_sudo(self):
+        result = self.terminal('customize_rootfs', "NO\n")
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.no_backend()
+
+    def test_customize_interactive_confirmation_enters_default_shell(self):
+        result = self.terminal('customize_rootfs', "YES\n")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(self.rootfs_calls()[0]["argv"][-4:],
+                         ["/bin/bash", "--noprofile", "--norc", "-i"])
+        self.assertEqual(self.rootfs_executions(), [{"stdin_isatty": True}])
+        self.assertFalse(self.guard_log.exists())
+
+    def test_customize_help_is_passive_and_lists_public_command(self):
+        result = self.successful('customize_rootfs --help')
+        self.assertIn("customize_rootfs", result.stdout)
+        self.assertEqual(self.rootfs_checks(), [])
+        self.no_backend()
+
+    def test_customize_menu_lists_and_dispatches_new_action(self):
+        result = self.terminal('devshell', "8\nYES\n10\n")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("customize_rootfs", result.stdout + result.stderr)
+        self.assertEqual(len(self.rootfs_calls()), 1)
+        self.assertEqual(self.rootfs_calls()[0]["argv"][-4:],
+                         ["/bin/bash", "--noprofile", "--norc", "-i"])
         self.assertFalse(self.guard_log.exists())
 
 

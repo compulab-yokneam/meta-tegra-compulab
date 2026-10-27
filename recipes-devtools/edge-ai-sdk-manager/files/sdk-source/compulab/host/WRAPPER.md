@@ -45,6 +45,83 @@ and menu text. `current_bootloader` reports the host selection, not firmware
 running on a connected device. Set `EDGE_AI_EARLY_TTY1=1` for early HDMI tty1;
 the default is 0.
 
+## Customize the SDK rootfs
+
+`customize_rootfs` opens an interactive root Bash in this SDK's
+`Linux_for_Tegra/rootfs`, without requiring a connected Jetson or a target
+selection. It is also an entry in `devshell`/`simple_shell`.
+
+```bash
+customize_rootfs --dry-run
+sudo -v
+customize_rootfs
+# Make the intended changes inside the target shell, then type exit.
+```
+
+Use the normal host user, not a root host shell. Execution asks for `YES`
+before entering the writable rootfs. For automation, pass `--yes` and an
+explicit command after `--`; arguments are kept separate, not evaluated by
+the host shell:
+
+```bash
+customize_rootfs --yes -- /usr/bin/apt-get update
+customize_rootfs --yes -- /usr/bin/apt-get install -y --no-install-recommends vim
+```
+
+For compatibility with the original wrapper, `chroot_command` is supported:
+
+```bash
+chroot_command='dpkg-query -W compulab-edge-ai-argus' customize_rootfs --yes
+```
+
+That string runs through Bash inside the target rootfs, never host `eval`.
+Explicit command arguments take precedence over `chroot_command`. Without
+a command, actual execution requires a terminal, even with `--yes`;
+`--dry-run` can preview the interactive operation without a terminal.
+Preview performs read-only checks only: no sudo, mounts or target command.
+The wrapper does not automatically install packages or refresh APT lists.
+
+The helper requires Linux, Python 3.12+ mount-namespace support and either
+an ARM64 host or preconfigured persistent ARM64 QEMU binfmt. It never
+installs or copies an emulator into the rootfs. Temporary service-blocking
+policy and resolver state are restored, and only mounts created by this
+invocation are removed. It uses private runtime/device mounts rather than
+exposing host disks.
+Failure and signal exit statuses are reported; failed mount cleanup is not
+hidden by lazy unmounts. This is a chroot for trusted root commands, **not a
+security sandbox** for untrusted scripts or packages.
+
+Only the rootfs belonging to the sourced wrapper is accepted; changing
+`ROOTFS` or `L4T_ROOT` to another directory is rejected. A host-global lock
+coordinates cooperating SDK builds, and an SDK-scoped lock serializes
+customizers sharing that workspace, including over NFS. Do not run SDK
+Manager, flashing, image generation, massflash preparation or other rootfs
+operations concurrently on any host: not every native tool takes these locks.
+
+Cleanup stops surviving child processes; do not use this command to launch
+persistent background services. If cleanup reports retained
+`.compulab-customize-*` backups, stop surviving processes and inspect/restore
+the original files before reusing the SDK. A subsequent customization is
+refused while those temporary backups remain. SIGKILL or a host/power failure
+cannot run normal cleanup. Back up the rootfs first: application/configuration
+changes made by your command are not rolled back when that command fails.
+
+Changes persist in the SDK rootfs, not on a DUT or in previously generated
+images, archives or `.deb` files. Regenerate the intended image after
+customization. Keep CompuLab/NVIDIA BSP package holds and managed kernel,
+firmware, DT and camera files intact. Ordinary extra application packages
+and configuration files can be added, but managed changes must still pass
+the existing checksum/ABI checks before flashing:
+
+```bash
+python3 -B "$L4T_ROOT/compulab/tools/verify-flash-inputs.py" --sdk-root "$L4T_ROOT"
+```
+
+Customization never rewrites baseline, package, integration or readiness
+receipts to approve changes. The immutable `verify-sdk.py` snapshot may
+report deliberate drift afterward; that does not authorize bypassing the
+flash-input verifier or replacing protected BSP files piecemeal.
+
 ## Offline loop-backed image
 
 No Jetson connection is required. Select the exact production module first:
@@ -245,7 +322,7 @@ the fix.
 
 ## Validation and limits
 
-Operation preflight uses `compulab/tools/verify-flash-inputs.py` to check SDK
+Image/flash preflight uses `compulab/tools/verify-flash-inputs.py` to check SDK
 integrity and the selected matched firmware set. NVIDIA's normal flash flow
 regenerates the runtime/recovery initrds and adds resolved root arguments to
 the live extlinux menu. The flash-input check therefore validates initrd
@@ -276,11 +353,18 @@ operation, separate from read-only verification.
 Standard unencrypted single-rootfs NVMe images/flashes are supported here.
 Rootfs A/B, encryption, production/fused signing keys, backup/restore,
 partclone, manufacturing services and actual massflash deployment remain
-separate reviewed workflows. The old kernel compile/install and rootfs
-customization commands are deliberately not imported from the R36 wrapper.
+separate reviewed workflows. Old kernel compile/install commands remain
+unsupported. `customize_rootfs` uses the new guarded helper, not the R36
+mount/copy/cleanup implementation.
 
 Mock tests exercise passive loading, all selections, offline loop ownership,
 command construction, confirmations, USB ambiguity, metadata isolation and
 failures without running sudo, a real loop or a flash. End-to-end raw-image
 creation, massflash preparation/deployment and physical flashing still
 require testing on the actual setup.
+
+Rootfs customization tests also cover temporary-file restoration, private
+mount ownership, signals, terminal handoff, locks and descendant cleanup
+using fixtures and mocked privileged operations. Read-only preflight was
+checked against a prepared SDK; these tests do not execute a real privileged
+chroot or install packages into that SDK.
