@@ -32,6 +32,13 @@ other built boot-control overlays are preserved as well.
 StandaloneMM builds directly from its DSC and has no generated Kconfig.
 The export therefore retains the DSC and records the platform, compiler,
 build mode and effective debug level; it does not invent a `.config`.
+Its binary comes from the recipe's canonical populated sysroot component,
+after `do_populate_sysroot`, not an incidental rebuilt `B/images` file.
+Shared state can restore the component independently of the build image;
+EDK2 embeds build paths, so these binaries can differ despite equivalent
+task signatures. Exporting the component preserves the exact bytes OP-TEE
+consumes. A missing component is an error, never a build-image fallback.
+The extra task ordering is enabled only with `EDGE_AI_SDK_EXPORTS = "1"`.
 
 When enabled, TOS explicitly depends on the same multiconfig's StandaloneMM
 sysroot input. Its export verifies that the exact staged `tee-raw.bin` is

@@ -91,7 +91,16 @@ def edge_ai_sdk_firmware_export(d):
             add(binary, "uefi-rcm.bin", "build/images/${EDK2_BIN_NAME}")
             add(build / "nvidia-config/Tegra" / platform / ".config", "minimal.cfg", "build/nvidia-config/Tegra/${EDK2_PLATFORM}/.config")
         else:
-            add(binary, "standalone_mm_optee.bin", "build/images/${EDK2_BIN_NAME}")
+            # OP-TEE consumes the populated sysroot component, which may be
+            # restored from shared state independently of a rebuilt B/images.
+            # EDK2 embeds build paths, so those binaries need not match byte
+            # for byte even when their normalized task signatures are equal.
+            component = (Path(d.getVar("COMPONENTS_DIR")) /
+                         d.getVar("PACKAGE_ARCH") / d.getVar("PN"))
+            mm = (component / d.getVar("datadir").lstrip("/") /
+                  "edk2-nvidia/standalone_mm_optee.bin")
+            add(mm, "standalone_mm_optee.bin",
+                "populate_sysroot/${datadir}/edk2-nvidia/standalone_mm_optee.bin")
             dsc = d.getVar("EDK2_PLATFORM_DSC")
             add(Path(d.getVar("S_EDK2_NVIDIA")) / dsc, "StandaloneMmOptee.dsc", "edk2-nvidia/" + dsc)
             # This recipe builds a DSC directly and generates no Kconfig.

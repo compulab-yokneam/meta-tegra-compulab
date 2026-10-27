@@ -11,3 +11,11 @@ EDGE_AI_SDK_FIRMWARE_ROLE = "standalone-mm"
 # l4t_bsp. The shared capsule configuration still needs its release metadata.
 inherit l4t_version
 require recipes-bsp/uefi/edge-ai-sdk-firmware-export.inc
+
+# Export the canonical component that OP-TEE consumes, including when its
+# populated sysroot comes from shared state rather than the current build.
+# Do not change the ordinary firmware task graph without the SDK opt-in.
+python __anonymous() {
+    if d.getVar("EDGE_AI_SDK_EXPORTS") == "1":
+        bb.build.addtask("deploy", None, "do_populate_sysroot", d)
+}

@@ -60,6 +60,9 @@ class FirmwareExportTests(unittest.TestCase):
             "S_EDK2_NVIDIA": str(self.nvidia),
             "DEPLOYDIR": str(self.deploy),
             "STAGING_DATADIR": str(self.staging),
+            "COMPONENTS_DIR": str(self.root / "components"),
+            "PACKAGE_ARCH": "edge_ai_nano_8g",
+            "datadir": "/usr/share",
             "EDK2_PLATFORM": "t23x_general",
             "EDK2_BIN_NAME": "uefi_t23x_general.bin",
             "EDK2_PLATFORM_DSC": "Platform/NVIDIA/NVIDIA.common.dsc",
@@ -119,8 +122,15 @@ class FirmwareExportTests(unittest.TestCase):
                          EDK2_BIN_NAME="standalone_mm_optee.bin",
                          EDK2_PLATFORM_DSC="Platform/NVIDIA/StandaloneMmOptee/StandaloneMmOptee.dsc")
         self.write(self.build / "images/standalone_mm_optee.bin", b"standalone MM")
+        self.write(self.mm_component(), b"canonical populated Standalone MM")
         self.write(self.nvidia / self.data["EDK2_PLATFORM_DSC"],
                    b"# Original NVIDIA copyright\n[Defines]\n")
+
+    def mm_component(self):
+        return (Path(self.data["COMPONENTS_DIR"]) /
+                self.data["PACKAGE_ARCH"] / self.data["PN"] /
+                self.data["datadir"].lstrip("/") /
+                "edk2-nvidia/standalone_mm_optee.bin")
 
     def setup_tos(self):
         self.data.update(EDGE_AI_SDK_FIRMWARE_ROLE="tos", PN="tos-optee")
@@ -174,6 +184,63 @@ class FirmwareExportTests(unittest.TestCase):
         self.assertTrue((self.output() / "standalone_mm_optee.bin").is_file())
         self.assertIn("Original NVIDIA copyright", (self.output() / "StandaloneMmOptee.dsc").read_text())
         self.assertEqual(manifest["edk2"]["debug_print_error_level"], "0x80000002")
+
+    def test_standalone_mm_exports_populated_component_not_rebuilt_image(self):
+        self.setup_mm()
+        manifest = self.run_export()
+        payload = (self.output() / "standalone_mm_optee.bin").read_bytes()
+        self.assertEqual(payload, self.mm_component().read_bytes())
+        self.assertNotEqual(
+            payload,
+            (self.build / "images/standalone_mm_optee.bin").read_bytes())
+        record = next(entry for entry in manifest["files"]
+                      if entry["path"] == "standalone_mm_optee.bin")
+        self.assertTrue(record["origin"].startswith("populate_sysroot/"))
+
+    def test_standalone_mm_can_export_restored_component_without_build_image(self):
+        self.setup_mm()
+        (self.build / "images/standalone_mm_optee.bin").unlink()
+        self.run_export()
+        self.assertEqual(
+            (self.output() / "standalone_mm_optee.bin").read_bytes(),
+            self.mm_component().read_bytes())
+
+    def test_standalone_mm_never_falls_back_to_unpublished_build_image(self):
+        self.setup_mm()
+        self.mm_component().unlink()
+        with self.assertRaisesRegex(ExportFailure, "missing/empty"):
+            self.export(self.data)
+        self.assertFalse(self.deploy.exists())
+
+    def test_standalone_mm_component_matches_tos_embedded_proof(self):
+        self.setup_tos()
+        canonical = self.mm
+        self.setup_mm()
+        self.write(self.mm_component(), canonical)
+        manifest = self.run_export()
+        exported = next(entry["sha256"] for entry in manifest["files"]
+                        if entry["path"] == "standalone_mm_optee.bin")
+        self.setup_tos()
+        proof = self.run_export()["matched_trusted_os"]
+        self.assertEqual(exported, proof["standalone_mm_sha256"])
+
+    def test_standalone_mm_population_dependency_requires_explicit_opt_in(self):
+        text = (DIRECTORY / "edk2-nvidia-standalone-mm_%.bbappend").read_text()
+        body = re.search(r"(?ms)^python __anonymous\(\) \{\n(.*?)^\}", text)[1]
+        calls = []
+        namespace = {
+            "bb": SimpleNamespace(build=SimpleNamespace(
+                addtask=lambda *args: calls.append(args))),
+        }
+        exec("def configure(d):\n" + body, namespace)
+        configure = namespace["configure"]
+        for disabled in (None, "0"):
+            configure(Data({"EDGE_AI_SDK_EXPORTS": disabled}))
+        self.assertEqual(calls, [])
+        configure(self.data)
+        self.assertEqual(calls, [
+            ("deploy", None, "do_populate_sysroot", self.data),
+        ])
 
     def test_tos_proves_matched_tee_and_compressed_mm(self):
         self.setup_tos()
