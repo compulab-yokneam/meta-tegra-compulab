@@ -137,7 +137,9 @@ def parse_status(root):
     for record in (root / "var/lib/dpkg/status").read_text().split("\n\n"):
         fields = dict(line.split(": ", 1) for line in record.splitlines()
                       if ": " in line and not line.startswith(" "))
-        if fields.get("Status") == "install ok installed":
+        # APT holds change the desired selection, not whether the package
+        # is fully installed. The preceding BSP-protection step sets holds.
+        if fields.get("Status") in ("install ok installed", "hold ok installed"):
             result[fields["Package"]] = fields["Version"]
     return result
 
@@ -381,7 +383,9 @@ def execute(args, manifest, root):
     holds_before = chroot(root, ["apt-mark", "showhold"]).splitlines()
     # Record and protect the existing BSP before any disposable-builder APT.
     available_holds = [name for name in BSP_HOLDS if name in parse_status(root)]
-    chroot(root, ["apt-mark", "hold", *available_holds], args.work_dir / "package-policy.log")
+    if available_holds:
+        chroot(root, ["apt-mark", "hold", *available_holds],
+               args.work_dir / "package-policy.log")
     bundle = args.sdk_root / "compulab/runtime"
     assemble_bundle(args.bundle_source, bundle, args.assets_dir, manifest)
     install_runtime(root, args.assets_dir, manifest, args.work_dir, args.ubuntu_mirror)

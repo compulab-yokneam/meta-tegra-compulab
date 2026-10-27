@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 import tarfile
 import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -17,6 +18,78 @@ spec.loader.exec_module(module)
 
 
 class ProvisionRuntimeTests(unittest.TestCase):
+    def test_status_retains_fully_installed_held_package_versions(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            status = root / "var/lib/dpkg/status"
+            status.parent.mkdir(parents=True)
+            status.write_text(
+                "Package: nvidia-l4t-kernel\n"
+                "Status: hold ok installed\n"
+                "Version: 6.8.12-tegra-39.2.1-20260806224157\n\n"
+                "Package: nvidia-l4t-camera\n"
+                "Status: install ok installed\n"
+                "Version: 39.2.1-20260806224157\n")
+            self.assertEqual(module.parse_status(root), {
+                "nvidia-l4t-kernel": "6.8.12-tegra-39.2.1-20260806224157",
+                "nvidia-l4t-camera": "39.2.1-20260806224157",
+            })
+
+    def test_status_excludes_unconfigured_removed_and_broken_packages(self):
+        states = ("install ok unpacked", "hold ok half-configured",
+                  "install reinstreq installed", "hold reinstreq installed",
+                  "deinstall ok config-files", "purge ok not-installed")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            status = root / "var/lib/dpkg/status"
+            status.parent.mkdir(parents=True)
+            status.write_text("\n\n".join(
+                f"Package: incomplete-{index}\nStatus: {state}\nVersion: 1"
+                for index, state in enumerate(states)))
+            self.assertEqual(module.parse_status(root), {})
+
+    def hold_commands_before_runtime_staging(self, package_records, held):
+        """Stop execute before runtime staging; never run target commands."""
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            sdk = base / "Linux_for_Tegra"
+            root = sdk / "rootfs"
+            status = root / "var/lib/dpkg/status"
+            status.parent.mkdir(parents=True)
+            status.write_text("\n\n".join(
+                f"Package: {name}\nStatus: {state}\nVersion: 39.2.1"
+                for name, state in package_records))
+            args = SimpleNamespace(
+                sdk_root=sdk, work_dir=base / "new-work",
+                assets_dir=base / "assets", bundle_source=base / "bundle")
+            stop = RuntimeError("fixture stops before runtime staging")
+            with patch.object(module.os, "geteuid", return_value=0), \
+                    patch.object(module, "persistent_binfmt", return_value=True), \
+                    patch.object(module, "run", side_effect=[str(sdk), "HEAD"]), \
+                    patch.object(module, "chroot", return_value=held) as target, \
+                    patch.object(module, "assemble_bundle", side_effect=stop), \
+                    self.assertRaisesRegex(RuntimeError, "fixture stops"):
+                module.execute(args, {"assets": []}, root)
+            return [call.args[1] for call in target.call_args_list]
+
+    def test_execute_preserves_already_held_bsp_in_nonempty_hold_command(self):
+        commands = self.hold_commands_before_runtime_staging((
+            ("nvidia-l4t-kernel", "hold ok installed"),
+            ("nvidia-l4t-initrd", "hold ok installed"),
+            ("unrelated-package", "install ok installed"),
+        ), "nvidia-l4t-kernel\nnvidia-l4t-initrd\n")
+        self.assertEqual(commands, [
+            ["apt-mark", "showhold"],
+            ["apt-mark", "hold", "nvidia-l4t-kernel", "nvidia-l4t-initrd"],
+        ])
+
+    def test_execute_never_runs_apt_mark_hold_without_packages(self):
+        commands = self.hold_commands_before_runtime_staging((
+            ("unrelated-package", "install ok installed"),
+            ("nvidia-l4t-kernel", "install ok unpacked"),
+        ), "")
+        self.assertEqual(commands, [["apt-mark", "showhold"]])
+
     def test_apt_guard_rejects_kernel_driver_and_removals(self):
         for text in ("Inst nvidia-l4t-kernel (39.2.1 local)",
                      "Inst nvidia-l4t-camera:arm64 (39.2.1 local)",
