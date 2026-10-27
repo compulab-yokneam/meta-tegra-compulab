@@ -132,7 +132,9 @@ class Policy:
 
     def packages(self):
         result = []
-        template = ("${binary:Package}\t${Version}\t${Architecture}\t"
+        # binary:Package adds a foreign-architecture suffix on the build
+        # host but may omit it in the native ARM64 maintainer script.
+        template = ("${Package}\t${Version}\t${Architecture}\t"
                     "${db:Status-Want}\t${db:Status-Status}\n")
         for name in self.names:
             query = subprocess.run(
@@ -147,12 +149,11 @@ class Policy:
             binary, version, architecture, selection, status_ = fields
             if status_ != "installed":
                 continue
-            require(architecture == "arm64" and
-                    binary in (name, name + ":arm64") and
+            require(architecture == "arm64" and binary == name and
                     selection in ("install", "hold") and
                     re.fullmatch(r"[A-Za-z0-9.+:~_-]+", version),
                     "Unsupported package architecture/status: " + name)
-            result.append(dict(name=binary, version=version,
+            result.append(dict(name=binary + ":" + architecture, version=version,
                                selection=selection))
         require(result, "No installed NVIDIA packages selected by the policy")
         return result
@@ -194,6 +195,9 @@ class Policy:
                     re.fullmatch(r"[A-Za-z0-9.+:~_-]+", item["version"]),
                     "Invalid original package selection: " + name)
             seen.add(base)
+            # Accept existing native/bare state without confusing the same
+            # package with its host-query spelling. Keep versions/selections.
+            item["name"] = base + ":arm64"
         return value
 
     def check_current(self, state, current):

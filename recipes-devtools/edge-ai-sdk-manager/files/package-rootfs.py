@@ -237,22 +237,35 @@ def seeded_policy_state(sdk):
     regular(source)
     require(digest(source) == original["original_config_sha256"],
             "Original BSP policy configuration checksum mismatch")
-    packages = [dict(name=row["name"], version=row["version"],
-                     selection=row["selection"]) for row in original["packages"]]
+    packages = []
+    seen = set()
+    for row in original["packages"]:
+        name = row["name"]
+        require(isinstance(name, str), "Invalid original BSP package identity")
+        base = name.removesuffix(":arm64")
+        require(base in POLICY_PACKAGES and name in (base, base + ":arm64") and
+                base not in seen and row["selection"] in ("install", "hold") and
+                isinstance(row["version"], str) and
+                re.fullmatch(r"[A-Za-z0-9.+:~_-]+", row["version"]),
+                "Invalid or duplicate original BSP package identity: " + name)
+        seen.add(base)
+        packages.append(dict(name=base + ":arm64", version=row["version"],
+                             selection=row["selection"]))
     runtime = json.loads((sdk / "compulab/receipts/runtime-provision/receipt.json")
                          .read_text())
     if not any(row["name"].split(":")[0] == "nvidia-l4t-gstreamer"
                for row in packages):
         found = run(["dpkg-query", "--admindir=" + str(sdk / "rootfs/var/lib/dpkg"),
-                     "-W", "-f=${binary:Package}\t${Version}",
+                     "-W", "-f=${Package}\t${Version}\t${Architecture}",
                      "nvidia-l4t-gstreamer"]).strip().split("\t")
-        require(len(found) == 2 and found[0] in
-                ("nvidia-l4t-gstreamer", "nvidia-l4t-gstreamer:arm64"),
+        require(len(found) == 3 and found[0] == "nvidia-l4t-gstreamer" and
+                found[2] == "arm64" and
+                re.fullmatch(r"[A-Za-z0-9.+:~_-]+", found[1]),
                 "Unexpected NVIDIA GStreamer package identity")
-        binary_name, version = found
+        package, version, architecture = found
         held = any(name.split(":")[0] == "nvidia-l4t-gstreamer"
                    for name in runtime["holds_before"])
-        packages.append(dict(name=binary_name, version=version,
+        packages.append(dict(name=package + ":" + architecture, version=version,
                              selection="hold" if held else "install"))
     return dict(schema=1, original_config=base64.b64encode(source.read_bytes()).decode(),
                 original_config_sha256=original["original_config_sha256"],

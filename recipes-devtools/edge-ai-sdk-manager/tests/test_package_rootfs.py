@@ -125,6 +125,82 @@ class RootfsPackageTests(unittest.TestCase):
             MODULE.digest(path) + "  " + path.name + "\n"
             for path in sorted(directory.glob("*.cap"))))
 
+    def seed_policy_receipts(self, packages, holds=()):
+        directory = self.sdk / "compulab/policy/receipts"
+        self.put(directory / "active.json", b'{"receipt": "original.json"}')
+        original = base64.b64decode(self.policy_state["original_config"])
+        self.put(directory / "original.conf", original)
+        receipt = dict(
+            state="active", original_config="original.conf",
+            original_config_sha256=self.policy_state["original_config_sha256"],
+            applied_config_sha256=self.policy_state["applied_config_sha256"],
+            config_mode=self.policy_state["config_mode"], packages=packages)
+        self.put(directory / "original.json", json.dumps(receipt).encode())
+        self.put(self.sdk / "compulab/receipts/runtime-provision/receipt.json",
+                 json.dumps(dict(holds_before=list(holds))).encode())
+
+    def test_seed_normalizes_host_and_native_ids_and_retains_gstreamer_hold(self):
+        for identity in ("nvidia-l4t-kernel", "nvidia-l4t-kernel:arm64"):
+            for held in ("nvidia-l4t-gstreamer", "nvidia-l4t-gstreamer:arm64"):
+                with self.subTest(identity=identity, held=held):
+                    original = dict(self.policy_state["packages"][0],
+                                    name=identity)
+                    self.seed_policy_receipts([original], holds=[held])
+                    native = "nvidia-l4t-gstreamer\t39.2.1-test\tarm64"
+                    with mock.patch.object(MODULE, "run",
+                                           return_value=native) as query:
+                        state = MODULE.seeded_policy_state(self.sdk)
+                    self.assertEqual(state["packages"], [
+                        dict(original, name="nvidia-l4t-kernel:arm64"),
+                        dict(name="nvidia-l4t-gstreamer:arm64",
+                             version="39.2.1-test", selection="hold"),
+                    ])
+                    self.assertIn("-f=${Package}\t${Version}\t${Architecture}",
+                                  query.call_args.args[0])
+
+    def test_seed_preserves_unheld_gstreamer_selection(self):
+        self.seed_policy_receipts(self.policy_state["packages"])
+        with mock.patch.object(MODULE, "run", return_value=
+                               "nvidia-l4t-gstreamer\t39.2.1-test\tarm64"):
+            state = MODULE.seeded_policy_state(self.sdk)
+        self.assertEqual(state["packages"][-1]["selection"], "install")
+
+    def test_seed_rejects_bare_and_qualified_duplicate_bsp_identities(self):
+        package = self.policy_state["packages"][0]
+        self.seed_policy_receipts([
+            package, dict(package, name="nvidia-l4t-kernel")])
+        with mock.patch.object(MODULE, "run") as query, \
+                self.assertRaisesRegex(ValueError, "duplicate"):
+            MODULE.seeded_policy_state(self.sdk)
+        query.assert_not_called()
+
+    def test_seed_rejects_foreign_architecture_gstreamer(self):
+        self.seed_policy_receipts(self.policy_state["packages"])
+        with mock.patch.object(MODULE, "run", return_value=
+                               "nvidia-l4t-gstreamer\t39.2.1-test\tamd64"), \
+                self.assertRaisesRegex(ValueError, "GStreamer package identity"):
+            MODULE.seeded_policy_state(self.sdk)
+
+    def test_seed_rejects_wrong_architecture_or_changed_original_selection(self):
+        package = self.policy_state["packages"][0]
+        for change in (dict(name="nvidia-l4t-kernel:amd64"),
+                       dict(selection="purge"), dict(version="bad version")):
+            with self.subTest(change=change):
+                self.seed_policy_receipts([dict(package, **change)])
+                with self.assertRaisesRegex(ValueError, "package identity"):
+                    MODULE.seeded_policy_state(self.sdk)
+
+    def test_seed_normalizes_existing_gstreamer_without_another_query(self):
+        packages = [*self.policy_state["packages"],
+                    dict(name="nvidia-l4t-gstreamer", version="39.2.1-test",
+                         selection="install")]
+        self.seed_policy_receipts(packages)
+        with mock.patch.object(MODULE, "run") as query:
+            state = MODULE.seeded_policy_state(self.sdk)
+        self.assertEqual(state["packages"][-1],
+                         dict(packages[-1], name="nvidia-l4t-gstreamer:arm64"))
+        query.assert_not_called()
+
     def build(self, ownership=None):
         state = copy.deepcopy(self.policy_state)
         with mock.patch.object(MODULE, "owners",

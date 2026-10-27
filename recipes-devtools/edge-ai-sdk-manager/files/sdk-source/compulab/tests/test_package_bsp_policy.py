@@ -65,13 +65,17 @@ ENABLE_AUTO_QSPI_UPDATE="1"
         self.assertIn("--admindir=" + str(self.root / "var/lib/dpkg"),
                       command)
         if command[0] == "dpkg-query":
+            template = next(value for value in command if value.startswith("-f="))
+            self.assertIn("${Package}", template)
+            self.assertIn("${Architecture}", template)
+            self.assertNotIn("${binary:Package}", template)
             name = command[-1]
             found = [item for item in self.current
                      if item["name"].split(":")[0] == name]
             if not found:
                 return subprocess.CompletedProcess(command, 1, "", "")
             item = found[0]
-            row = "\t".join((item["name"], item["version"], "arm64",
+            row = "\t".join((item["name"].split(":")[0], item["version"], "arm64",
                              item["selection"], "installed")) + "\n"
             return subprocess.CompletedProcess(command, 0, row, "")
         self.assertEqual(command[0], "dpkg")
@@ -101,7 +105,7 @@ ENABLE_AUTO_QSPI_UPDATE="1"
             original_config=base64.b64encode(self.original).decode(),
             original_config_sha256=MODULE.sha256(self.original),
             applied_config_sha256=MODULE.sha256(updated),
-            config_mode=0o644, packages=self.initial)
+            config_mode=0o644, packages=[dict(item) for item in self.initial])
         self.put(MODULE.STATE, json.dumps(state).encode(), mode=0o600)
         return state
 
@@ -202,6 +206,53 @@ ENABLE_AUTO_QSPI_UPDATE="1"
         self.assertEqual(self.state()["packages"], self.initial)
         self.assertEqual((self.root / MODULE.CONFIG).read_bytes(),
                          self.original)
+
+    def test_native_query_matches_host_qualified_seeded_package_identities(self):
+        self.seed()
+        policy = self.policy()
+        self.assertEqual([item["name"] for item in policy.packages()],
+                         [item["name"] for item in self.initial])
+        with mock.patch.dict(os.environ,
+                             {"DPKG_MAINTSCRIPT_PACKAGE":
+                              "compulab-edge-ai-bsp-policy"}):
+            self.assertTrue(policy.configure()["protected"])
+            self.assertTrue(policy.configure()["protected"])
+            policy.restore_config()
+        self.assertEqual(self.operations, [])
+        self.assertEqual(self.state()["packages"], self.initial)
+        self.assertEqual((self.root / MODULE.CONFIG).read_bytes(), self.original)
+
+    def test_legacy_native_bare_saved_state_is_normalized_on_configuration(self):
+        seeded = self.seed()
+        for item in seeded["packages"]:
+            item["name"] = item["name"].removesuffix(":arm64")
+        self.put(MODULE.STATE, json.dumps(seeded).encode(), mode=0o600)
+        with mock.patch.dict(os.environ,
+                             {"DPKG_MAINTSCRIPT_PACKAGE":
+                              "compulab-edge-ai-bsp-policy"}):
+            policy = self.policy()
+            self.assertTrue(policy.configure()["protected"])
+            self.assertEqual(self.state()["packages"], self.initial)
+            policy.restore_config()
+        self.assertEqual(self.operations, [])
+        self.assertEqual((self.root / MODULE.CONFIG).read_bytes(), self.original)
+
+    def test_saved_bare_and_qualified_duplicate_identities_are_rejected(self):
+        seeded = self.seed()
+        duplicate = dict(seeded["packages"][0])
+        duplicate["name"] = duplicate["name"].removesuffix(":arm64")
+        seeded["packages"].append(duplicate)
+        self.put(MODULE.STATE, json.dumps(seeded).encode(), mode=0o600)
+        with self.assertRaisesRegex(RuntimeError, "package selection"):
+            self.policy().configure()
+        self.assertEqual(self.operations, [])
+
+    def test_package_query_rejects_non_arm64_identity(self):
+        query = subprocess.CompletedProcess(
+            [], 0, "nvidia-l4t-kernel\t39.2.1-test\tamd64\thold\tinstalled\n", "")
+        with mock.patch.object(MODULE.subprocess, "run", return_value=query), \
+                self.assertRaisesRegex(RuntimeError, "architecture/status"):
+            self.policy().packages()
 
     def test_configuration_requires_complete_matching_literal_pins(self):
         for contents in (
