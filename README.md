@@ -519,6 +519,22 @@ and `dpkg -S /usr/share/compulab/uefi-update-capsules` identifies their owner.
 See the SDK guide for package groups, versioning, conffile preservation,
 vendor-file diversions and legacy-rootfs migration limits.
 
+### Standalone Ubuntu packages
+
+All nine CompuLab Ubuntu package groups have standalone recipes. Use
+`bitbake edge-ai-debs` for a coordinated set, or targets such as
+`edge-ai-kernel-deb`, `edge-ai-device-trees-deb`, `edge-ai-gstreamer-deb`
+and `edge-ai-camera-support-deb` for individual components. These targets
+never depend on SDK creation. See the
+[standalone package guide](recipes-devtools/edge-ai-debs/README.md) for
+inputs, version constraints, preservation rules and output receipts.
+
+For application-only changes, `bitbake edge-ai-argus-deb` rebuilds the
+Ubuntu-native 23-application Argus Debian package using a private copy of
+the prepared ARM64 builder, without recreating the SDK. It does not invoke
+SDK Manager/APT or install anything on the DUT. See the
+[standalone Argus package guide](recipes-devtools/edge-ai-debs/ARGUS.md).
+
 ### Sourceable SDK wrapper
 
 The prepared SDK provides `compulab-l4t.env`: source it from a clean Bash
