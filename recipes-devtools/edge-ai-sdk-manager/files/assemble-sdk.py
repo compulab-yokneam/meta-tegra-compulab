@@ -83,6 +83,82 @@ def checked_export(deploy, name, target):
     return manifest
 
 
+def validate_kernel_config(artifacts, manifest):
+    """Check the complete exported fragment set, not a historical key count."""
+    artifacts = Path(artifacts)
+    require(isinstance(manifest, dict), "Invalid kernel export manifest")
+    metadata = manifest.get("metadata")
+    require(isinstance(metadata, dict) and
+            metadata.get("kernel_provider") == "linux-noble-nvidia-tegra",
+            "The full Noble/ADI kernel provider is required")
+    files = manifest.get("files")
+    require(isinstance(files, dict) and
+            all(isinstance(name, str) for name in files),
+            "Kernel export requires a file checksum manifest")
+
+    def checked_file(name):
+        path = artifacts / name
+        checksum = files.get(name)
+        require(path.is_file() and not path.is_symlink() and
+                path.resolve() == path.absolute(),
+                "Missing or unsafe kernel configuration file: " + name)
+        require(isinstance(checksum, str) and
+                re.fullmatch(r"[0-9a-f]{64}", checksum) and
+                digest(path) == checksum,
+                "Kernel configuration checksum mismatch: " + name)
+        return path
+
+    def config_values(name):
+        values = {}
+        for number, line in enumerate(checked_file(name).read_text().splitlines(), 1):
+            match = re.fullmatch(r"(CONFIG_[A-Za-z0-9_]+)=(.+)", line)
+            disabled = re.fullmatch(r"# (CONFIG_[A-Za-z0-9_]+) is not set", line)
+            if match or disabled:
+                key, value = (match[1], match[2]) if match else (disabled[1], "n")
+                require(key not in values,
+                        "Duplicate kernel configuration key in " + name + ": " + key)
+                values[key] = value
+            else:
+                require(not line.strip() or line.startswith("#"),
+                        "Malformed kernel configuration at %s:%d" % (name, number))
+        return values
+
+    prefix = "metadata/config-fragments/"
+    fragments = {name for name in files if name.startswith(prefix)}
+    required = {prefix + name for name in
+                ("compulab.cfg", "edge-ai-noble.cfg", "edgedes-adi-v18.cfg")}
+    require(required.issubset(fragments),
+            "Missing required Noble/ADI kernel configuration fragments: " +
+            ", ".join(sorted(required - fragments)))
+    require(all(re.fullmatch(re.escape(prefix) + r"[A-Za-z0-9_.+-]+[.]cfg", name)
+                for name in fragments), "Invalid kernel configuration fragment path")
+    directory = artifacts / "metadata/config-fragments"
+    require(directory.is_dir() and directory.resolve() == directory.absolute(),
+            "Missing or unsafe kernel configuration fragment directory")
+    require({prefix + path.name for path in directory.iterdir()} == fragments,
+            "Unrecorded or missing kernel configuration fragments")
+    merged = {}
+    for name in sorted(fragments):
+        values = config_values(name)
+        require(values, "Empty kernel configuration fragment: " + name)
+        for key, value in values.items():
+            require(key not in merged or merged[key] == value,
+                    "Conflicting kernel configuration request: " + key)
+            merged[key] = value
+    requests = metadata.get("config_requests")
+    require(isinstance(requests, dict) and requests == merged,
+            "Kernel configuration requests differ from exported fragments")
+    actual = config_values("metadata/kernel.config")
+    for name, expected in requests.items():
+        require(actual.get(name) == expected,
+                "Requested kernel setting was not honored: " + name)
+    require(actual.get("CONFIG_MODVERSIONS") == "y", "Kernel module CRCs must be enabled")
+    require(manifest.get("kernel_release") == RELEASE and
+            checked_file("metadata/kernel.release").read_text().strip() == RELEASE,
+            "Kernel export release differs")
+    return len(requests)
+
+
 def merge_modules(base, oot):
     policy = (oot / "metadata/replacement-drivers.txt").read_text().split()
     modules = base / "usr/lib/modules" / RELEASE
@@ -126,9 +202,7 @@ def prepare_artifacts(configuration):
     oot = work / "oot-export"
     require(not artifacts.exists() and not oot.exists(), "Artifact staging already exists; use a fresh work directory")
     base_manifest = checked_export(deploy, "kernel", artifacts)
-    require(base_manifest["metadata"]["kernel_provider"] == "linux-noble-nvidia-tegra" and
-            len(base_manifest["metadata"]["config_requests"]) == 109,
-            "SDK requires the full Noble/ADI kernel configuration (109 requests)")
+    validate_kernel_config(artifacts, base_manifest)
     oot_manifest = checked_export(deploy, "nvidia-kernel-oot", oot)
     merge_modules(artifacts, oot)
     dtb = artifacts / "boot/dtb"

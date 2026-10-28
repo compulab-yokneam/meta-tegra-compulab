@@ -51,8 +51,22 @@ class DeviceTreeSidecars(unittest.TestCase):
         self.put(target / "metadata/kernel.release", RELEASE + "\n")
         if name == "kernel":
             self.put(target / "boot/Image", b"image")
-            return {"metadata": {"kernel_provider": "linux-noble-nvidia-tegra",
-                                 "config_requests": {str(i): "y" for i in range(109)}}}
+            requests = {"CONFIG_TEST_PERIPHERAL": "m", "CONFIG_MODVERSIONS": "y",
+                        "CONFIG_TEST_CAMERA": "m"}
+            for fragment, key in (("compulab.cfg", "CONFIG_TEST_PERIPHERAL"),
+                                  ("edge-ai-noble.cfg", "CONFIG_MODVERSIONS"),
+                                  ("edgedes-adi-v18.cfg", "CONFIG_TEST_CAMERA")):
+                self.put(target / "metadata/config-fragments" / fragment,
+                         key + "=" + requests[key] + "\n")
+            self.put(target / "metadata/kernel.config", "\n".join(
+                key + "=" + value for key, value in requests.items()) + "\n")
+            return {
+                "component": "kernel", "kernel_release": RELEASE,
+                "metadata": {"kernel_provider": "linux-noble-nvidia-tegra",
+                             "kernel_release": RELEASE, "config_requests": requests},
+                "files": {path.relative_to(target).as_posix(): ASSEMBLE.digest(path)
+                          for path in target.rglob("*") if path.is_file()},
+            }
         self.put(target / "metadata/replacement-drivers.txt", b"")
         return {"metadata": {}}
 
