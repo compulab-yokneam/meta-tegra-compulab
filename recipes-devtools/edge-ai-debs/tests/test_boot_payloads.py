@@ -16,6 +16,11 @@ SPEC = importlib.util.spec_from_file_location(
     "standalone_boot_payloads", DIRECTORY / "files/build-boot-payloads.py")
 MODULE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MODULE)
+ASSEMBLE_SPEC = importlib.util.spec_from_file_location(
+    "standalone_kernel_assembler",
+    DIRECTORY.parent / "edge-ai-sdk-manager/files/assemble-sdk.py")
+ASSEMBLE = importlib.util.module_from_spec(ASSEMBLE_SPEC)
+ASSEMBLE_SPEC.loader.exec_module(ASSEMBLE)
 
 
 class BootPayloadTests(unittest.TestCase):
@@ -83,13 +88,29 @@ class BootPayloadTests(unittest.TestCase):
         self.put(self.sdk / "SDK_BASELINE.json", json.dumps(self.baseline))
 
     def kernel_config(self, artifacts):
-        requests = {"CONFIG_TEST_%d" % index: "y" for index in range(108)}
-        requests["CONFIG_MODVERSIONS"] = "y"
+        fragments = {
+            "compulab.cfg": {"CONFIG_TEST_PERIPHERAL": "m"},
+            "edge-ai-noble.cfg": {"CONFIG_MODVERSIONS": "y"},
+            "edgedes-adi-v18.cfg": {"CONFIG_TEST_CAMERA": "m"},
+        }
+        requests = {}
+        for name, values in fragments.items():
+            self.put(artifacts / "metadata/config-fragments" / name, "\n".join(
+                key + "=" + value for key, value in values.items()) + "\n")
+            requests.update(values)
         self.put(artifacts / "metadata/kernel.config", "\n".join(
-            name + "=" + value for name, value in requests.items()))
+            name + "=" + value for name, value in requests.items()) + "\n")
         self.put(artifacts / "metadata/kernel.release", MODULE.RELEASE + "\n")
-        return dict(metadata=dict(kernel_provider="linux-noble-nvidia-tegra",
-                                  config_requests=requests))
+        manifest = dict(component="kernel", kernel_release=MODULE.RELEASE,
+                        metadata=dict(kernel_provider="linux-noble-nvidia-tegra",
+                                      kernel_release=MODULE.RELEASE,
+                                      config_requests=requests), files={})
+        self.record_kernel_files(artifacts, manifest)
+        return manifest
+
+    def record_kernel_files(self, artifacts, manifest):
+        manifest["files"] = {path.relative_to(artifacts).as_posix(): MODULE.digest(path)
+                             for path in artifacts.rglob("*") if path.is_file()}
 
     def test_dt_builder_uses_fresh_deploy_and_verified_original_stock_only(self):
         payload, metadata = MODULE.build_device_trees(self.config, self.run_dir)
@@ -157,29 +178,52 @@ class BootPayloadTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Unsafe relative"):
             MODULE.stock_file(self.sdk, "../outside")
 
-    def test_all_109_requested_kernel_settings_are_checked(self):
+    def test_all_fragment_requested_kernel_settings_are_checked(self):
         artifacts = self.root / "artifacts"
         manifest = self.kernel_config(artifacts)
-        self.assertEqual(MODULE.validate_kernel_config(artifacts, manifest), 109)
+        self.assertEqual(ASSEMBLE.validate_kernel_config(artifacts, manifest), 3)
         path = artifacts / "metadata/kernel.config"
-        path.write_text(path.read_text().replace("CONFIG_TEST_5=y", "CONFIG_TEST_5=m"))
-        with self.assertRaisesRegex(ValueError, "not honored"):
-            MODULE.validate_kernel_config(artifacts, manifest)
+        path.write_text(path.read_text().replace("CONFIG_TEST_CAMERA=m",
+                                                 "CONFIG_TEST_CAMERA=y"))
+        self.record_kernel_files(artifacts, manifest)
+        with self.assertRaisesRegex(RuntimeError, "not honored"):
+            ASSEMBLE.validate_kernel_config(artifacts, manifest)
 
-    def test_kernel_provider_count_modversions_and_release_are_not_weakened(self):
+    def test_new_firmware_setting_does_not_require_a_fixed_request_count(self):
+        artifacts = self.root / "artifacts"
+        manifest = self.kernel_config(artifacts)
+        self.assertEqual(ASSEMBLE.validate_kernel_config(artifacts, manifest), 3)
+        for name in ("metadata/config-fragments/compulab.cfg", "metadata/kernel.config"):
+            path = artifacts / name
+            path.write_text(path.read_text() + "CONFIG_FW_LOADER_COMPRESS=y\n")
+        manifest["metadata"]["config_requests"]["CONFIG_FW_LOADER_COMPRESS"] = "y"
+        self.record_kernel_files(artifacts, manifest)
+        self.assertEqual(ASSEMBLE.validate_kernel_config(artifacts, manifest), 4)
+
+    def test_kernel_provider_requests_modversions_and_release_are_not_weakened(self):
         artifacts = self.root / "artifacts"
         manifest = self.kernel_config(artifacts)
         manifest["metadata"]["kernel_provider"] = "linux-yocto"
-        with self.assertRaisesRegex(ValueError, "109 requests"):
-            MODULE.validate_kernel_config(artifacts, manifest)
+        with self.assertRaisesRegex(RuntimeError, "provider|Noble"):
+            ASSEMBLE.validate_kernel_config(artifacts, manifest)
         manifest = self.kernel_config(artifacts)
-        manifest["metadata"]["config_requests"].pop("CONFIG_TEST_0")
-        with self.assertRaisesRegex(ValueError, "109 requests"):
-            MODULE.validate_kernel_config(artifacts, manifest)
+        manifest["metadata"]["config_requests"].pop("CONFIG_TEST_PERIPHERAL")
+        with self.assertRaisesRegex(RuntimeError, "[Rr]equest"):
+            ASSEMBLE.validate_kernel_config(artifacts, manifest)
+        manifest = self.kernel_config(artifacts)
+        for name in ("metadata/config-fragments/edge-ai-noble.cfg", "metadata/kernel.config"):
+            path = artifacts / name
+            path.write_text(path.read_text().replace("CONFIG_MODVERSIONS=y",
+                                                     "# CONFIG_MODVERSIONS is not set"))
+        manifest["metadata"]["config_requests"]["CONFIG_MODVERSIONS"] = "n"
+        self.record_kernel_files(artifacts, manifest)
+        with self.assertRaisesRegex(RuntimeError, "MODVERSIONS|CRCs"):
+            ASSEMBLE.validate_kernel_config(artifacts, manifest)
         manifest = self.kernel_config(artifacts)
         self.put(artifacts / "metadata/kernel.release", "wrong-release\n")
-        with self.assertRaisesRegex(ValueError, "release differs"):
-            MODULE.validate_kernel_config(artifacts, manifest)
+        self.record_kernel_files(artifacts, manifest)
+        with self.assertRaisesRegex(RuntimeError, "release differs"):
+            ASSEMBLE.validate_kernel_config(artifacts, manifest)
 
     def test_ubuntu_initrd_environment_accepts_existing_holds(self):
         MODULE.validate_ubuntu_sdk(self.sdk)
@@ -214,6 +258,23 @@ class BootPayloadTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "overlap"):
             MODULE.clone_sdk_rootfs(self.config, inside)
 
+    def test_invalid_kernel_configuration_stops_before_clone_or_install(self):
+        artifacts = self.root / "artifacts"
+        manifest = self.kernel_config(artifacts)
+        manifest["metadata"]["config_requests"].pop("CONFIG_TEST_CAMERA")
+        assembler = SimpleNamespace(
+            prepare_artifacts=mock.Mock(return_value=(artifacts, {"kernel": manifest})),
+            validate_kernel_config=ASSEMBLE.validate_kernel_config)
+        with mock.patch.object(MODULE.os, "geteuid", return_value=0), \
+                mock.patch.object(MODULE, "input_provenance", return_value={}), \
+                mock.patch.object(MODULE, "load_module", return_value=assembler), \
+                mock.patch.object(MODULE, "clone_sdk_rootfs") as clone, \
+                mock.patch.object(MODULE, "install_private_kernel") as install:
+            with self.assertRaisesRegex(RuntimeError, "[Rr]equest"):
+                MODULE.build_kernel(self.config, self.run_dir)
+        clone.assert_not_called()
+        install.assert_not_called()
+
     def test_kernel_pipeline_carries_only_kernel_payload_and_preserves_validation(self):
         artifacts = self.root / "artifacts"
         manifest = self.kernel_config(artifacts)
@@ -225,8 +286,9 @@ class BootPayloadTests(unittest.TestCase):
         for index in range(101):
             self.put(clone / "rootfs/usr/lib/modules" / MODULE.RELEASE /
                      ("kernel/module%d.ko" % index), b"fixture module")
-        assembler = SimpleNamespace(prepare_artifacts=mock.Mock(
-            return_value=(artifacts, {"kernel": manifest})))
+        assembler = SimpleNamespace(
+            prepare_artifacts=mock.Mock(return_value=(artifacts, {"kernel": manifest})),
+            validate_kernel_config=mock.Mock(wraps=ASSEMBLE.validate_kernel_config))
         installed = dict(module_count=101, initrd_sha256="0" * 64)
         with mock.patch.object(MODULE.os, "geteuid", return_value=0), \
                 mock.patch.object(MODULE, "input_provenance", return_value={"fresh": "hash"}), \
@@ -235,7 +297,8 @@ class BootPayloadTests(unittest.TestCase):
                 mock.patch.object(MODULE, "install_private_kernel", return_value=installed) as install:
             payload, metadata = MODULE.build_kernel(self.config, self.run_dir)
         install.assert_called_once_with(self.config, artifacts, clone)
-        self.assertEqual(metadata["config_request_count"], 109)
+        assembler.validate_kernel_config.assert_called_once_with(artifacts, manifest)
+        self.assertEqual(metadata["config_request_count"], 3)
         self.assertEqual(metadata["module_count"], 101)
         self.assertEqual(len(list(payload.rglob("*.ko"))), 101)
         self.assertFalse((payload / "boot/dtb").exists())

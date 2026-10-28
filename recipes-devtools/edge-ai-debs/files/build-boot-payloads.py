@@ -296,32 +296,6 @@ def build_device_trees(config, run_dir):
                                   for machine in SKUS}, hardware_validation="Not performed")
 
 
-def validate_kernel_config(artifacts, manifest):
-    metadata = manifest.get("metadata", {})
-    requests = metadata.get("config_requests")
-    require(metadata.get("kernel_provider") == "linux-noble-nvidia-tegra" and
-            isinstance(requests, dict) and len(requests) == 109,
-            "The full Noble/ADI kernel configuration (109 requests) is required")
-    actual = {}
-    for line in regular(artifacts / "metadata/kernel.config").read_text().splitlines():
-        match = re.fullmatch(r"(CONFIG_[A-Z0-9_]+)=(.*)", line)
-        disabled = re.fullmatch(r"# (CONFIG_[A-Z0-9_]+) is not set", line)
-        if match:
-            require(match[1] not in actual, "Duplicate kernel configuration key")
-            actual[match[1]] = match[2]
-        elif disabled:
-            require(disabled[1] not in actual, "Duplicate kernel configuration key")
-            actual[disabled[1]] = "n"
-    for name, expected in requests.items():
-        require(re.fullmatch(r"CONFIG_[A-Z0-9_]+", name) and
-                actual.get(name, "n") == expected,
-                "Requested kernel setting was not honored: " + name)
-    require(actual.get("CONFIG_MODVERSIONS") == "y", "Kernel module CRCs must be enabled")
-    require(regular(artifacts / "metadata/kernel.release").read_text().strip() == RELEASE,
-            "Kernel export release differs")
-    return len(requests)
-
-
 def clone_sdk_rootfs(config, run_dir):
     sdk = canonical(config["sdk"])
     original = canonical(sdk / "rootfs")
@@ -404,7 +378,7 @@ def build_kernel(config, run_dir):
     assembler.run = run
     artifacts, manifests = assembler.prepare_artifacts(
         dict(deploy=str(canonical(config["deploy"])), work=str(run_dir)))
-    count = validate_kernel_config(artifacts, manifests["kernel"])
+    count = assembler.validate_kernel_config(artifacts, manifests["kernel"])
     clone = clone_sdk_rootfs(config, run_dir)
     installed = install_private_kernel(config, artifacts, clone)
     payload = run_dir / "payload"
