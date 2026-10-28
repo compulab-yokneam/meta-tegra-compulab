@@ -65,7 +65,7 @@ _compulab_image_cleanup()
             _compulab_image_error \
                 "refusing to detach unverified loop '${candidate}'"
             [ "${final_status}" -ne 0 ] || final_status=1
-        elif sudo -n losetup --detach -- "${candidate}"; then
+        elif sudo -n losetup --detach "${candidate}"; then
             :
         else
             local detach_status="$?"

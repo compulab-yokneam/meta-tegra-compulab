@@ -105,7 +105,7 @@ sudo()
         'losetup --noheadings --raw --output NAME --associated '*)
             [ ! -s "${mock_backing}" ] || printf '/dev/loop700\n'
             ;;
-        'losetup --detach -- /dev/loop700')
+        'losetup --detach /dev/loop700')
             printf 'detach\n' >>"${mock_log}"
             return "${MOCK_DETACH_RC:-0}"
             ;;
