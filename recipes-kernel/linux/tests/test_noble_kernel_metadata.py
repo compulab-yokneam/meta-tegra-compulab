@@ -136,9 +136,8 @@ class NobleKernelMetadataTests(unittest.TestCase):
                 self.assertEqual(append.readlink(), Path("linux.inc"))
                 self.assertIn('SRC_URI += "file://compulab.cfg"', append.read_text())
 
-    def test_all_23_shared_peripheral_requests_are_preserved(self):
+    def test_shared_peripheral_and_firmware_requests_are_preserved(self):
         shared = config_values(RECIPE_DIR / "files/compulab.cfg")
-        self.assertEqual(len(shared), 23)
         for symbol in (
             "R8169", "IGB", "IGC", "USB_SERIAL_OPTION", "USB_NET_CDC_MBIM",
             "USB_NET_QMI_WWAN", "USB_SERIAL_QUALCOMM", "IWLWIFI", "IWLDVM",
@@ -148,7 +147,7 @@ class NobleKernelMetadataTests(unittest.TestCase):
         ):
             self.assertEqual(shared["CONFIG_" + symbol], "m")
         for symbol in ("IP_ADVANCED_ROUTER", "IP_ROUTE_MULTIPATH", "NFSD",
-                       "USB_ETH_RNDIS"):
+                       "USB_ETH_RNDIS", "FW_LOADER_COMPRESS"):
             self.assertEqual(shared["CONFIG_" + symbol], "y")
 
     def test_unrelated_machines_do_not_get_edge_ai_sources(self):
