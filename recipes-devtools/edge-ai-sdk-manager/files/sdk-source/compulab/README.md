@@ -110,6 +110,9 @@ Source the SDK root's `compulab-l4t.env` from a clean Bash shell, then run
 `deploy_bootloader_rootfs` directly. `customize_rootfs` opens a guarded root
 chroot in this SDK's rootfs, or runs an explicit command there; changes
 persist in the SDK rootfs, not on a DUT or in existing generated images.
+`create_partclone_backup` backs up an existing `L4T_IMAGE` through a new
+read-only loop into `L4T_PCDIR`, normally `workdir/partclone.d`. It supports
+uncompressed or xz output and does not back up QSPI firmware or restore disks.
 `prepare_massflash_boot` and
 `prepare_massflash_boot_rootfs` prepare QSPI-only or QSPI/NVMe packages for
 five devices by default, without flashing; `--massflash N` changes the limit.
@@ -119,8 +122,8 @@ Use `--dry-run` before any operation; writes require confirmation or explicit
 `--yes`. Offline images require an explicit board, while connected flashing
 can use `select_device auto`.
 See [host/WRAPPER.md](host/WRAPPER.md) for supported selectors, safe loop
-creation, rootfs customization, QSPI-only/full flashing, massflash preparation
-and validation limits.
+creation, partclone backup, rootfs customization, QSPI-only/full flashing,
+massflash preparation and validation limits.
 Sourcing alone does not probe or modify anything. Do not source the old R36
 wrapper first.
 

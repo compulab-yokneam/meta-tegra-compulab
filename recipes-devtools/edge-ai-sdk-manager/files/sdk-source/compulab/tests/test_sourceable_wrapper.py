@@ -73,6 +73,11 @@ class SourceableWrapperTests(unittest.TestCase):
         self.events_log = self.root / "events.jsonl"
         self.rootfs_check_log = self.root / "rootfs-checks.jsonl"
         self.rootfs_execute_log = self.root / "rootfs-execute.jsonl"
+        self.partclone_check_log = self.root / "partclone-checks.jsonl"
+        self.partclone_image = self.root / "partclone-input.img"
+        self.partclone_image.write_bytes(b"fixture image; never attached")
+        self.partclone_output = self.sdk / "workdir/partclone.d/backup-fixture"
+        self.partclone_output.mkdir(parents=True)
         self.environment = {
             "PATH": str(self.bin) + ":/usr/bin:/bin",
             "HOME": str(self.root), "LC_ALL": "C", "SDK_ROOT": str(self.sdk),
@@ -84,6 +89,8 @@ class SourceableWrapperTests(unittest.TestCase):
             "MOCK_EVENT_LOG": str(self.events_log),
             "MOCK_ROOTFS_CHECK_LOG": str(self.rootfs_check_log),
             "MOCK_ROOTFS_EXECUTE_LOG": str(self.rootfs_execute_log),
+            "MOCK_PARTCLONE_CHECK_LOG": str(self.partclone_check_log),
+            "MOCK_PARTCLONE_OUTPUT": str(self.partclone_output),
             "MOCK_SUDO_RENEW_FILE": str(self.root / "sudo-renewed"),
         }
         customization = self.sdk / "compulab/tools/customize-rootfs.py"
@@ -98,6 +105,18 @@ with open(os.environ["MOCK_ROOTFS_CHECK_LOG"], "a") as stream:
     stream.write(json.dumps({"argv": args, "cwd": os.getcwd()}) + "\\n")
 print(json.dumps({"mode": "read-only plan"}))
 sys.exit(int(os.environ.get("MOCK_ROOTFS_CHECK_RC", "0")))
+''')
+        partclone = self.sdk / "compulab/tools/create-partclone-backup.py"
+        # Only this read-only mock checker can execute without intercepted sudo.
+        partclone.write_text('''#!/usr/bin/python3
+import json, os, sys
+args = sys.argv[1:]
+if "--check" not in args or "--execute" in args:
+    sys.exit(97)
+with open(os.environ["MOCK_PARTCLONE_CHECK_LOG"], "a") as stream:
+    stream.write(json.dumps({"argv": args, "cwd": os.getcwd()}) + "\\n")
+print(json.dumps({"mode": "read-only plan"}))
+sys.exit(int(os.environ.get("MOCK_PARTCLONE_CHECK_RC", "0")))
 ''')
         images = self.sdk / "compulab/tools/check-deployment-images.py"
         images.write_text('''#!/usr/bin/python3
@@ -148,6 +167,13 @@ if (args[:3] == ["-n", "/usr/bin/python3", "-B"] and
     with open(os.environ["MOCK_ROOTFS_EXECUTE_LOG"], "a") as stream:
         stream.write(json.dumps(entry) + "\\n")
     sys.exit(int(os.environ.get("MOCK_ROOTFS_EXECUTE_RC", "0")))
+if (args[:3] == ["-n", "/usr/bin/python3", "-B"] and
+        any(value.endswith("/create-partclone-backup.py") for value in args)):
+    status = int(os.environ.get("MOCK_PARTCLONE_EXECUTE_RC", "0"))
+    print("fixture backup progress", file=sys.stderr)
+    if status == 0:
+        print(os.environ["MOCK_PARTCLONE_OUTPUT"])
+    sys.exit(status)
 allowed = ("/flash.sh", "/l4t_initrd_flash.sh")
 if args[:2] == ["-n", "env"] and any(
         value.endswith(allowed) for value in args):
@@ -162,7 +188,8 @@ sys.exit(98)
 ''')
         sudo.chmod(0o755)
         for name in ("lsusb", "losetup", "mount", "umount", "truncate",
-                     "dd", "tegrarcm_v2"):
+                     "dd", "tegrarcm_v2", "partclone.ext4", "partclone.vfat",
+                     "partclone.dd", "sfdisk", "blkid", "xz"):
             guard = self.bin / name
             guard.write_text('''#!/usr/bin/python3
 import json, os, sys
@@ -242,6 +269,19 @@ sys.exit(98)
         self.assertFalse(self.calls(), "Unexpected sudo invocation")
         self.assertFalse(self.guard_log.exists(), "Unexpected device/mount/loop operation")
 
+    def partclone_checks(self):
+        return [json.loads(line) for line in
+                self.partclone_check_log.read_text().splitlines()] \
+            if self.partclone_check_log.exists() else []
+
+    def partclone_calls(self):
+        return [call for call in self.calls() if any(
+            value.endswith("/create-partclone-backup.py")
+            for value in call["argv"])]
+
+    def backup_environment(self, **values):
+        return {"L4T_IMAGE": str(self.partclone_image)} | values
+
     def recovery(self, target="edge-ai-nx-16g", usb="1-2", pid="7323"):
         return {"MOCK_RECOVERY": "\t".join((usb, target, pid))}
 
@@ -259,7 +299,8 @@ test "$L4T_ROOT" = "$SDK_ROOT" || exit 74
 for fn in select_device select_target current_device select_bootloader \
           current_bootloader detect_device create_disk_image \
           deploy_bootloader deploy_bootloader_rootfs \
-          prepare_massflash_boot prepare_massflash_boot_rootfs customize_rootfs; do
+          prepare_massflash_boot prepare_massflash_boot_rootfs customize_rootfs \
+          create_partclone_backup; do
     declare -F "$fn" >/dev/null || exit 75
 done
 ''', setup=False)
@@ -1324,7 +1365,7 @@ prepare_massflash_boot --yes
         self.assertFalse(self.guard_log.exists())
 
     def test_massflash_menu_lists_both_actions_without_running_them(self):
-        result = self.terminal('select_device NX16; devshell', "10\n")
+        result = self.terminal('select_device NX16; devshell', "11\n")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         output = result.stdout + result.stderr
         self.assertIn("prepare_massflash_boot", output)
@@ -1336,7 +1377,7 @@ prepare_massflash_boot --yes
             with self.subTest(choice=choice):
                 self.sudo_log.unlink(missing_ok=True)
                 result = self.terminal('select_device NX16; devshell',
-                                       choice + "\nYES\n10\n")
+                                       choice + "\nYES\n11\n")
                 self.assertEqual(result.returncode, 0,
                                  result.stdout + result.stderr)
                 calls = self.flash_calls()
@@ -1535,12 +1576,288 @@ test "$(current_bootloader)" = nvidia-logo || exit 76
         self.no_backend()
 
     def test_customize_menu_lists_and_dispatches_new_action(self):
-        result = self.terminal('devshell', "8\nYES\n10\n")
+        result = self.terminal('devshell', "8\nYES\n11\n")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("customize_rootfs", result.stdout + result.stderr)
         self.assertEqual(len(self.rootfs_calls()), 1)
         self.assertEqual(self.rootfs_calls()[0]["argv"][-4:],
                          ["/bin/bash", "--noprofile", "--norc", "-i"])
+        self.assertFalse(self.guard_log.exists())
+
+
+    def test_partclone_source_exports_defaults_without_a_backend(self):
+        self.successful(r'''
+test "$L4T_PCDIR" = "$SDK_ROOT/workdir/partclone.d"
+export -p | /bin/grep -F 'declare -x L4T_PCDIR=' >/dev/null
+declare -F create_partclone_backup >/dev/null
+''')
+        self.assertEqual(self.partclone_checks(), [])
+        self.no_backend()
+
+    def test_partclone_source_preserves_custom_output_root(self):
+        chosen = str(self.root / "chosen-output")
+        self.successful('test "$L4T_PCDIR" = "$EXPECTED_OUTPUT"',
+                        env={"L4T_PCDIR": chosen, "EXPECTED_OUTPUT": chosen})
+        self.assertFalse(Path(chosen).exists())
+        self.no_backend()
+
+    def test_partclone_dry_run_only_checks_input_without_usb_or_sudo(self):
+        result = self.successful(r'''
+_compulab_recovery_devices() { return 97; }
+create_partclone_backup --dry-run
+''', env=self.backup_environment())
+        self.assertIn(str(self.partclone_image), result.stdout)
+        checks = self.partclone_checks()
+        self.assertEqual(len(checks), 1)
+        self.assertEqual(checks[0]["argv"], [
+            "--sdk-root", str(self.sdk),
+            "--image", str(self.partclone_image),
+            "--output-root", str(self.sdk / "workdir/partclone.d"),
+            "--compress", "none", "--check"])
+        self.assertEqual(checks[0]["cwd"], str(self.other))
+        self.assertFalse(self.check_log.exists())
+        self.no_backend()
+
+    def test_partclone_dry_run_preserves_sdk_input_and_last_result(self):
+        before = {str(path.relative_to(self.sdk)): (
+                    path.lstat().st_mode,
+                    path.read_bytes() if path.is_file() else None)
+                  for path in self.sdk.rglob("*")}
+        image = self.partclone_image.read_bytes()
+        self.successful(r'''
+L4T_PARTCLONE_BACKUP=previous
+create_partclone_backup --dry-run
+test "$L4T_PARTCLONE_BACKUP" = previous
+''', env=self.backup_environment())
+        after = {str(path.relative_to(self.sdk)): (
+                    path.lstat().st_mode,
+                    path.read_bytes() if path.is_file() else None)
+                 for path in self.sdk.rglob("*")}
+        self.assertEqual(after, before)
+        self.assertEqual(self.partclone_image.read_bytes(), image)
+        self.no_backend()
+
+    def test_partclone_yes_executes_one_guarded_helper_and_exports_output(self):
+        result = self.successful(r'''
+create_partclone_backup --yes || exit $?
+test "$L4T_PARTCLONE_BACKUP" = "$MOCK_PARTCLONE_OUTPUT"
+export -p | /bin/grep -F 'declare -x L4T_PARTCLONE_BACKUP=' >/dev/null
+''', env=self.backup_environment())
+        self.assertIn(str(self.partclone_output), result.stdout)
+        self.assertIn("fixture backup progress", result.stderr)
+        self.assertEqual(self.calls()[0]["argv"], ["-n", "true"])
+        self.assertEqual(len(self.partclone_checks()), 1)
+        calls = self.partclone_calls()
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0]["argv"], [
+            "-n", "/usr/bin/python3", "-B",
+            str(self.sdk / "compulab/tools/create-partclone-backup.py"),
+            "--sdk-root", str(self.sdk),
+            "--image", str(self.partclone_image),
+            "--output-root", str(self.sdk / "workdir/partclone.d"),
+            "--compress", "none", "--execute"])
+        self.assertEqual(calls[0]["cwd"], str(self.other))
+        self.assertEqual(self.flash_calls(), [])
+        self.assertFalse(self.guard_log.exists())
+
+    def test_partclone_legacy_compress_and_override_are_forwarded(self):
+        self.successful('create_partclone_backup --yes',
+                        env=self.backup_environment(compress="xz"))
+        argv = self.partclone_calls()[0]["argv"]
+        self.assertEqual(argv[argv.index("--compress") + 1], "xz")
+        self.sudo_log.unlink()
+        self.successful('create_partclone_backup --compress none --yes',
+                        env=self.backup_environment(compress="xz"))
+        argv = self.partclone_calls()[0]["argv"]
+        self.assertEqual(argv[argv.index("--compress") + 1], "none")
+        self.assertFalse(self.guard_log.exists())
+
+    def test_partclone_literal_output_root_keeps_argument_boundaries(self):
+        output_root = self.root / "backup dir; touch injected"
+        output = output_root / "backup-fixture"
+        output.mkdir(parents=True)
+        self.successful('create_partclone_backup --yes',
+                        env=self.backup_environment(
+                            L4T_PCDIR=str(output_root),
+                            MOCK_PARTCLONE_OUTPUT=str(output)))
+        for call in self.partclone_checks() + self.partclone_calls():
+            argv = call["argv"]
+            self.assertEqual(argv[argv.index("--output-root") + 1],
+                             str(output_root))
+        self.assertFalse((self.other / "injected").exists())
+        self.assertFalse(self.guard_log.exists())
+
+    def test_partclone_preflight_failure_never_reaches_sudo(self):
+        result = self.shell('create_partclone_backup --yes',
+                            env=self.backup_environment(
+                                MOCK_PARTCLONE_CHECK_RC="43"))
+        self.assertEqual(result.returncode, 43, result.stdout + result.stderr)
+        self.no_backend()
+
+    def test_partclone_sudo_preflight_failure_stops_execution(self):
+        result = self.shell('create_partclone_backup --yes',
+                            env=self.backup_environment(
+                                MOCK_SUDO_PREFLIGHT_RC="1"))
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(self.partclone_calls(), [])
+        self.assertEqual([call["argv"] for call in self.calls()],
+                         [["-n", "true"]])
+        self.assertFalse(self.guard_log.exists())
+
+    def test_partclone_failure_preserves_status_and_previous_result(self):
+        result = self.shell(r'''
+L4T_PARTCLONE_BACKUP=previous
+create_partclone_backup --yes
+status=$?
+test "$L4T_PARTCLONE_BACKUP" = previous || exit 71
+exit "$status"
+''', env=self.backup_environment(MOCK_PARTCLONE_EXECUTE_RC="42"))
+        self.assertEqual(result.returncode, 42, result.stdout + result.stderr)
+        self.assertEqual(len(self.partclone_calls()), 1)
+        self.assertFalse(self.guard_log.exists())
+
+    def test_partclone_invalid_helper_result_preserves_previous_result(self):
+        outside = self.other / "backup-other"
+        outside.mkdir()
+        symbolic = self.partclone_output.parent / "backup-symlink"
+        symbolic.symlink_to(self.partclone_output, target_is_directory=True)
+        for response in (str(outside), str(symbolic),
+                         str(self.partclone_output.parent / "backup-missing"),
+                         str(self.partclone_output) + "\n" +
+                         str(self.partclone_output)):
+            with self.subTest(response=response):
+                self.sudo_log.unlink(missing_ok=True)
+                result = self.shell(r'''
+L4T_PARTCLONE_BACKUP=previous
+create_partclone_backup --yes
+status=$?
+test "$L4T_PARTCLONE_BACKUP" = previous || exit 71
+exit "$status"
+''', env=self.backup_environment(MOCK_PARTCLONE_OUTPUT=response))
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("invalid output directory", result.stderr)
+                self.assertEqual(len(self.partclone_calls()), 1)
+        self.assertFalse(self.guard_log.exists())
+
+    def test_partclone_missing_or_symlinked_helper_refuses_before_sudo(self):
+        helper = self.sdk / "compulab/tools/create-partclone-backup.py"
+        saved = helper.read_bytes()
+        helper.unlink()
+        result = self.shell('create_partclone_backup --yes',
+                            env=self.backup_environment())
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.no_backend()
+        alternate = self.other / "alternate-backup.py"
+        alternate.write_bytes(saved)
+        helper.symlink_to(alternate)
+        result = self.shell('create_partclone_backup --yes',
+                            env=self.backup_environment())
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.assertEqual(self.partclone_checks(), [])
+        self.no_backend()
+
+    def test_partclone_changed_sdk_refuses_before_helper_check(self):
+        result = self.shell(r'''
+L4T_ROOT="$SDK_ROOT/../unrelated"
+create_partclone_backup --dry-run
+''', env=self.backup_environment())
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.assertEqual(self.partclone_checks(), [])
+        self.no_backend()
+
+    def test_partclone_missing_input_and_invalid_options_are_rejected(self):
+        for arguments in ("--unexpected", "--compress", "--compress zstd",
+                          "--compress 'xz; touch injected'", "/dev/sda"):
+            with self.subTest(arguments=arguments):
+                result = self.shell('create_partclone_backup ' + arguments,
+                                    env=self.backup_environment())
+                self.assertEqual(result.returncode, 2,
+                                 result.stdout + result.stderr)
+                self.assertEqual(self.partclone_checks(), [])
+                self.no_backend()
+        result = self.shell('unset L4T_IMAGE; create_partclone_backup --yes')
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.assertFalse((self.other / "injected").exists())
+        self.no_backend()
+
+    def test_partclone_invalid_input_paths_refuse_before_privileged_calls(self):
+        symbolic = self.root / "symlink.img"
+        symbolic.symlink_to(self.partclone_image)
+        for image in ("", "relative.img", "/dev/sda", "/proc/input.img",
+                      str(self.root / "missing.img"), str(symbolic)):
+            with self.subTest(image=image):
+                result = self.shell('create_partclone_backup --yes',
+                                    env={"L4T_IMAGE": image})
+                self.assertNotEqual(result.returncode, 0)
+                self.no_backend()
+
+    def test_partclone_noninteractive_execution_requires_explicit_yes(self):
+        result = self.shell('create_partclone_backup',
+                            env=self.backup_environment(), stdin="")
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.no_backend()
+
+    def test_partclone_root_shell_execution_refuses_before_sudo(self):
+        result = self.shell(r'''
+id() { printf '0\n'; }
+create_partclone_backup --yes
+''', env=self.backup_environment())
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.no_backend()
+
+    def test_partclone_confirmation_decline_keeps_backup_unexecuted(self):
+        result = self.terminal('create_partclone_backup', "NO\n",
+                               self.backup_environment())
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.no_backend()
+
+    def test_partclone_confirmation_runs_the_helper(self):
+        result = self.terminal('create_partclone_backup', "YES\n",
+                               self.backup_environment())
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(len(self.partclone_calls()), 1)
+        self.assertFalse(self.guard_log.exists())
+
+    def test_partclone_preserves_caller_state_with_strict_shell_options(self):
+        self.successful(r'''
+set -euo pipefail
+select_device NX8
+select_bootloader nvidia-logo
+trap ':' TERM
+before_pwd=$PWD
+before_options=$(set +o)
+before_traps=$(trap -p)
+before_image=$L4T_IMAGE
+before_rootfs=$ROOTFS
+create_partclone_backup --yes || exit $?
+test "$PWD" = "$before_pwd" || exit 71
+test "$(set +o)" = "$before_options" || exit 72
+test "$(trap -p)" = "$before_traps" || exit 73
+test "$L4T_IMAGE" = "$before_image" || exit 74
+test "$ROOTFS" = "$before_rootfs" || exit 75
+test "$(current_device)" = edge-ai-nx-8g || exit 76
+test "$(current_bootloader)" = nvidia-logo || exit 77
+''', env=self.backup_environment())
+        self.assertFalse(self.guard_log.exists())
+
+    def test_partclone_help_is_passive(self):
+        result = self.successful('create_partclone_backup --help')
+        self.assertIn("create_partclone_backup", result.stdout)
+        self.assertEqual(self.partclone_checks(), [])
+        self.no_backend()
+
+    def test_partclone_menu_lists_without_automatic_execution(self):
+        result = self.terminal('devshell', "11\n")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("create_partclone_backup", result.stdout + result.stderr)
+        self.assertEqual(self.partclone_checks(), [])
+        self.no_backend()
+
+    def test_partclone_menu_dispatches_new_backup_action(self):
+        result = self.terminal('devshell', "9\nYES\n11\n",
+                               self.backup_environment())
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(len(self.partclone_calls()), 1)
         self.assertFalse(self.guard_log.exists())
 
 

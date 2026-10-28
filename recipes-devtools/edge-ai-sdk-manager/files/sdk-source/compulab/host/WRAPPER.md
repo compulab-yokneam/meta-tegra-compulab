@@ -159,6 +159,64 @@ diagnosis; cleanup detaches only verified owned loops. This raw image does
 not itself install/update a board's QSPI firmware. Partclone restore is a
 separate operation; no old partclone or massflash scripts are run here.
 
+## Partclone backup of an offline image
+
+`create_partclone_backup` backs up an existing partitioned `L4T_IMAGE`,
+including the image produced by `create_disk_image`. No connected board,
+target selection or rootfs chroot is required. It is also available from
+`devshell`/`simple_shell`.
+
+```bash
+# create_disk_image sets L4T_IMAGE on success; or select an existing image:
+L4T_IMAGE=/absolute/path/to/32g.img
+create_partclone_backup --dry-run
+sudo -v
+create_partclone_backup
+printf 'Backup: %s\n' "$L4T_PARTCLONE_BACKUP"
+```
+
+Execution asks for `YES`; use `--yes` for intentional unattended backup.
+The default is uncompressed. Use `--compress xz` for a compressed backup;
+the legacy `compress=xz create_partclone_backup --yes` form is also accepted.
+Explicit `--compress` overrides that variable. Zstd is not offered because
+the original CompuLab restore script does not support it.
+
+The input must be an existing canonical regular `.img` file owned by the
+normal invoking user, without symlinks, hard links or unsafe write access.
+The current helper accepts GPT images with 512-byte logical sectors.
+Host device paths and images already attached to loops are refused. Do not
+modify or attach the source image while backing it up. The helper allocates
+one new read-only, partition-scanning loop; it never mounts a filesystem or
+writes the image or a physical disk. Cleanup detaches only that verified
+mapping, never another process's loop.
+
+Outputs go to a new private `backup-*` directory beneath `L4T_PCDIR`, which
+defaults to `$L4T_ROOT/workdir/partclone.d`. A custom output root must be a
+safe user-owned path outside managed SDK/rootfs payloads. Existing backups
+are never overwritten. A successful call exports `L4T_PARTCLONE_BACKUP`;
+failures preserve the previous value and retain partial output for diagnosis.
+
+The folder contains `disk.layout`, `disk.id` and partition images named
+`partN.TYPE.UUID.partclone` (plus `.xz` when selected), along with a manifest,
+checksums and private logs. Ext4 and FAT use filesystem-aware partclone;
+other partition contents use raw copying, and swap retains its UUID marker.
+Check the completion result before using a backup. Restore to physical
+media is a separate destructive operation and is not added by this command.
+**This backs up image partitions, not the board's QSPI bootloader.**
+
+The host needs util-linux tools (`losetup`, `sfdisk`, `blkid`), partclone
+(`partclone.ext4`, `partclone.vfat`, `partclone.dd`), Python 3.11+ and optional
+`xz`, plus noninteractive sudo authorization for execution. Tools are checked,
+not installed automatically. `--dry-run` performs read-only checks: no sudo,
+loop allocation or output directory creation. Normal failures and signals
+preserve their status and report cleanup problems; SIGKILL/power loss cannot
+run cleanup. Inspect any reported leftover mapping manually before reuse.
+
+No real backup, restore or physical-media qualification is performed by SDK
+generation or mocked tests. This wrapper/helper ships in newly generated
+SDKs; do not overwrite a verified SDK's recorded scripts or refresh integrity
+receipts just to copy this feature into an existing output.
+
 ## Connected-device flashing
 
 Use an unfused/development module with stable power, the intended NVMe
@@ -351,11 +409,11 @@ these guards. Applying or replacing the native fix remains an owner-checked
 operation, separate from read-only verification.
 
 Standard unencrypted single-rootfs NVMe images/flashes are supported here.
-Rootfs A/B, encryption, production/fused signing keys, backup/restore,
-partclone, manufacturing services and actual massflash deployment remain
-separate reviewed workflows. Old kernel compile/install commands remain
-unsupported. `customize_rootfs` uses the new guarded helper, not the R36
-mount/copy/cleanup implementation.
+Rootfs A/B, encryption, production/fused signing keys, physical-media
+backup/restore, partclone restore, manufacturing services and actual massflash
+deployment remain separate reviewed workflows. Old kernel compile/install
+commands remain unsupported. `customize_rootfs` uses the new guarded helper,
+not the R36 mount/copy/cleanup implementation.
 
 Mock tests exercise passive loading, all selections, offline loop ownership,
 command construction, confirmations, USB ambiguity, metadata isolation and

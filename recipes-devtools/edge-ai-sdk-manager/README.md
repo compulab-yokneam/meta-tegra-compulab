@@ -139,7 +139,13 @@ read-only `--dry-run` and explicit confirmation before writes. Full usage:
 rootfs, with confirmation, read-only preview and temporary-mount cleanup.
 It never flashes a device or updates existing generated images. See the
 wrapper guide for host prerequisites and managed-file verification limits.
-The wrapper and helper ship with newly generated SDK outputs. Updating this
+`create_partclone_backup` converts an existing `L4T_IMAGE` into a new backup
+under `L4T_PCDIR` (default `workdir/partclone.d`), using a new read-only loop.
+It preserves the CompuLab partition-backup layout and supports uncompressed
+or xz output. Use `--dry-run` first; backup does not flash, restore media or
+include QSPI firmware. See the wrapper guide for prerequisites and examples.
+
+The wrapper and helpers ship with newly generated SDK outputs. Updating this
 layer alone does not replace files in an existing SDK. Do not overwrite its
 recorded wrapper or refresh integrity receipts merely to accept new files;
 an existing verified SDK needs a separately reviewed integration update.
