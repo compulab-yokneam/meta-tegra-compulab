@@ -462,6 +462,12 @@ configuration and boot-control machine name during startup. Do not interchange
 the individual profile directories manually; the QSPI/BCT payloads remain
 module-specific.
 
+## Docker with the NVIDIA runtime
+
+`demo-image-weston` includes Docker and the NVIDIA Container Toolkit through
+this layer's image bbappend. See the [Docker how-to](recipes-demo/images/DOCKER.md)
+for layer requirements, build instructions, and target validation.
+
 ## Precompiled Images
 * edge-ai-nx-16g
   * [demo-image-weston](https://drive.google.com/drive/folders/1Kj6_xZBRThOyjulUS2X3prKE2pX6xgyA)
