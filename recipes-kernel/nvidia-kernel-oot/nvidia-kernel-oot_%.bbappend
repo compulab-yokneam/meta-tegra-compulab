@@ -19,6 +19,9 @@ SRC_URI:append:edge-ai = " \
 	file://0005-compulab-dts-Remove-unused-padctl-3520000-fusb301-25.patch \
 	file://0006-compulab-dts-Define-tpm-on-spi-3210000.patch \
 	file://0007-compulab-dts-Set-Edge-AI-platform-identity.patch \
+	file://0008-compulab-dts-Initialize-third-SuperSpeed-host-PHY.patch \
+	file://0009-compulab-dts-Match-PCIe-ports-to-GBE-UPHY-config-9.patch \
+	file://0010-compulab-dts-Add-selectable-carrier-peripherals.patch \
 	"
 
 # Keep the legacy NVIDIA-only build unchanged unless the ADI profile is enabled.

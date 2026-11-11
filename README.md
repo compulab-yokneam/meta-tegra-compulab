@@ -134,6 +134,181 @@ recorded separately. See the [Noble integration notes](recipes-kernel/linux/file
 for build commands, the development-source override caveat and validation
 scope. This kernel port does not itself replace the Yocto rootfs with Ubuntu.
 
+## Carrier peripheral options
+
+The layer ports the missing carrier features from the
+[edge-ai-linux devel DTS patches](https://github.com/compulab-yokneam/edge-ai-linux/tree/devel/patches/dts)
+and their matching
+[kernel patches](https://github.com/compulab-yokneam/edge-ai-linux/tree/devel/patches/kernel).
+The RK628 CSI bridge, dedicated RS-485 UART, and external-watchdog driver
+ports target the Noble NVIDIA 6.8 kernel. They are not added to the alternate
+Linux 6.18 kernel. The expansion board uses the existing PCA953x GPIO and
+ISL1208/ISL1219 RTC drivers; PAL capture uses the standard ADV7180/ADV7280 driver.
+
+Normal images include `nvidia-kernel-oot-dtb`, `nvidia-kernel-oot-dtbo`, and
+the kernel modules. Optional peripherals remain unselected until the matching
+hardware is fitted. The default device tree and USB OTG role remain available.
+
+### Fixed USB recovery-port roles
+
+Each supported module has two additional DTBs:
+
+```
+tegra234-p3768-0000+p3767-<SKU>-nv-super-host.dtb
+tegra234-p3768-0000+p3767-<SKU>-nv-super-device.dtb
+```
+
+Use SKU `0000` for NX 16 GB, `0001` for NX 8 GB, `0003` for Nano 8 GB, or
+`0004` for Nano 4 GB. The reference series' `0005` variants are also built.
+These variants inherit the module's Super base DTB and its compatibility,
+identity, PCIe, and USB PHY fixes. The host variant also disables XUDC so the
+gadget driver cannot claim the recovery port.
+
+For example, select the NX 16 GB host variant in `local.conf`:
+
+```bitbake
+FDT_FILE = "tegra234-p3768-0000+p3767-0000-nv-super-host.dtb"
+```
+
+The variants are installed under `/boot/dtb` for selection on a running
+system with `edge-ai-select-fdt`. Use `FDT_FILE`, rather than overriding
+`UBOOT_EXTLINUX_FDT`, to retain the package ownership described above.
+
+### Expansion board, RS-485, and camera overlays
+
+The following overlays are installed under `/boot/devicetree`:
+
+| Overlay | Hardware and driver |
+| --- | --- |
+| `tegra234-edge-ai-eb-edgerpi4.dtbo` | PCA9555 at I2C address `0x20` and ISL1219 RTC at `0x6f` on `hdr40_i2c1` |
+| `tegra234-edge-ai-rs485.dtbo` | Dedicated RS-485 driver on UART `3110000`, alias `serial3`, device name `ttyTHSRS485<n>` |
+| `tegra234-camera-HDMI-rk628.dtbo` | RK628 HDMI-to-CSI adapter, CSI port 2, four data lanes |
+| `tegra234-camera-PAL-adv280-m.dtbo` | ADV7280-M PAL-to-CSI adapter, CSI port 0, one data lane; filename retained from the reference series |
+| `tegra234-edge-ai-watchdog-template.dtbo` | Disabled external-watchdog template with no GPIO assignments |
+
+Select overlays against an explicit base DTB for the fitted module. For
+example, an NX 16 GB with the expansion board and RS-485 interface uses:
+
+```bitbake
+FDT_FILE = "tegra234-p3768-0000+p3767-0000-nv-super.dtb"
+FDT_OVERLAYS = "tegra234-edge-ai-eb-edgerpi4.dtbo tegra234-edge-ai-rs485.dtbo"
+```
+
+Select exactly one of the HDMI/PAL overlays for camera capture. These use
+the same VI channel and must not be combined with each other or with an
+EDGEDES camera profile without a separately validated routing configuration.
+For PAL, the normal V4L2 standard-selection controls remain available; the
+driver's defaults are not changed globally for other ADV7180-family devices.
+
+The RS-485 overlay uses only the dedicated compatible string, avoiding a
+race with the ordinary Tegra UART driver. Applications configure direction
+control through the standard `TIOCSRS485` interface. Ordinary UART behavior
+is retained when this overlay is not selected.
+
+### External watchdog
+
+The `gpio_wdt_ext` module supports separate `ping-gpios` and `enable-gpios`.
+The reference DTS explicitly marks its GPIO assignments as draft. The supplied
+template therefore leaves `watchdog-ext` disabled and does not change the
+board model or claim any GPIOs. Add confirmed GPIO assignments to a custom
+overlay before changing that node's status to `okay`; its remaining binding
+properties are `compatible = "linux,wdt-gpio-ext"`, `hw_algo = "toggle"`,
+and `hw_margin_ms = <1600>`.
+
+### Build and verify
+
+```sh
+bitbake demo-image-weston
+```
+
+Deploy the rebuilt kernel, modules, and selected DTBs/overlays together.
+A UEFI capsule alone can update the firmware DTB, but does not install these
+new Linux drivers or select optional rootfs overlays on an existing system.
+For Ubuntu, regenerate the matched CompuLab kernel and device-tree packages
+and install them using the package workflow before selecting the overlays.
+
+After boot, verify the selected tree and available devices:
+
+```sh
+edge-ai-select-fdt --show
+gpiodetect
+ls /sys/class/rtc
+ls /dev/ttyTHSRS485*
+v4l2-ctl --list-devices
+media-ctl -p
+```
+
+Hardware capture, RS-485 direction timing, and watchdog operation require
+testing with the corresponding adapters fitted.
+
+## PCIe lane configuration
+
+Edge-AI selects `gbe-uphy-config-9,hsstp-lane-map-3,hsio-uphy-config-0`
+in ODMDATA. The carrier DTS must match that firmware lane allocation:
+
+| Controller | DT node | Configuration |
+| --- | --- | --- |
+| C1 | `pcie@14100000` | M.2 Key E, x1 on HSIO lane 3 |
+| C4 | `pcie@14160000` | M.2 Key M, x4 on HSIO lanes 4–7 |
+| C7 | `pcie@141e0000` | x1 on GBE lane 0 |
+| C9 | `pcie@140c0000` | x1 on GBE lane 1 |
+| C10 | `pcie@140e0000` | Disabled; not exposed as a general-purpose port on Orin NX/Nano |
+
+The PCIe carrier patch sets C7/C9 lane counts and PHY references explicitly.
+Setting only `status = "okay"` on the SoC nodes leaves C9/C10 without the
+`phy-names` and `phys` properties required by the driver. Do not allocate a
+second GBE lane to C7 while selecting the split C7/C9 firmware configuration.
+See NVIDIA's [Orin NX/Nano PCIe and UPHY documentation](https://docs.nvidia.com/jetson/archives/r39.2.1/DeveloperGuide/HR/JetsonModuleAdaptationAndBringUp/JetsonOrinNxNanoSeries.html).
+
+For an Intel AX210 in M.2 Key E, diagnose C1 separately. A `Phy link never
+came up` message occurs before the card can enumerate and bind to the Intel
+Wi-Fi driver. Correcting C7/C9/C10 does not establish that the AX210 link
+works. Compare the failing and known-good firmware with the same card fitted,
+including a full power-off test, and collect:
+
+```sh
+lspci -nn -tv
+dmesg | grep -iE 'pcie|pci |iwlwifi|regulator'
+```
+
+Check the active device tree and the flashed pinmux/BCT configuration together
+with the card's 3.3 V supply, PERST#, reference clock, and CLKREQ# signals.
+Validate the running tree after deploying a rebuilt firmware capsule because
+the default boot path uses a UEFI-provided DTB.
+
+## USB 3 host PHY configuration
+
+The Edge-AI device-tree patches enable the third SuperSpeed port (`usb3-2`)
+and include its lane in the XUSB host controller's `phys` and `phy-names`.
+Enabling only the padctl port and lane is insufficient: Linux must acquire
+and initialize the PHY through the host controller as well.
+
+After changing these patches, rebuild the image and deploy the regenerated
+flash package using the flashing procedure below:
+
+```sh
+bitbake demo-image-weston
+```
+
+To test the fix through a boot-firmware update while retaining the installed
+OS, enable `conf/include/edge-ai-uefi-update-capsules.inc` in `local.conf` and
+build only the removable update image:
+
+```sh
+bitbake edge-ai-uefi-update-image
+```
+
+The complete capsules include the bootloader device tree. Follow
+[Removable UEFI update media](#removable-uefi-update-media) to apply one matching
+capsule, then boot the installed OS and check its running tree and `lsusb -t`.
+
+The default boot path uses a UEFI-provided device tree. Replacing a DTB under
+`/boot` alone does not select it. Verify the selected tree with
+`edge-ai-select-fdt --show`; in the running tree, the host controller at
+`/bus@0/usb@3610000` must list `usb3-2` in `phy-names` and reference its lane
+in `phys`. Use `lsusb -t` to verify downstream SuperSpeed enumeration after
+deployment; the presence of a SuperSpeed root hub alone is insufficient.
+
 ## UEFI boot logo options
 
 The default build uses the NVIDIA UEFI boot logo. The following optional
@@ -262,6 +437,48 @@ started through the fallback `EFI/BOOT/BOOTAA64.EFI` path is not necessarily in
 `BootOrder`, and the reboot remains under operator control. Firmware consumes
 `BootNext` and may reboot a second time while switching the updated bootloader
 slot.
+
+#### Updating a deployed Ubuntu system with Debian packages
+
+On an already deployed CompuLab Ubuntu system, `compulab-edge-ai-boot-tools`
+provides `edge-ai-uefi-update` and the supporting boot helpers. The firmware
+payloads are supplied separately by `compulab-edge-ai-uefi-capsules`. Use the
+newly rebuilt capsule package containing the desired device-tree changes.
+
+Copy the compatible `.deb` archives to the target. From their directory,
+install them using the package version in the archive filenames, for example:
+
+```sh
+package_version=39.2.1+compulab1
+sudo apt install --reinstall \
+    "./compulab-edge-ai-boot-tools_${package_version}_all.deb" \
+    "./compulab-edge-ai-uefi-capsules_${package_version}_all.deb"
+```
+
+`--reinstall` also installs a development rebuild whose package version is
+already installed. Use the actual version of the supplied archives.
+
+The boot-tools package requires matching CompuLab kernel and device-tree
+package versions. Supply those compatible packages if they are not already
+installed or available from the configured package repository. These are
+Ubuntu packages; this method is separate from installing packages in a Yocto
+root filesystem.
+
+Installing the archives updates files but does not stage a firmware update
+or reboot. With the EFI System Partition mounted at `/boot/efi`, explicitly
+stage one logo variant and reboot:
+
+```sh
+sudo edge-ai-uefi-update clab-logo
+sudo reboot
+```
+
+Use `nvidia-logo` or `no-logo` instead to select another variant. The helper
+checks the module board ID/SKU and capsule checksums before staging. After
+the update, boot the installed OS, confirm the running device tree includes
+the corrected USB host PHY reference, and check downstream enumeration with
+`lsusb -t`. If boot-tools is already installed and compatible, updating only
+`compulab-edge-ai-uefi-capsules` is sufficient before running the helper.
 
 #### Removable UEFI update media
 

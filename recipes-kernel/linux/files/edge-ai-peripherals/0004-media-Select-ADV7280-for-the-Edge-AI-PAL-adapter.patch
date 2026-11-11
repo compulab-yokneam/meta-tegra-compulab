@@ -1,0 +1,25 @@
+Subject: [PATCH] media: Select ADV7280 for the Edge-AI PAL adapter
+
+Expose the carrier decoder choice outside the hidden ancillary-driver
+menu, without disabling autoselection for the rest of the media stack.
+
+Upstream-Status: Inappropriate [CompuLab Edge-AI peripheral ports]
+
+diff --git a/drivers/media/i2c/Kconfig b/drivers/media/i2c/Kconfig
+--- a/drivers/media/i2c/Kconfig
++++ b/drivers/media/i2c/Kconfig
+@@ -985,6 +985,14 @@
+ 
+ endmenu
+ 
++config VIDEO_EDGE_AI_PAL
++	tristate "CompuLab ADV7280-M PAL-to-CSI adapter"
++	depends on GPIOLIB && VIDEO_DEV && I2C
++	select VIDEO_ADV7180
++	help
++	  Select the ADV7180-family decoder even when media ancillary
++	  drivers are hidden by MEDIA_SUBDRV_AUTOSELECT.
++
+ menu "Video decoders"
+ 	visible if !MEDIA_HIDE_ANCILLARY_SUBDRV
+ 
