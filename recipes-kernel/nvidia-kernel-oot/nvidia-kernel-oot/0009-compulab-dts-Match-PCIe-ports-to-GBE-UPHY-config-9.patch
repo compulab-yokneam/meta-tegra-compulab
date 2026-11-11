@@ -1,0 +1,53 @@
+Subject: [PATCH] compulab: dts: Match PCIe ports to GBE UPHY config 9
+
+Edge-AI selects gbe-uphy-config-9 in ODMDATA. This routes GBE lane 0 to
+C7 and lane 1 to C9 as independent x1 root ports. The reference carrier
+configuration still assigns both lanes to C7 and inherits its SoC lane
+count. The earlier Edge-AI patch also enables C9 and C10 without supplying
+their PHY mappings, causing the PCIe driver to reject their device trees.
+
+Describe C7 and C9 as x1 ports with their respective PHYs. Leave C10
+disabled: it is not exposed as a general-purpose PCIe port on Orin NX/Nano.
+Keep these settings in the carrier DTS rather than the shared SoC DTS.
+
+Upstream-Status: Inappropriate [CompuLab Edge-AI carrier configuration]
+---
+ .../nv-public/tegra234-p3768-0000+p3767.dtsi | 22 +++++++++++++++++++---
+ 1 file changed, 19 insertions(+), 3 deletions(-)
+
+diff --git a/hardware/nvidia/t23x/nv-public/tegra234-p3768-0000+p3767.dtsi b/hardware/nvidia/t23x/nv-public/tegra234-p3768-0000+p3767.dtsi
+--- a/hardware/nvidia/t23x/nv-public/tegra234-p3768-0000+p3767.dtsi
++++ b/hardware/nvidia/t23x/nv-public/tegra234-p3768-0000+p3767.dtsi
+@@ -204,13 +204,29 @@
+ 		};
+ 
+-		/* C7 - M.2 Key-M */
++		/* GBE UPHY config 9: C7 x1 on lane 0, C9 x1 on lane 1. */
+ 		pcie@141e0000 {
+ 			status = "okay";
++			num-lanes = <1>;
+ 
+ 			vddio-pex-ctl-supply = <&vdd_1v8_ao>;
+ 
+-			phys = <&p2u_gbe_0>, <&p2u_gbe_1>;
+-			phy-names = "p2u-0", "p2u-1";
++			phys = <&p2u_gbe_0>;
++			phy-names = "p2u-0";
++		};
++
++		pcie@140c0000 {
++			status = "okay";
++			num-lanes = <1>;
++
++			vddio-pex-ctl-supply = <&vdd_1v8_ao>;
++
++			phys = <&p2u_gbe_1>;
++			phy-names = "p2u-0";
++		};
++
++		/* C10 is not a general-purpose PCIe port on Orin NX/Nano. */
++		pcie@140e0000 {
++			status = "disabled";
+ 		};
+ 	};
+ 

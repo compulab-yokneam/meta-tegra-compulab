@@ -56,6 +56,7 @@ CORE_IMAGE_BASE_INSTALL:append = " \
     nvidia-kernel-oot-display \
     nvidia-kernel-oot-alsa \
     nvidia-kernel-oot-dtb \
+    nvidia-kernel-oot-dtbo \
     kernel-modules \
     linux-firmware-iwlwifi-misc	\
     linux-firmware-ibt-misc \
