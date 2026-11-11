@@ -1,0 +1,41 @@
+From 938663785ba17f97d0bdb48c9d863fb81a402853 Mon Sep 17 00:00:00 2001
+From: Cosmin Tanislav <demonsingur@gmail.com>
+Date: Wed, 30 Sep 2026 01:41:45 +0300
+Subject: [PATCH 11/23] dt-bindings: media: i2c: max96714: add support for
+ MAX96714R
+Upstream-Status: Submitted [https://lore.kernel.org/r/20260930-gmsl2-3_serdes-v18-0-43117818f499@analog.com]
+
+MAX96714R is a lower capability variant of the MAX96714 which only
+supports a fixed rate of 3Gbps in the forward direction.
+
+Signed-off-by: Cosmin Tanislav <demonsingur@gmail.com>
+Acked-by: Rob Herring (Arm) <robh@kernel.org>
+Tested-by: Martin Hecht <mhecht73@gmail.com>
+Tested-by: Tomi Valkeinen <tomi.valkeinen@ideasonboard.com>
+---
+ .../devicetree/bindings/media/i2c/maxim,max96714.yaml        | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/Documentation/devicetree/bindings/media/i2c/maxim,max96714.yaml b/Documentation/devicetree/bindings/media/i2c/maxim,max96714.yaml
+index 3ace50e..ec6a91c 100644
+--- a/Documentation/devicetree/bindings/media/i2c/maxim,max96714.yaml
++++ b/Documentation/devicetree/bindings/media/i2c/maxim,max96714.yaml
+@@ -22,7 +22,9 @@ description:
+ 
+   The GMSL2 serial link operates at a fixed rate of 3Gbps or 6Gbps in the
+   forward direction and 187.5Mbps in the reverse direction.
+-  MAX96714F only supports a fixed rate of 3Gbps in the forward direction.
++
++  MAX96714F and MAX96714R only support a fixed rate of 3Gbps in the forward
++  direction.
+ 
+ properties:
+   compatible:
+@@ -31,6 +33,7 @@ properties:
+       - items:
+           - enum:
+               - maxim,max96714
++              - maxim,max96714r
+           - const: maxim,max96714f
+ 
+   reg:

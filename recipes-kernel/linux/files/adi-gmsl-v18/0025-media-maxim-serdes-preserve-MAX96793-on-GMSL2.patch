@@ -1,0 +1,161 @@
+From 2741fdfce1b5550f3d74fa77ea878733cc3df5e1 Mon Sep 17 00:00:00 2001
+From: Igor Derzhavets <igor.derzhavets@compulab.co.il>
+Date: Sun, 4 Oct 2026 19:57:20 +0300
+Subject: [PATCH] media: maxim-serdes: preserve MAX96793 links on GMSL2
+ receivers
+
+The qualified EDGEDES/F-CON_08 adaptation detects MAX96793 device ID 0xb7
+and preserves its already established GMSL2 link instead of issuing
+RESET_ALL. A full reset can restore GMSL3 configuration that a GMSL2-only
+deserializer cannot reach to configure again. This behavior is carried from
+the TechNexion adaptation in commit
+6954132532cf672d55b54be9bdd8d3464d270877.
+
+Only request this exception when the deserializer has no GMSL3 capability,
+and only skip reset after reading the MAX96793 device ID. Return an
+explicit reset_done flag so the caller can retain the currently reachable
+address after a skipped reset. After a full reset, keep the existing
+power-up-address wait and readdressing behavior for other serializers and
+GMSL3-capable deserializers.
+
+The working alias 0x42 does not establish the physical power-up address of
+this assembly: previous qualification skipped full reset and did not cover
+cold-power startup. Do not wait for an assumed native address or readdress
+from it when reset was deliberately skipped. This preserves a reachable
+GMSL2 link; it does not bootstrap an unreachable GMSL3 power-up
+configuration.
+
+No device-tree property, registration order or translation locking changes
+are introduced.
+
+Upstream-Status: Pending
+---
+ drivers/media/i2c/maxim-serdes/max_des.c | 29 ++++++++++++++++--------
+ drivers/media/i2c/maxim-serdes/max_ser.c | 20 ++++++++++++++--
+ drivers/media/i2c/maxim-serdes/max_ser.h |  6 ++++-
+ 3 files changed, 43 insertions(+), 12 deletions(-)
+
+diff --git a/drivers/media/i2c/maxim-serdes/max_des.c b/drivers/media/i2c/maxim-serdes/max_des.c
+index 8b6bed6..bd9a60a 100644
+--- a/drivers/media/i2c/maxim-serdes/max_des.c
++++ b/drivers/media/i2c/maxim-serdes/max_des.c
+@@ -1389,6 +1389,8 @@ static int max_des_init_link_ser_xlate(struct max_des_priv *priv,
+ {
+ 	struct max_des *des = priv->des;
+ 	u8 addrs[] = { power_up_addr, new_addr };
++	bool preserve_gmsl2;
++	bool reset_done;
+ 	u8 current_addr;
+ 	int ret;
+ 
+@@ -1407,25 +1409,34 @@ static int max_des_init_link_ser_xlate(struct max_des_priv *priv,
+ 		return ret;
+ 	}
+ 
+-	ret = max_ser_reset(adapter, current_addr);
++	preserve_gmsl2 = !(des->info->versions & BIT(MAX_SERDES_GMSL_3_12GBPS));
++	ret = max_ser_reset(adapter, current_addr, preserve_gmsl2, &reset_done);
+ 	if (ret) {
+ 		dev_err(priv->dev, "Failed to reset serializer: %d\n", ret);
+ 		return ret;
+ 	}
+ 
+-	ret = max_ser_wait(adapter, power_up_addr);
+-	if (ret) {
+-		dev_err(priv->dev,
+-			"Failed to wait for serializer at 0x%02x: %d\n",
+-			power_up_addr, ret);
+-		return ret;
++	if (reset_done) {
++		ret = max_ser_wait(adapter, power_up_addr);
++		if (ret) {
++			dev_err(priv->dev,
++				"Failed to wait for serializer at 0x%02x: %d\n",
++				power_up_addr, ret);
++			return ret;
++		}
++		current_addr = power_up_addr;
++	} else {
++		/* The preserved MAX96793 still uses its currently reachable address. */
++		dev_info(priv->dev,
++			 "link %u: preserving MAX96793 GMSL2 configuration at 0x%02x\n",
++			 link->index, current_addr);
+ 	}
+ 
+-	ret = max_ser_change_address(adapter, power_up_addr, new_addr);
++	ret = max_ser_change_address(adapter, current_addr, new_addr);
+ 	if (ret) {
+ 		dev_err(priv->dev,
+ 			"Failed to change serializer from 0x%02x to 0x%02x: %d\n",
+-			power_up_addr, new_addr, ret);
++			current_addr, new_addr, ret);
+ 		return ret;
+ 	}
+ 
+diff --git a/drivers/media/i2c/maxim-serdes/max_ser.c b/drivers/media/i2c/maxim-serdes/max_ser.c
+index 0c47570..6ac8fbf 100644
+--- a/drivers/media/i2c/maxim-serdes/max_ser.c
++++ b/drivers/media/i2c/maxim-serdes/max_ser.c
+@@ -2136,18 +2136,34 @@ static int max_ser_write_reg(struct i2c_adapter *adapter, u8 addr,
+ 	return 0;
+ }
+ 
+-int max_ser_reset(struct i2c_adapter *adapter, u8 addr)
++int max_ser_reset(struct i2c_adapter *adapter, u8 addr, bool preserve_gmsl2,
++		  bool *reset_done)
+ {
+ 	int ret;
+ 	u8 val;
+ 
++	*reset_done = false;
++	if (preserve_gmsl2) {
++		ret = max_ser_read_reg(adapter, addr, MAX_SER_DEV_ID, &val);
++		if (ret)
++			return ret;
++
++		/* RESET_ALL can restore GMSL3 and lose an established GMSL2 link. */
++		if (val == MAX_SER_DEV_ID_MAX96793)
++			return 0;
++	}
++
+ 	ret = max_ser_read_reg(adapter, addr, MAX_SER_CTRL0, &val);
+ 	if (ret)
+ 		return ret;
+ 
+ 	val |= MAX_SER_CTRL0_RESET_ALL;
+ 
+-	return max_ser_write_reg(adapter, addr, MAX_SER_CTRL0, val);
++	ret = max_ser_write_reg(adapter, addr, MAX_SER_CTRL0, val);
++	if (!ret)
++		*reset_done = true;
++
++	return ret;
+ }
+ 
+ int max_ser_wait_for_multiple(struct i2c_adapter *adapter, u8 *addrs,
+diff --git a/drivers/media/i2c/maxim-serdes/max_ser.h b/drivers/media/i2c/maxim-serdes/max_ser.h
+index a9365be..18291b2 100644
+--- a/drivers/media/i2c/maxim-serdes/max_ser.h
++++ b/drivers/media/i2c/maxim-serdes/max_ser.h
+@@ -15,6 +15,9 @@
+ #define MAX_SER_REG0				0x0
+ #define MAX_SER_REG0_DEV_ADDR			GENMASK(7, 1)
+ 
++#define MAX_SER_DEV_ID				0xd
++#define MAX_SER_DEV_ID_MAX96793			0xb7
++
+ #define MAX_SER_CTRL0				0x10
+ #define MAX_SER_CTRL0_RESET_ALL			BIT(7)
+ 
+@@ -136,7 +139,8 @@ int max_ser_get_stream_id(struct v4l2_subdev *sd, unsigned int *stream_id);
+ int max_ser_set_vc_remaps(struct v4l2_subdev *sd, struct max_serdes_vc_remap *vc_remaps,
+ 			  int num_vc_remaps);
+ 
+-int max_ser_reset(struct i2c_adapter *adapter, u8 addr);
++int max_ser_reset(struct i2c_adapter *adapter, u8 addr, bool preserve_gmsl2,
++		  bool *reset_done);
+ int max_ser_wait(struct i2c_adapter *adapter, u8 addr);
+ int max_ser_wait_for_multiple(struct i2c_adapter *adapter, u8 *addrs,
+ 			      unsigned int num_addrs, u8 *current_addr);
+-- 
+2.34.1

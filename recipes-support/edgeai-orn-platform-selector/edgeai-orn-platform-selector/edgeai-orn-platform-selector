@@ -54,6 +54,14 @@ case "${profile}" in
         dtb="${dtb%.dtb}-${profile}.dtb"
         source_dtb="${root_boot}/${dtb}"
         ;;
+    gmsl-base)
+        dtb="tegra234-edge-ai-adi-base-p3767-${board_sku}.dtb"
+        source_dtb="${root_boot}/dtb/${dtb}"
+        ;;
+    tevs-ar0144-port3|framos-imx67[68]-port[0-3]|framos-imx67[68]-4port)
+        dtb="edgedes-adi-v18-${profile}-p3767-${board_sku}.dtb"
+        source_dtb="${root_boot}/dtb/${dtb}"
+        ;;
     *)
         echo "Edge-AI: unsupported edgeai_fdt_profile '${profile}'; keeping the current boot selection" >&2
         exit 1

@@ -1,0 +1,76 @@
+From 4b9c3f9bf30c424df0fb33dea8c68ad85d0070d1 Mon Sep 17 00:00:00 2001
+From: Dumitru Ceclan <dumitru.ceclan@analog.com>
+Date: Wed, 30 Sep 2026 01:41:47 +0300
+Subject: [PATCH 13/23] i2c: atr: serialize attach/detach against bus transfers
+Upstream-Status: Submitted [https://lore.kernel.org/r/20260930-gmsl2-3_serdes-v18-0-43117818f499@analog.com]
+
+The attach_addr() and detach_addr() callbacks may need to reconfigure
+the remote side of the bus. Maxim GMSL deserializers, for example,
+disable all links but one to reach a serializer at its default address,
+since all serializers power up at the same address.
+
+Transfers on other channels of the same ATR can run concurrently with
+these callbacks and fail with -EIO while the links are disabled.
+
+Take the ATR bus lock around both callbacks, before alias_pairs_lock.
+i2c_atr_replace_mapping_by_addr() already calls them under this lock,
+so ATR drivers see no new constraint.
+
+Suggested-by: Quentin Freimanis <quentin@q-lab.dev>
+Signed-off-by: Dumitru Ceclan <dumitru.ceclan@analog.com>
+Tested-by: Tomi Valkeinen <tomi.valkeinen@ideasonboard.com>
+---
+ drivers/i2c/i2c-atr.c | 12 ++++++++++++
+ 1 file changed, 12 insertions(+)
+
+diff --git a/drivers/i2c/i2c-atr.c b/drivers/i2c/i2c-atr.c
+index dd19447..51dba77 100644
+--- a/drivers/i2c/i2c-atr.c
++++ b/drivers/i2c/i2c-atr.c
+@@ -549,6 +549,12 @@ static int i2c_atr_attach_addr(struct i2c_adapter *adapter,
+ 	struct i2c_atr_alias_pair *c2a;
+ 	int ret = 0;
+ 
++	/*
++	 * attach_addr() may reconfigure the remote side of the bus, keep
++	 * transfers on other channels out until it is done.
++	 */
++	mutex_lock(&atr->lock);
++
+ 	mutex_lock(&chan->alias_pairs_lock);
+ 
+ 	c2a = i2c_atr_create_mapping_by_addr(chan, addr);
+@@ -566,6 +572,8 @@ static int i2c_atr_attach_addr(struct i2c_adapter *adapter,
+ 
+ out_unlock:
+ 	mutex_unlock(&chan->alias_pairs_lock);
++	mutex_unlock(&atr->lock);
++
+ 	return ret;
+ }
+ 
+@@ -576,6 +584,8 @@ static void i2c_atr_detach_addr(struct i2c_adapter *adapter,
+ 	struct i2c_atr *atr = chan->atr;
+ 	struct i2c_atr_alias_pair *c2a;
+ 
++	mutex_lock(&atr->lock);
++
+ 	atr->ops->detach_addr(atr, chan->chan_id, addr);
+ 
+ 	mutex_lock(&chan->alias_pairs_lock);
+@@ -583,6 +593,7 @@ static void i2c_atr_detach_addr(struct i2c_adapter *adapter,
+ 	c2a = i2c_atr_find_mapping_by_addr(chan, addr);
+ 	if (!c2a) {
+ 		mutex_unlock(&chan->alias_pairs_lock);
++		mutex_unlock(&atr->lock);
+ 		return;
+ 	}
+ 
+@@ -595,6 +606,7 @@ static void i2c_atr_detach_addr(struct i2c_adapter *adapter,
+ 	i2c_atr_destroy_c2a(&c2a);
+ 
+ 	mutex_unlock(&chan->alias_pairs_lock);
++	mutex_unlock(&atr->lock);
+ }
+ 
+ static int i2c_atr_bus_notifier_call(struct notifier_block *nb,

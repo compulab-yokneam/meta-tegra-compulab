@@ -1,0 +1,49 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// SPDX-FileCopyrightText: Copyright (c) 2026 CompuLab Ltd.
+
+/*
+ * Include inside the sensor node with EDGEDES_IMX676_VC_ID set to the
+ * downstream Tegra virtual-channel string. The native sensor always emits VC0.
+ * Keep the original mode 0 and enable the tested extended modes by default.
+ * Additional modes require matching NITO mode knobsets. Set the recipe's
+ * EDGE_AI_IMX676_EXTENDED_MODES to 0 for the native-mode-only baseline.
+ */
+#ifndef EDGEDES_IMX676_VC_ID
+#error "Define EDGEDES_IMX676_VC_ID before including the IMX676 modes"
+#endif
+
+mode0 {
+	vc_id = EDGEDES_IMX676_VC_ID;
+#include "edgedes-adi-v18-framos-imx676-mode.dtsi"
+};
+
+#ifdef EDGE_AI_IMX676_EXTENDED_MODES
+mode1 {
+	vc_id = EDGEDES_IMX676_VC_ID;
+#include "edgedes-adi-v18-framos-imx676-mode-common.dtsi"
+	active_w = "3552";
+	active_h = "3556";
+	/* 240 MHz x HMAX1320 / 74.25 MHz = 4266.6667; nearest integer. */
+	line_length = "4267";
+	min_framerate = "15000000";
+	max_framerate = "15000000";
+	default_framerate = "15000000";
+	min_exp_time = "36";
+	max_exp_time = "66524";
+};
+
+mode2 {
+	vc_id = EDGEDES_IMX676_VC_ID;
+#include "edgedes-adi-v18-framos-imx676-mode-common.dtsi"
+	/* Center crop: native origin (0, 698), without binning or scaling. */
+	active_w = "3552";
+	active_h = "2160";
+	/* 240 MHz x HMAX1320 / 74.25 MHz = 4266.6667; nearest integer. */
+	line_length = "4267";
+	min_framerate = "25000000";
+	max_framerate = "25000000";
+	default_framerate = "25000000";
+	min_exp_time = "36";
+	max_exp_time = "39857";
+};
+#endif

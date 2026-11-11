@@ -1,0 +1,62 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// SPDX-FileCopyrightText: Copyright (c) 2026 CompuLab Ltd.
+
+/dts-v1/;
+/plugin/;
+
+#include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/gpio/tegra234-gpio.h>
+#include <dt-bindings/media/video-interfaces.h>
+
+/*
+ * Load once, before any edgedes-adi-v18-camera-MODEL-portN overlay.
+ * GMSL inputs without a camera leaf stay unconfigured. Connected assemblies
+ * described by leaves remain optional and are discovered at kernel probe.
+ */
+/ {
+	overlay-name = "CompuLab EDGEDES ADI v18 four-port camera transport";
+	compatible = "compulab,edgeai-orn", "nvidia,tegra234";
+
+	/* No references to symbols that a later camera leaf will introduce. */
+#define EDGEDES_ADI_FRAMOS_MODULAR_OVERLAY
+	#include "edgedes-adi-v18-framos-4port-deserializer.dtsi"
+#undef EDGEDES_ADI_FRAMOS_MODULAR_OVERLAY
+	#include "edgedes-adi-v18-framos-4port-nvcsi.dtsi"
+	#include "edgedes-adi-v18-framos-4port-vi.dtsi"
+
+	fragment@7 {
+		target-path = "/";
+		__overlay__ {
+			tegra-camera-platform {
+				compatible = "nvidia, tegra-camera-platform";
+				/* Permit opt-in per-camera ISP lookup only for modular profiles. */
+				compulab,per-camera-nito;
+				num_csi_lanes = <4>;
+				max_lane_speed = <2500000>;
+				min_bits_per_pixel = <12>;
+				vi_peak_byte_per_pixel = <2>;
+				vi_bw_margin_pct = <25>;
+				isp_peak_byte_per_pixel = <5>;
+				isp_bw_margin_pct = <25>;
+				modules {
+					/*
+					 * Keep all four phandles valid for optional-link pruning.
+					 * A camera leaf fills and enables only its own module.
+					 */
+					edgedes_adi_framos_module0: module0 {
+						status = "disabled";
+					};
+					edgedes_adi_framos_module1: module1 {
+						status = "disabled";
+					};
+					edgedes_adi_framos_module2: module2 {
+						status = "disabled";
+					};
+					edgedes_adi_framos_module3: module3 {
+						status = "disabled";
+					};
+				};
+			};
+		};
+	};
+};

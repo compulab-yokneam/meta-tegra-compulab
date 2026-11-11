@@ -1,0 +1,43 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// SPDX-FileCopyrightText: Copyright (c) 2026 CompuLab Ltd.
+
+/dts-v1/;
+/plugin/;
+
+#include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/gpio/tegra234-gpio.h>
+#include <dt-bindings/media/video-interfaces.h>
+
+/*
+ * Apply after edgedes-adi-v18-transport-4port.dtbo.
+ * Select exactly one sensor-model leaf for each physical GMSL port.
+ * Other port leaves may be added in any order after the common transport.
+ */
+/ {
+	overlay-name = "CompuLab EDGEDES ADI v18 IMX676 camera port 3";
+	compatible = "compulab,edgeai-orn", "nvidia,tegra234";
+
+	#include "edgedes-adi-v18-framos-imx676-port3.dtsi"
+
+	/* Complete both directions without common-to-future-leaf fixups. */
+	fragment@8 {
+		target = <&edgedes_adi_framos_gmsl3_in>;
+		__overlay__ {
+			remote-endpoint = <&edgedes_adi_framos_ser3_out>;
+		};
+	};
+
+	fragment@9 {
+		target = <&edgedes_adi_framos_module3>;
+		__overlay__ {
+			status = "okay";
+			badge = "imx676_port3_framos";
+			position = "front";
+			orientation = "1";
+			drivernode0 {
+				pcl_id = "v4l2_sensor";
+				sysfs-device-tree = "/sys/firmware/devicetree/base/bus@0/i2c@3180000/deserializer@27/i2c-atr/i2c@3/serializer@40/i2c-atr/i2c@0/imx676@1a";
+			};
+		};
+	};
+};

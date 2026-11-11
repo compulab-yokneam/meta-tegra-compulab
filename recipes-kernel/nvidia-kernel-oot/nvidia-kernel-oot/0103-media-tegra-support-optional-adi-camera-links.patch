@@ -1,0 +1,274 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Valentin Raevsky <valentin@compulab.co.il>
+Date: Mon, 12 Oct 2026 00:00:00 +0000
+Subject: [PATCH] media: tegra: support optional ADI camera links
+
+The automatic IMX676 profile describes four possible GMSL assemblies.
+The ADI deserializer's compulab,allow-missing-links property discovers
+the connected inputs at boot and publishes only those active routes.
+The static VI graph must not wait for cameras on the remaining inputs
+or try to resolve their absent serializer and sensor subdevices.
+
+For this opt-in profile, restrict each VI channel's graph traversal to
+its physical GMSL input. The ADI default route keeps source-stream and
+downstream CSI-2 virtual-channel numbers equal to that input number,
+including when the populated inputs are sparse.
+
+Before resolving the child notifier's nested subdevices or allocating
+a capture device, inspect the bound deserializer's frame descriptor on
+the CSI output pad. Complete an absent virtual channel successfully
+without registering a video node. Keep sensor metadata, controls and
+the existing stream-aware startup for every connected input.
+
+A shared bridge's child notifier has only one parent VI notifier. If
+sensors bind later, async completion propagates only to that parent,
+even if its physical camera input is absent. Complete every ready VI
+channel sharing the optional bridge when this callback runs, using the
+existing link_status flag to avoid duplicate registrations. Channels
+still waiting for NVCSI complete through their own later bind callback.
+
+Async unbind likewise reaches only the final shared connection. Tear
+down every affected optional channel and clear its nested pointers.
+Preserve the allocated video pointer through remove_subdevices for the
+explicit cleanup: unregister clears the channel pointer while the
+video_device_release_empty callback leaves the allocation alive.
+Guard final VI unregister for channels that never allocated a device.
+Leave ordinary graph and notifier behavior unchanged without the
+optional-link property.
+
+Prepared against NVIDIA Jetson Linux 39.2.1 after the separate ADI
+stream-aware graph and EDGEDES sensor integration patches.
+
+Upstream-Status: Inappropriate [CompuLab Tegra optional camera discovery]
+Signed-off-by: Valentin Raevsky <valentin@compulab.co.il>
+---
+ drivers/media/platform/tegra/camera/vi/channel.c |   2 +-
+ drivers/media/platform/tegra/camera/vi/graph.c   | 151 ++++++++++++++++++++---
+ 2 files changed, 138 insertions(+), 15 deletions(-)
+
+diff --git a/drivers/media/platform/tegra/camera/vi/channel.c b/drivers/media/platform/tegra/camera/vi/channel.c
+index 07d8f41..87d29e2 100644
+--- a/drivers/media/platform/tegra/camera/vi/channel.c
++++ b/drivers/media/platform/tegra/camera/vi/channel.c
+@@ -3095,7 +3095,7 @@ void tegra_vi_channels_unregister(struct tegra_mc_vi *vi)
+ 	struct tegra_channel *it;
+ 
+ 	list_for_each_entry(it, &vi->vi_chans, list) {
+-		if (it->video->cdev != NULL)
++		if (it->video && it->video->cdev != NULL)
+ 			video_unregister_device(it->video);
+ 	}
+ }
+diff --git a/drivers/media/platform/tegra/camera/vi/graph.c b/drivers/media/platform/tegra/camera/vi/graph.c
+index b9461ec..85fd32f 100644
+--- a/drivers/media/platform/tegra/camera/vi/graph.c
++++ b/drivers/media/platform/tegra/camera/vi/graph.c
+@@ -31,6 +31,9 @@
+  */
+ 
+ static bool tegra_vi_graph_is_maxim_deserializer(struct device_node *node);
++static struct device_node *
++tegra_vi_graph_match_endpoint(struct tegra_channel *chan,
++			      struct device_node *node);
+ 
+ static struct tegra_vi_graph_entity *
+ tegra_vi_graph_find_entity(struct tegra_channel *chan,
+@@ -299,15 +302,80 @@ static void tegra_vi_graph_remove_links(struct tegra_channel *chan)
+ 	tegra_channel_remove_subdevices(chan);
+ }
+ 
+-static int tegra_vi_graph_notify_complete(struct v4l2_async_notifier *notifier)
++static struct v4l2_subdev *
++tegra_vi_graph_optional_bridge(struct tegra_channel *chan)
++{
++	struct tegra_vi_graph_entity *entity;
++
++	list_for_each_entry(entity, &chan->entities, list)
++		if (tegra_vi_graph_is_maxim_deserializer(entity->node) &&
++		    of_property_read_bool(entity->node,
++					  "compulab,allow-missing-links"))
++			return entity->subdev;
++
++	return NULL;
++}
++
++/* Optional inputs retain their physical port number as the downstream VC. */
++static int tegra_vi_graph_optional_channel_present(struct tegra_channel *chan)
++{
++	struct tegra_vi_graph_entity *entity;
++
++	list_for_each_entry(entity, &chan->entities, list) {
++		struct v4l2_mbus_frame_desc fd = { 0 };
++		struct of_endpoint endpoint;
++		struct device_node *ep;
++		unsigned int i;
++		int ret;
++
++		if (!tegra_vi_graph_is_maxim_deserializer(entity->node) ||
++		    !of_property_read_bool(entity->node,
++					   "compulab,allow-missing-links"))
++			continue;
++		if (!entity->subdev)
++			return -ENODEV;
++
++		ep = tegra_vi_graph_match_endpoint(chan, entity->node);
++		if (!ep)
++			return -EINVAL;
++		ret = of_graph_parse_endpoint(ep, &endpoint);
++		of_node_put(ep);
++		if (ret)
++			return ret;
++
++		ret = v4l2_subdev_call(entity->subdev, pad, get_frame_desc,
++				       endpoint.port, &fd);
++		if (ret)
++			return ret;
++		if (fd.type != V4L2_MBUS_FRAME_DESC_TYPE_CSI2)
++			return -EINVAL;
++		for (i = 0; i < fd.num_entries; i++)
++			if (fd.entry[i].bus.csi2.vc == chan->virtual_channel)
++				return 1;
++
++		return 0;
++	}
++
++	return 1;
++}
++
++static int tegra_vi_graph_complete_one(struct tegra_channel *chan)
+ {
+-	struct tegra_channel *chan =
+-		container_of(notifier, struct tegra_channel, notifier);
+ 	struct tegra_vi_graph_entity *entity;
+ 	int ret;
+ 
+ 	dev_dbg(chan->vi->dev, "notify complete, all subdevs registered\n");
+ 
++	/* Missing inputs have no nested subdevices and need no video node. */
++	ret = tegra_vi_graph_optional_channel_present(chan);
++	if (ret <= 0) {
++		if (!ret)
++			dev_info(chan->vi->dev,
++				 "GMSL port %u: no camera, skipping capture channel\n",
++				 chan->virtual_channel);
++		return ret;
++	}
++
+ 	/*
+ 	 * Stream-aware bridges bind their serializers and sensors through
+ 	 * child notifiers. They belong to this V4L2 device when the root
+@@ -378,6 +446,30 @@ register_device_error:
+ 	return ret;
+ }
+ 
++static int tegra_vi_graph_notify_complete(struct v4l2_async_notifier *notifier)
++{
++	struct tegra_channel *chan =
++		container_of(notifier, struct tegra_channel, notifier);
++	struct v4l2_subdev *bridge = tegra_vi_graph_optional_bridge(chan);
++	struct tegra_channel *peer;
++	int ret;
++
++	if (!bridge)
++		return tegra_vi_graph_complete_one(chan);
++
++	/* A shared bridge's child notifier has only one parent VI notifier. */
++	list_for_each_entry(peer, &chan->vi->vi_chans, list) {
++		if (tegra_vi_graph_optional_bridge(peer) != bridge ||
++		    !list_empty(&peer->notifier.waiting_list) || peer->link_status)
++			continue;
++		ret = tegra_vi_graph_complete_one(peer);
++		if (ret)
++			return ret;
++	}
++
++	return 0;
++}
++
+ #if defined(NV_V4L2_ASYNC_CONNECTION_STRUCT_PRESENT) /* Linux 6.5 */
+ static int tegra_vi_graph_notify_bound(struct v4l2_async_notifier *notifier,
+ 				   struct v4l2_subdev *subdev,
+@@ -417,24 +509,22 @@ static int tegra_vi_graph_notify_bound(struct v4l2_async_notifier *notifier,
+ 	return -EINVAL;
+ }
+ 
+-#if defined(NV_V4L2_ASYNC_CONNECTION_STRUCT_PRESENT) /* Linux 6.5 */
+-static void tegra_vi_graph_notify_unbind(struct v4l2_async_notifier *notifier,
+-				   struct v4l2_subdev *subdev,
+-				   struct v4l2_async_connection *asd)
+-#else
+-static void tegra_vi_graph_notify_unbind(struct v4l2_async_notifier *notifier,
+-				   struct v4l2_subdev *subdev,
+-				   struct v4l2_async_subdev *asd)
+-#endif
++static void tegra_vi_graph_unbind_one(struct tegra_channel *chan,
++				     struct v4l2_subdev *subdev, bool optional)
+ {
+-	struct tegra_channel *chan =
+-		container_of(notifier, struct tegra_channel, notifier);
+ 	struct tegra_vi_graph_entity *entity;
+ 
+ 	/* cleanup for complete */
+ 	if (chan->link_status) {
++		struct video_device *video = chan->video;
++
+ 		tegra_vi_graph_remove_links(chan);
++		/* remove_subdevices cleared the pointer after unregistering it. */
++		if (optional)
++			chan->video = video;
+ 		tegra_channel_cleanup_video(chan);
++		if (optional)
++			chan->video = NULL;
+ 		chan->link_status--;
+ 	}
+ 
+@@ -461,6 +551,32 @@ static void tegra_vi_graph_notify_unbind(struct v4l2_async_notifier *notifier,
+ #endif
+ }
+ 
++#if defined(NV_V4L2_ASYNC_CONNECTION_STRUCT_PRESENT) /* Linux 6.5 */
++static void tegra_vi_graph_notify_unbind(struct v4l2_async_notifier *notifier,
++				   struct v4l2_subdev *subdev,
++				   struct v4l2_async_connection *asd)
++#else
++static void tegra_vi_graph_notify_unbind(struct v4l2_async_notifier *notifier,
++				   struct v4l2_subdev *subdev,
++				   struct v4l2_async_subdev *asd)
++#endif
++{
++	struct tegra_channel *chan =
++		container_of(notifier, struct tegra_channel, notifier);
++	struct v4l2_subdev *bridge = tegra_vi_graph_optional_bridge(chan);
++	struct tegra_channel *peer;
++
++	if (bridge != subdev) {
++		tegra_vi_graph_unbind_one(chan, subdev, bridge != NULL);
++		return;
++	}
++
++	/* Async core calls unbind only for the final shared connection. */
++	list_for_each_entry(peer, &chan->vi->vi_chans, list)
++		if (tegra_vi_graph_optional_bridge(peer) == bridge)
++			tegra_vi_graph_unbind_one(peer, subdev, true);
++}
++
+ void tegra_vi_graph_cleanup(struct tegra_mc_vi *vi)
+ {
+ 	struct tegra_vi_graph_entity *entityp;
+@@ -588,6 +704,13 @@ static int tegra_vi_graph_parse_one(struct tegra_channel *chan,
+ 				of_node_put(remote);
+ 				continue;
+ 			}
++			/* Each optional capture channel owns only its input graph. */
++			if (of_property_read_bool(node,
++						  "compulab,allow-missing-links") &&
++			    endpoint.port != chan->virtual_channel) {
++				of_node_put(remote);
++				continue;
++			}
+ 		}
+ 
+ 		/* skip the vi of_node and duplicated entities */
+-- 
+2.34.1
+

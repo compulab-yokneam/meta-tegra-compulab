@@ -1,0 +1,82 @@
+From 86bcf8b96fcaf42340034cafea5cf73b915aae9f Mon Sep 17 00:00:00 2001
+From: Igor Derzhavets <igor.derzhavets@compulab.co.il>
+Date: Sun, 4 Oct 2026 20:23:58 +0300
+Subject: [PATCH] media: max96717: qualify MAX96793 pixel mode on EDGEDES
+
+Give MAX96793 a separate chip description and conservatively advertise
+only the pixel mode qualified with the EDGEDES MAX96724 GMSL2 receiver
+and F-CON_08/IMX678 assembly. The automatically selected tunnel path
+produced CSI traffic but no captured frames in this configuration.
+
+This is a qualification policy for this adaptation, not a claim that
+MAX96793 hardware lacks tunnel support. Keep all other capabilities,
+hardware pipe Z and PHY IDs unchanged, and leave MAX96717/F behavior
+untouched.
+
+Retain the tunnel-enable callback even with pixel-only advertised
+capabilities: MAX96793 defaults to tunnel mode, and init must explicitly
+clear EXT11.Tun_Mode before advertising a pixel pipeline. This also
+avoids preserving tunnel state across warm reboot.
+
+Validated on Edge-AI with Linux 6.18.48-yocto-standard-adi-v18: five
+3856x2180 RG12 frames at 10 FPS, totaling 84,060,800 bytes. Sensor mode,
+clock, reset sequence and four-lane ordering were unchanged.
+
+Upstream-Status: Inappropriate [qualified EDGEDES MAX96793 GMSL2 profile; conservatively disable unvalidated tunnel]
+Signed-off-by: Igor Derzhavets <igor.derzhavets@compulab.co.il>
+---
+ drivers/media/i2c/maxim-serdes/max96717.c | 20 ++++++++++++++++++--
+ 1 file changed, 18 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/media/i2c/maxim-serdes/max96717.c b/drivers/media/i2c/maxim-serdes/max96717.c
+index 6145cf3..b9dd5ce 100644
+--- a/drivers/media/i2c/maxim-serdes/max96717.c
++++ b/drivers/media/i2c/maxim-serdes/max96717.c
+@@ -14,6 +14,7 @@
+ #include <linux/pinctrl/pinmux.h>
+ #include <linux/pinctrl/pinconf.h>
+ #include <linux/pinctrl/pinconf-generic.h>
++#include <linux/property.h>
+ #include <linux/regmap.h>
+ 
+ #include "max_ser.h"
+@@ -1624,7 +1625,9 @@ static int max96717_probe(struct i2c_client *client)
+ 
+ 	*ops = max96717_ops;
+ 
+-	if (priv->info->modes & BIT(MAX_SERDES_GMSL_TUNNEL_MODE))
++	/* MAX96793 defaults to tunnel mode even when only pixel is advertised. */
++	if ((priv->info->modes & BIT(MAX_SERDES_GMSL_TUNNEL_MODE)) ||
++	    device_is_compatible(dev, "maxim,max96793"))
+ 		ops->set_tunnel_enable = max96717_set_tunnel_enable;
+ 
+ 	ops->modes = priv->info->modes;
+@@ -1677,11 +1680,24 @@ static const struct max96717_chip_info max96717_info = {
+ 	.phy_hw_ids = { 1 },
+ };
+ 
++/* Qualified F-CON_08/MAX96724 RAW12 path uses pixel packing on pipe Z. */
++static const struct max96717_chip_info max96793_info = {
++	.modes = BIT(MAX_SERDES_GMSL_PIXEL_MODE),
++	.supports_3_data_lanes = true,
++	.supports_pkt_cnt = true,
++	.supports_noncontinuous_clock = true,
++	.num_pipes = 1,
++	.num_dts_per_pipe = 4,
++	.pipe_hw_ids = { 2 },
++	.num_phys = 1,
++	.phy_hw_ids = { 1 },
++};
++
+ static const struct of_device_id max96717_of_ids[] = {
+ 	{ .compatible = "maxim,max9295a", .data = &max9295a_info },
+ 	{ .compatible = "maxim,max96717", .data = &max96717_info },
+ 	{ .compatible = "maxim,max96717f", .data = &max96717_info },
+-	{ .compatible = "maxim,max96793", .data = &max96717_info },
++	{ .compatible = "maxim,max96793", .data = &max96793_info },
+ 	{ }
+ };
+ MODULE_DEVICE_TABLE(of, max96717_of_ids);
+-- 
+2.34.1
+

@@ -114,10 +114,17 @@ with tempfile.TemporaryDirectory(prefix='edgeai-runtime-') as temp:
         assert envfile.stat().st_mtime_ns == stamp  # no rewrite on subsequent boots
         assert target.stat().st_mtime_ns == target_stamp
     for sku in skus:
-        for profile in ('host', 'device'):
-            dtb = f'tegra234-p3768-0000+p3767-{sku}-nv-super-{profile}.dtb'
-            source = root_boot/dtb
-            source.write_bytes((dtbs/dtb).read_bytes())
+        for profile in ('host', 'device', 'framos-imx678-port0', 'framos-imx676-4port', 'tevs-ar0144-port3', 'gmsl-base'):
+            if profile in ('host', 'device'):
+                dtb = f'tegra234-p3768-0000+p3767-{sku}-nv-super-{profile}.dtb'
+                source = root_boot/dtb
+                source.write_bytes((dtbs/dtb).read_bytes())
+            else:
+                dtb = (f'tegra234-edge-ai-adi-base-p3767-{sku}.dtb' if profile == 'gmsl-base'
+                       else f'edgedes-adi-v18-{profile}-p3767-{sku}.dtb')
+                source = root_boot/'dtb'/dtb
+                source.parent.mkdir(exist_ok=True)
+                source.write_bytes(b'camera-profile-'+sku.encode()+profile.encode())
             envfile.write_text(f'user_setting=keep\nedgeai_fdt_profile={profile}\ncustom_fdt_file=old.dtb\n')
             select(sku)
             assert (boot/'boot'/dtb).read_bytes() == source.read_bytes()

@@ -1,0 +1,453 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Valentin Raevsky <valentin@compulab.co.il>
+Date: Mon, 12 Oct 2026 00:00:00 +0000
+Subject: [PATCH] media: maxim-serdes: discover optional camera links
+
+A static four-port camera profile must not fail deserializer probe when
+only a subset of the camera assemblies is connected. Prune unlocked GMSL
+inputs after enabling POC power and before publishing I2C adapters or V4L2
+async sources. Try every advertised link rate, but treat only link-lock
+timeouts as absence; local bus and register failures remain fatal.
+
+Keep source stream and output virtual channel equal to the physical input
+index for the opt-in profile. The normal first-free allocator otherwise
+compacts sparse camera subsets and no longer matches the fixed NVIDIA
+NVCSI/VI channels. Validate that each optional input carries one native
+VC0 sensor stream and leave ordinary routing unchanged.
+
+Use one configured serializer alias per physical input instead of a
+shared first-free pool. When preparing an isolated link, also check the
+explicitly configured aliases so a warm camera moved between ports can
+be recovered and readdressed without scanning arbitrary I2C addresses.
+
+Detach only referenced absent NVIDIA camera-module metadata subtrees from
+the live device tree before async registration. A status property alone
+does not guarantee that the closed Argus parser ignores absent modules.
+Queue metadata children before their parents, so managed changeset
+reversion reattaches parents first on failed probe or driver removal.
+Never alter sensor nodes or public SerDes structures.
+
+This is boot-time discovery for known camera assemblies, not arbitrary
+sensor-model detection or runtime hotplug. The no-camera configuration is
+valid and leaves no upstream camera sources. CONFIG_OF_DYNAMIC is required
+only by the opt-in profile.
+
+Upstream-Status: Inappropriate [CompuLab EDGEDES optional-camera profile]
+Signed-off-by: Valentin Raevsky <valentin@compulab.co.il>
+---
+diff --git a/Documentation/devicetree/bindings/media/i2c/maxim,max96712.yaml b/Documentation/devicetree/bindings/media/i2c/maxim,max96712.yaml
+index fe35f9d..c132638 100644
+--- a/Documentation/devicetree/bindings/media/i2c/maxim,max96712.yaml
++++ b/Documentation/devicetree/bindings/media/i2c/maxim,max96712.yaml
+@@ -48,6 +48,47 @@ properties:
+       Without this local option, initialize only the first enabled input.
+     type: boolean
+ 
++  compulab,allow-missing-links:
++    description: |
++      Discover connected camera assemblies at probe time after POC power
++      is enabled. Try each supported GMSL2 rate and omit input links that
++      never lock, without registering their I2C adapters or async sources.
++      Local I2C and register failures still abort probe. This is not a
++      runtime hotplug interface or automatic sensor-model detection.
++      Each camera must supply one native VC0 stream. The physical input
++      index remains its source stream and output VC, even when other
++      inputs are absent. Requires multi-link default routing and a kernel
++      with CONFIG_OF_DYNAMIC to update the NVIDIA camera metadata.
++    type: boolean
++
++  compulab,camera-modules:
++    $ref: /schemas/types.yaml#/definitions/phandle-array
++    description: |
++      NVIDIA tegra-camera-platform/modules/module0 through module3
++      metadata nodes in physical GMSL input order. Missing camera modules
++      and their metadata children are detached from the live tree before
++      async registration, so userspace cannot enumerate absent sensors.
++      The changeset is reverted on driver removal or failed probe.
++      Only metadata without a compatible property may be referenced.
++    minItems: 4
++    maxItems: 4
++
++  compulab,serializer-aliases:
++    $ref: /schemas/types.yaml#/definitions/uint32-array
++    description: |
++      One unique 7-bit serializer alias per physical GMSL input, in port
++      order. Unlike first-free allocation from the shared pool, these
++      aliases remain fixed for any connected-camera subset. The isolated
++      link also probes these configured aliases to recover a warm camera
++      moved from another input, then readdresses it to its current alias.
++      Aliases must not equal the deserializer's own I2C address.
++    minItems: 4
++    maxItems: 4
++    uniqueItems: true
++    items:
++      minimum: 8
++      maximum: 119
++
+   maxim,control-channel-port:
+     description:
+       Selects which deserializer control-channel port is connected to the
+@@ -144,6 +185,13 @@ allOf:
+ dependentRequired:
+   i2c-atr: [i2c-alias-pool]
+   i2c-alias-pool: [i2c-atr]
++  compulab,allow-missing-links:
++    - compulab,default-multi-link-routes
++    - compulab,camera-modules
++    - compulab,serializer-aliases
++    - i2c-atr
++  compulab,camera-modules: ["compulab,allow-missing-links"]
++  compulab,serializer-aliases: ["compulab,allow-missing-links"]
+ 
+ examples:
+   - |
+diff --git a/drivers/media/i2c/maxim-serdes/max_des.c b/drivers/media/i2c/maxim-serdes/max_des.c
+index 036bdc8..68cfecf 100644
+--- a/drivers/media/i2c/maxim-serdes/max_des.c
++++ b/drivers/media/i2c/maxim-serdes/max_des.c
+@@ -9,6 +9,7 @@
+ #include <linux/i2c-atr.h>
+ #include <linux/i2c-mux.h>
+ #include <linux/module.h>
++#include <linux/of.h>
+ #include <linux/property.h>
+ #include <linux/regulator/consumer.h>
+ #include <linux/sched.h>
+@@ -52,6 +53,11 @@ struct max_des_priv {
+ 	struct v4l2_ctrl_handler ctrl_handler;
+ 
+ 	struct max_des_phy *unused_phy;
++	bool allow_missing_links;
++	u16 serializer_aliases[MAX_DES_NUM_LINKS];
++#if IS_ENABLED(CONFIG_OF_DYNAMIC)
++	struct of_changeset camera_modules_changeset;
++#endif
+ };
+ 
+ struct max_des_remap_context {
+@@ -390,20 +396,33 @@ static int max_des_set_pipe_vc_remaps(struct max_des_priv *priv,
+ 
+ static int max_des_map_src_dst_vc_id(struct max_des_remap_context *context,
+ 				     unsigned int pipe_id, unsigned int phy_id,
+-				     unsigned int src_vc_id, bool keep_vc)
++				     unsigned int src_vc_id, bool keep_vc,
++				     int preferred_dst_vc)
+ {
+ 	unsigned int vc_id;
+ 
+ 	if (src_vc_id >= MAX_SERDES_VC_ID_NUM)
+ 		return -E2BIG;
+ 
+-	if (context->vc_ids_masks[pipe_id][phy_id] & BIT(src_vc_id))
++	if (context->vc_ids_masks[pipe_id][phy_id] & BIT(src_vc_id)) {
++		if (preferred_dst_vc >= 0 &&
++		    context->vc_ids_map[pipe_id][phy_id][src_vc_id] !=
++		    (unsigned int)preferred_dst_vc)
++			return -EINVAL;
+ 		return 0;
++	}
+ 
+-	if (keep_vc && !(context->dst_vc_ids_masks[phy_id] & BIT(src_vc_id)))
++	if (preferred_dst_vc >= 0) {
++		if (preferred_dst_vc >= MAX_SERDES_VC_ID_NUM)
++			return -E2BIG;
++		if (context->dst_vc_ids_masks[phy_id] & BIT(preferred_dst_vc))
++			return -EINVAL;
++		vc_id = preferred_dst_vc;
++	} else if (keep_vc && !(context->dst_vc_ids_masks[phy_id] & BIT(src_vc_id))) {
+ 		vc_id = src_vc_id;
+-	else
++	} else {
+ 		vc_id = ffz(context->dst_vc_ids_masks[phy_id]);
++	}
+ 
+ 	if (vc_id != src_vc_id)
+ 		context->vc_ids_remapped[pipe_id] = true;
+@@ -590,8 +609,19 @@ static int max_des_populate_remap_context(struct max_des_priv *priv,
+ 
+ 		keep_vc = max_des_should_keep_vc(priv, &hw, modes);
+ 
++		/* This opt-in profile carries one native VC0 sensor per port. */
++		if (priv->allow_missing_links &&
++		    (hw.is_tpg || route->sink_stream ||
++		     route->sink_pad >= priv->des->info->num_links ||
++		     route->source_stream != route->sink_pad ||
++		     route->source_stream >= MAX_SERDES_VC_ID_NUM ||
++		     hw.entry.bus.csi2.vc))
++			return -EINVAL;
++
+ 		ret = max_des_map_src_dst_vc_id(context, hw.pipe->index, hw.phy->index,
+-						hw.entry.bus.csi2.vc, keep_vc);
++						hw.entry.bus.csi2.vc, keep_vc,
++						priv->allow_missing_links ?
++						(int)route->source_stream : -1);
+ 		if (ret)
+ 			return ret;
+ 	}
+@@ -1389,7 +1419,9 @@ static int max_des_init_link_ser_xlate(struct max_des_priv *priv,
+ 				       u8 power_up_addr, u8 new_addr)
+ {
+ 	struct max_des *des = priv->des;
+-	u8 addrs[] = { power_up_addr, new_addr };
++	u8 addrs[MAX_DES_NUM_LINKS + 2] = { power_up_addr, new_addr };
++	unsigned int num_addrs = 2;
++	unsigned int i;
+ 	bool preserve_gmsl2;
+ 	bool reset_done;
+ 	u8 current_addr;
+@@ -1401,7 +1433,16 @@ static int max_des_init_link_ser_xlate(struct max_des_priv *priv,
+ 			return ret;
+ 	}
+ 
+-	ret = max_ser_wait_for_multiple(adapter, addrs, ARRAY_SIZE(addrs),
++	/* A warm camera moved to another port can retain its old alias. */
++	if (priv->allow_missing_links) {
++		for (i = 0; i < des->info->num_links; i++) {
++			u8 alias = priv->serializer_aliases[i];
++
++			if (alias != power_up_addr && alias != new_addr)
++				addrs[num_addrs++] = alias;
++		}
++	}
++	ret = max_ser_wait_for_multiple(adapter, addrs, num_addrs,
+ 					&current_addr);
+ 	if (ret) {
+ 		dev_err(priv->dev,
+@@ -1700,6 +1741,10 @@ static int max_des_i2c_atr_init(struct max_des_priv *priv)
+ 		if (!link->enabled)
+ 			continue;
+ 
++		if (priv->allow_missing_links) {
++			desc.num_aliases = 1;
++			desc.aliases = &priv->serializer_aliases[i];
++		}
+ 		ret = i2c_atr_add_adapter(priv->atr, &desc);
+ 		if (ret)
+ 			goto err_add_adapters;
+@@ -2604,7 +2649,7 @@ static int max_des_init_state(struct v4l2_subdev *sd,
+ 			.sink_pad = max_des_link_to_pad(des, link),
+ 			.sink_stream = 0,
+ 			.source_pad = max_des_phy_to_pad(des, phy),
+-			.source_stream = stream,
++			.source_stream = priv->allow_missing_links ? link->index : stream,
+ 			.flags = V4L2_SUBDEV_ROUTE_FL_ACTIVE,
+ 		};
+ 		stream++;
+@@ -2949,6 +2994,158 @@ err_rollback:
+ 	return ret;
+ }
+ 
++#if IS_ENABLED(CONFIG_OF_DYNAMIC)
++static int max_des_detach_camera_module(struct of_changeset *ocs,
++					struct device_node *node)
++{
++	struct device_node *child;
++	int ret;
++
++	/* This changeset is for Argus metadata, not instantiated devices. */
++	if (of_find_property(node, "compatible", NULL))
++		return -EINVAL;
++
++	for_each_child_of_node(node, child) {
++		ret = max_des_detach_camera_module(ocs, child);
++		if (ret) {
++			of_node_put(child);
++			return ret;
++		}
++	}
++
++	/* Reverting the changeset must reattach parents before children. */
++	return of_changeset_detach_node(ocs, node);
++}
++
++static void max_des_restore_camera_modules(void *data)
++{
++	struct max_des_priv *priv = data;
++	int ret;
++
++	ret = of_changeset_revert(&priv->camera_modules_changeset);
++	if (ret)
++		dev_warn(priv->dev, "Failed to restore camera metadata: %d\n", ret);
++	of_changeset_destroy(&priv->camera_modules_changeset);
++}
++
++static int max_des_update_camera_modules(struct max_des_priv *priv)
++{
++	struct of_changeset *ocs = &priv->camera_modules_changeset;
++	struct max_des *des = priv->des;
++	unsigned int i;
++	int ret;
++
++	if (!priv->allow_missing_links)
++		return 0;
++
++	of_changeset_init(ocs);
++	for (i = 0; i < des->info->num_links; i++) {
++		struct device_node *node, *parent, *platform;
++		char name[12];
++		bool valid;
++
++		node = of_parse_phandle(priv->dev->of_node,
++					"compulab,camera-modules", i);
++		if (!node) {
++			ret = -EINVAL;
++			goto err_destroy;
++		}
++		parent = of_get_parent(node);
++		platform = of_get_parent(parent);
++		snprintf(name, sizeof(name), "module%u", i);
++		valid = of_node_name_eq(node, name) &&
++			of_node_name_eq(parent, "modules") &&
++			of_node_name_eq(platform, "tegra-camera-platform");
++		of_node_put(platform);
++		of_node_put(parent);
++		if (!valid) {
++			of_node_put(node);
++			ret = -EINVAL;
++			goto err_destroy;
++		}
++		ret = des->links[i].enabled ? 0 :
++			max_des_detach_camera_module(ocs, node);
++		of_node_put(node);
++		if (ret)
++			goto err_destroy;
++	}
++
++	if (list_empty(&ocs->entries)) {
++		of_changeset_destroy(ocs);
++		return 0;
++	}
++
++	ret = of_changeset_apply(ocs);
++	if (ret)
++		goto err_destroy;
++
++	return devm_add_action_or_reset(priv->dev,
++				       max_des_restore_camera_modules, priv);
++
++err_destroy:
++	of_changeset_destroy(ocs);
++	return ret;
++}
++#else
++static int max_des_update_camera_modules(struct max_des_priv *priv)
++{
++	return priv->allow_missing_links ? -EOPNOTSUPP : 0;
++}
++#endif
++
++static int max_des_detect_connected_links(struct max_des_priv *priv)
++{
++	struct max_des *des = priv->des;
++	unsigned int i;
++	int version, ret;
++
++	if (!priv->allow_missing_links)
++		return 0;
++	if (!des->ops->select_links)
++		return -EOPNOTSUPP;
++
++	for (i = 0; i < des->info->num_links; i++) {
++		struct max_des_link *link = &des->links[i];
++
++		if (!link->enabled)
++			continue;
++
++		ret = -ETIMEDOUT;
++		for (version = MAX_SERDES_GMSL_MAX;
++		     version >= MAX_SERDES_GMSL_MIN; version--) {
++			if (!(des->info->versions & BIT(version)))
++				continue;
++			if (des->ops->set_link_version) {
++				ret = des->ops->set_link_version(des, link, version);
++				if (ret)
++					return ret;
++			}
++			ret = des->ops->select_links(des, BIT(link->index));
++			if (!ret) {
++				link->version = version;
++				break;
++			}
++			/* A local bus/register failure is not an absent camera. */
++			if (ret != -ETIMEDOUT)
++				return ret;
++		}
++		if (!ret)
++			continue;
++
++		/* Balance the POC reference before the normal cleanup skips it. */
++		if (priv->pocs[i]) {
++			ret = regulator_disable(priv->pocs[i]);
++			if (ret)
++				return ret;
++		}
++		link->enabled = false;
++		dev_info(priv->dev, "GMSL port %u: no camera connected\n", i);
++	}
++
++	/* An empty camera profile is valid: leave all links disabled. */
++	return des->ops->select_links(des, max_des_enabled_links_mask(des));
++}
++
+ static int max_des_parse_sink_dt_endpoint(struct max_des_priv *priv,
+ 					  struct max_des_link *link,
+ 					  struct max_serdes_source *source,
+@@ -3261,6 +3458,8 @@ int max_des_probe(struct i2c_client *client, struct max_des *des)
+ {
+ 	struct device *dev = &client->dev;
+ 	struct max_des_priv *priv;
++	u32 aliases[MAX_DES_NUM_LINKS];
++	unsigned int i, j;
+ 	int ret;
+ 
+ 	if (des->info->num_phys > MAX_DES_NUM_PHYS)
+@@ -3300,6 +3499,31 @@ int max_des_probe(struct i2c_client *client, struct max_des *des)
+ 	priv->dev = dev;
+ 	priv->des = des;
+ 	des->priv = priv;
++	priv->allow_missing_links =
++		device_property_read_bool(dev, "compulab,allow-missing-links");
++	if (priv->allow_missing_links) {
++		if (!IS_ENABLED(CONFIG_OF_DYNAMIC) || !dev->of_node)
++			return -EOPNOTSUPP;
++		if (!device_property_read_bool(dev, "compulab,default-multi-link-routes") ||
++		    of_count_phandle_with_args(dev->of_node, "compulab,camera-modules", NULL) !=
++		    des->info->num_links ||
++		    device_property_count_u32(dev, "compulab,serializer-aliases") !=
++		    des->info->num_links)
++			return -EINVAL;
++		ret = device_property_read_u32_array(dev, "compulab,serializer-aliases",
++						     aliases, des->info->num_links);
++		if (ret)
++			return ret;
++		for (i = 0; i < des->info->num_links; i++) {
++			if (aliases[i] < 0x08 || aliases[i] > 0x77 ||
++			    aliases[i] == client->addr)
++				return -EINVAL;
++			for (j = 0; j < i; j++)
++				if (aliases[i] == aliases[j])
++					return -EINVAL;
++			priv->serializer_aliases[i] = aliases[i];
++		}
++	}
+ 
+ 	ret = max_des_allocate(priv);
+ 	if (ret)
+@@ -3317,6 +3541,14 @@ int max_des_probe(struct i2c_client *client, struct max_des *des)
+ 	if (ret)
+ 		goto err_put_source_ep_fwnodes;
+ 
++	ret = max_des_detect_connected_links(priv);
++	if (ret)
++		goto err_disable_pocs;
++
++	ret = max_des_update_camera_modules(priv);
++	if (ret)
++		goto err_disable_pocs;
++
+ 	ret = max_des_i2c_adapter_init(priv);
+ 	if (ret)
+ 		goto err_disable_pocs;
+-- 
+2.34.1
+

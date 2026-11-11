@@ -16,3 +16,22 @@ SRC_URI:append:edgeai-orn = " \
     file://0009-compulab-dts-Match-PCIe-ports-to-GBE-UPHY-config-9.patch \
     file://0010-compulab-dts-Add-selectable-carrier-peripherals.patch \
 	"
+
+# GMSL Streams integration matches the selected Linux 6.18 kernel provider.
+EDGEAI_ORN_CAMERA_PATCHES = " \
+    file://0100-media-tegra-support-adi-streams-graph.patch;patchdir=nvidia-oot \
+    file://0101-media-edgedes-add-tevs-and-framos-imx678.patch;patchdir=nvidia-oot \
+    file://0102-media-edgedes-add-framos-imx676.patch;patchdir=nvidia-oot \
+    file://0103-media-tegra-support-optional-adi-camera-links.patch;patchdir=nvidia-oot \
+    file://0104-media-tegra-handle-unconfigured-optional-gmsl-inputs.patch;patchdir=nvidia-oot \
+    file://0105-media-tegra-skip-unconfigured-optional-media-sinks.patch;patchdir=nvidia-oot \
+    file://0106-media-imx678-add-raw12-capture-modes.patch;patchdir=nvidia-oot \
+    file://0107-media-imx676-add-raw12-capture-modes.patch;patchdir=nvidia-oot \
+"
+
+EDGEAI_ORN_CAMERA_DRIVERS = " \
+    nv-kernel-module-tevs nv-kernel-module-fr-imx678 nv-kernel-module-fr-imx676 \
+"
+
+SRC_URI:append:edgeai-orn = "${@d.getVar('EDGEAI_ORN_CAMERA_PATCHES') if d.getVar('PREFERRED_PROVIDER_virtual/kernel') == 'linux-yocto' else ''}"
+TEGRA_OOT_EXTRA_CAMERA_DRIVERS:append:edgeai-orn = "${@d.getVar('EDGEAI_ORN_CAMERA_DRIVERS') if d.getVar('PREFERRED_PROVIDER_virtual/kernel') == 'linux-yocto' else ''}"

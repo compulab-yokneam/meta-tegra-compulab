@@ -51,4 +51,9 @@ EDGE_AI_USB_ROLE_DTBS = " \
     ${@' '.join('tegra234-p3768-0000+p3767-%s-nv-super-%s.dtb' % (sku, role) for sku in ('0000', '0001', '0003', '0004', '0005') for role in ('host', 'device'))} \
 "
 
+# Ship camera profiles without selecting a fitted sensor or changing boot DTB.
+CORE_IMAGE_EXTRA_INSTALL:append = " ${@'edgedes-adi-v18-devicetree' if d.getVar('PREFERRED_PROVIDER_virtual/kernel') == 'linux-yocto' else ''}"
+
+EDGEAI_ORN_CAMERA_SKUS:edgeai-orn-nano = "0003 0004"
+EDGEAI_ORN_CAMERA_SKUS:edgeai-orn-nx = "0000 0001"
 KERNEL_ARGS:append:edgeai-orn = " iomem=relaxed pci=realloc pcie_aspm=off"

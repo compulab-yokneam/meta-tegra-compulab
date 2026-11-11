@@ -1,0 +1,117 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Valentin Raevsky <valentin@compulab.co.il>
+Date: Mon, 12 Oct 2026 00:00:00 +0000
+Subject: [PATCH] media: maxim-serdes: add opt-in multi-link default routes
+
+The ADI deserializer framework initializes only the first enabled GMSL
+input route. Tegra capture channels select their upstream stream by the
+deserializer's CSI-2 frame descriptor during notifier completion. A
+four-camera overlay therefore leaves channels for virtual channels 1-3
+without a corresponding active route, before an application can configure
+the experimental userspace Streams API.
+
+Add the local compulab,default-multi-link-routes boolean property to opt
+into one initial active route for every enabled GMSL input. Aggregate all
+inputs on the first enabled CSI output PHY and allocate a distinct source
+stream on that shared source pad. Keep each input on its native stream 0;
+the existing ADI hardware routing and virtual-channel remapping determine
+the corresponding CSI-2 output virtual channels.
+
+Use the existing route array sized for MAX_DES_NUM_LINKS. Leave the
+first-input-only default unchanged for profiles without the property.
+This establishes initial routes; it does not enable capture or alter the
+serializer/sensor power and streaming callbacks.
+
+Document the opt-in property and numbered endpoints on a shared CSI-2
+output PHY. Their endpoint IDs distinguish the Tegra virtual-channel
+connections; all endpoints still map to the same hardware source pad and
+must describe the same physical lane configuration and link frequency.
+
+Upstream-Status: Inappropriate [CompuLab Tegra default stream aggregation]
+Signed-off-by: Valentin Raevsky <valentin@compulab.co.il>
+---
+ .../bindings/media/i2c/maxim,max96712.yaml      | 22 ++++++++++++++++++--
+ drivers/media/i2c/maxim-serdes/max_des.c | 13 ++++++++-----
+ 2 files changed, 28 insertions(+), 7 deletions(-)
+
+diff --git a/Documentation/devicetree/bindings/media/i2c/maxim,max96712.yaml b/Documentation/devicetree/bindings/media/i2c/maxim,max96712.yaml
+--- a/Documentation/devicetree/bindings/media/i2c/maxim,max96712.yaml
++++ b/Documentation/devicetree/bindings/media/i2c/maxim,max96712.yaml
+@@ -42,6 +42,13 @@ properties:
+   enable-gpios: true
+ 
++  compulab,default-multi-link-routes:
++    description: |
++      Initialize a route for each enabled GMSL input to the first enabled
++      CSI-2 output PHY, using a separate source stream for each input.
++      Without this local option, initialize only the first enabled input.
++    type: boolean
++
+   maxim,control-channel-port:
+     description:
+       Selects which deserializer control-channel port is connected to the
+       upstream I2C segment when the device resets. 0 selects port 0, 1 selects
+@@ -85,10 +92,21 @@ properties:
+       '^port@[4-7]$':
+         $ref: /schemas/graph.yaml#/$defs/port-base
+         unevaluatedProperties: false
+-        description: CSI-2 Output port 0-3
++        description: |
++          CSI-2 output PHY. Each numbered endpoint represents a logical
++          virtual-channel connection to a separate receiver channel on
++          the same source pad. All endpoints describe the same physical
++          bus, including its lane layout and link frequency.
+ 
+         properties:
+-          endpoint:
++          '#address-cells':
++            const: 1
++
++          '#size-cells':
++            const: 0
++
++        patternProperties:
++          '^endpoint(@[0-3])?$':
+             $ref: /schemas/media/video-interfaces.yaml#
+             unevaluatedProperties: false
+ 
+diff --git a/drivers/media/i2c/maxim-serdes/max_des.c b/drivers/media/i2c/maxim-serdes/max_des.c
+--- a/drivers/media/i2c/maxim-serdes/max_des.c
++++ b/drivers/media/i2c/maxim-serdes/max_des.c
+@@ -9,6 +9,7 @@
+ #include <linux/i2c-atr.h>
+ #include <linux/i2c-mux.h>
+ #include <linux/module.h>
++#include <linux/property.h>
+ #include <linux/regulator/consumer.h>
+ #include <linux/sched.h>
+ #include <linux/units.h>
+@@ -2579,6 +2580,8 @@ static int max_des_init_state(struct v4l2_subdev *sd,
+ 	struct max_des *des = priv->des;
+ 	struct max_des_phy *phy = NULL;
++	bool default_multi_link_routes = device_property_read_bool(priv->dev,
++					"compulab,default-multi-link-routes");
+ 	unsigned int stream = 0;
+ 	unsigned int i;
+ 
+ 	for (i = 0; i < des->info->num_phys; i++) {
+@@ -2606,12 +2609,12 @@ static int max_des_init_state(struct v4l2_subdev *sd,
+ 		stream++;
+ 
+ 		/*
+-		 * The Streams API is an experimental feature.
+-		 * If multiple routes are provided here, userspace will not be
+-		 * able to configure them unless the Streams API is enabled.
+-		 * Provide a single route until it is enabled.
++		 * Keep the experimental Streams API opt-in for ordinary profiles.
++		 * EDGEDES aggregation needs one stream per enabled GMSL link
++		 * before Tegra initializes the capture channels.
+ 		 */
+-		break;
++		if (!default_multi_link_routes)
++			break;
+ 	}
+ 
+ 	return __max_des_set_routing(sd, state, &routing);
+-- 
+2.34.1

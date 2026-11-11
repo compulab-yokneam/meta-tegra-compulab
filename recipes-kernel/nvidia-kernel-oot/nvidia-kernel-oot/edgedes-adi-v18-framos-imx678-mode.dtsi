@@ -1,0 +1,11 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// SPDX-FileCopyrightText: Copyright (c) 2026 CompuLab Ltd.
+
+/* Preserve the qualified native 10-FPS mode and its exposure limits. */
+#include "edgedes-adi-v18-framos-imx678-mode-common.dtsi"
+active_w = "3856";
+active_h = "2180";
+min_framerate = "10000000";
+max_framerate = "10000000";
+default_framerate = "10000000";
+max_exp_time = "99875";

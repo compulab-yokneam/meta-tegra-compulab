@@ -1,0 +1,5 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// SPDX-FileCopyrightText: Copyright (c) 2026 CompuLab Ltd.
+
+/* Compatibility include; transport is shared by FRAMOS sensor profiles. */
+#include "edgedes-adi-v18-framos-4port-nvcsi.dtsi"

@@ -1,0 +1,14 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// SPDX-FileCopyrightText: Copyright (c) 2026 CompuLab Ltd.
+
+/* Preserve the qualified native 10-FPS mode and its exposure limits. */
+#include "edgedes-adi-v18-framos-imx676-mode-common.dtsi"
+active_w = "3552";
+active_h = "3556";
+/* 240-MHz CSI pixel clock x HMAX1256 / internal 74.25MHz. */
+line_length = "4060";
+min_framerate = "10000000";
+max_framerate = "10000000";
+default_framerate = "10000000";
+min_exp_time = "34";
+max_exp_time = "99865";

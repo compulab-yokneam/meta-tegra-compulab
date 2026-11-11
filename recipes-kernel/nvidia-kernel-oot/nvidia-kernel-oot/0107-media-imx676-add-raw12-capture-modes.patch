@@ -1,0 +1,363 @@
+Subject: [PATCH] media: imx676: add conservative fixed-rate RAW12 modes
+
+Keep mode 0's 3552x3556 10-FPS register tables, write order, 720-Mb/s
+four-lane CSI rate, HMAX 1256 and VMAX 5912 unchanged. Add full-resolution
+15 FPS and the FRAMOS linear 3552x2160 crop at 25 FPS. RAW10, binning,
+HDR, faster lane rates and variable frame-rate controls remain excluded.
+
+The crop window and the 720-Mb/s RAW12/four-lane compatibility rules are
+from framosimaging/framos-jetson-drivers commit
+4e772feec7f21e5ca3d485142c7df03a95c75f3c, files
+source/nvidia-oot/drivers/media/i2c/fr_imx676_mode_tbls.h and fr_imx676.c.
+Use the vendor window unchanged: WINMODE 0x04, horizontal start 0,
+width 3552, vertical start 698 and height 2160.
+
+HMAX 1320 for the new modes is a deliberately conservative derived line
+period, not an exact vendor timing table or a higher-rate qualification.
+It is longer than FRAMOS's HMAX 1256 at 720 Mb/s. With the 74.25-MHz
+internal clock, VMAX 3750/2250 gives exact 15/25 FPS. Both VMAX values
+are even and meet the vendor active-height + 72 minimum. Hardware
+capture and matching ISP mode metadata must be qualified before use;
+a per-stream mode is not a simultaneous four-camera bandwidth promise.
+
+Select dimensions, fixed frame rate, HMAX, VMAX and window per mode.
+Check mode IDs and DT geometry before indexing mode properties, and
+limit the mode count per camera instead of mutating shared sensor ops.
+Report the selected CSI frame descriptor length. Preserve mode 0's
+rounded-nanosecond exposure conversion; use exact sensor-clock timing
+for new modes. Check 64-bit arithmetic for gain and exposure overflow.
+
+Upstream-Status: Inappropriate [CompuLab EDGEDES IMX676 integration]
+
+diff --git a/drivers/media/i2c/edgedes-sensors/framos/fr_imx676.c b/drivers/media/i2c/edgedes-sensors/framos/fr_imx676.c
+index da8a49c..f06ff06 100644
+--- a/drivers/media/i2c/edgedes-sensors/framos/fr_imx676.c
++++ b/drivers/media/i2c/edgedes-sensors/framos/fr_imx676.c
+@@ -7,6 +7,7 @@
+  * Adapted for ADI v18 graph and GPIO consumers by CompuLab, 2026-10-06.
+  */
+ #include <nvidia/conftest.h>
++#include <linux/build_bug.h>
+ #include <linux/clk.h>
+ #include <linux/delay.h>
+ #include <linux/gpio/consumer.h>
+@@ -14,6 +15,7 @@
+ #include <linux/math64.h>
+ #include <linux/module.h>
+ #include <linux/mutex.h>
++#include <linux/overflow.h>
+ #include <media/mipi-csi2.h>
+ #include <media/tegra-v4l2-camera.h>
+ #include <media/tegracam_core.h>
+@@ -38,6 +40,51 @@ struct imx676 {
+ 	struct mutex power_lock;
+ };
+ 
++struct imx676_mode {
++	u32 width;
++	u32 height;
++	u32 framerate;
++	u32 hmax;
++	u32 vmax;
++	const imx676_reg *window;
++};
++
++/* Mode IDs must match imx676_frmfmt and the corresponding DT modeN nodes.
++ * The new 1320-clock line is deliberately longer than FRAMOS's 1256 at
++ * 720 Mb/s. It gives exact 15/25-FPS rates, not a vendor-qualified timing.
++ */
++static const struct imx676_mode imx676_modes[] = {
++	[IMX676_MODE_FULL_10FPS] = {
++		3552, 3556, 10, IMX676_HMAX, IMX676_DEFAULT_VMAX,
++		mode_3552x3556,
++	},
++	[IMX676_MODE_FULL_15FPS] = {
++		3552, 3556, 15, 1320, 3750, mode_3552x3556,
++	},
++	[IMX676_MODE_CROP_3552X2160_25FPS] = {
++		3552, 2160, 25, 1320, 2250, mode_crop_3552x2160,
++	},
++};
++
++static_assert(ARRAY_SIZE(imx676_modes) == ARRAY_SIZE(imx676_frmfmt));
++
++static const struct imx676_mode *
++imx676_get_mode(struct camera_common_data *s_data)
++{
++	const struct sensor_image_properties *image;
++	const struct imx676_mode *mode;
++
++	if (!s_data || s_data->mode < 0 ||
++	    s_data->mode >= ARRAY_SIZE(imx676_modes) ||
++	    s_data->mode >= s_data->sensor_props.num_modes)
++		return NULL;
++	mode = &imx676_modes[s_data->mode];
++	image = &s_data->sensor_props.sensor_modes[s_data->mode].image_properties;
++	if (image->width != mode->width || image->height != mode->height)
++		return NULL;
++	return mode;
++}
++
+ static const u32 imx676_ctrl_cids[] = {
+ 	TEGRA_CAMERA_CID_GAIN,
+ 	TEGRA_CAMERA_CID_EXPOSURE,
+@@ -116,15 +163,19 @@ static int imx676_set_group_hold(struct tegracam_device *tc_dev, bool hold)
+ static int imx676_set_gain(struct tegracam_device *tc_dev, s64 val)
+ {
+ 	struct camera_common_data *s_data = tc_dev->s_data;
+-	const struct sensor_control_properties *ctrl =
+-		&s_data->sensor_props.sensor_modes[s_data->mode].control_properties;
+-	u32 gain;
++	const struct sensor_control_properties *ctrl;
++	u64 scaled_gain, gain;
+ 
++	if (!imx676_get_mode(s_data))
++		return -EINVAL;
++	ctrl = &s_data->sensor_props.sensor_modes[s_data->mode].control_properties;
+ 	if (!ctrl->gain_factor || val < 0)
+ 		return -EINVAL;
++	if (check_mul_overflow((u64)val, 240ULL, &scaled_gain))
++		return -ERANGE;
+ 	/* 0.3 dB steps, fixed low conversion gain, maximum 72 dB. */
+-	gain = div_u64((u64)val * 240, 72 * ctrl->gain_factor);
+-	gain = min(gain, 240U);
++	gain = div64_u64(scaled_gain, 72ULL * ctrl->gain_factor);
++	gain = min_t(u64, gain, 240);
+ 	return imx676_write_buffered(s_data, GAIN_LOW, 2, gain);
+ }
+ 
+@@ -132,14 +183,32 @@ static int imx676_set_exposure(struct tegracam_device *tc_dev, s64 val)
+ {
+ 	struct imx676 *priv = tegracam_get_privdata(tc_dev);
+ 	struct camera_common_data *s_data = tc_dev->s_data;
+-	const struct sensor_control_properties *ctrl =
+-		&s_data->sensor_props.sensor_modes[s_data->mode].control_properties;
+-	u64 lines;
++	const struct imx676_mode *mode = imx676_get_mode(s_data);
++	const struct sensor_control_properties *ctrl;
++	u64 scale, line_ticks, exposure_ticks, divisor, lines;
+ 
+-	if (val < 0 || !ctrl->exposure_factor)
++	if (!mode || val < 0 ||
++	    priv->frame_length <= IMX676_MIN_SHR0 + IMX676_MIN_INTEGRATION)
++		return -EINVAL;
++	ctrl = &s_data->sensor_props.sensor_modes[s_data->mode].control_properties;
++	if (!ctrl->exposure_factor)
++		return -EINVAL;
++	/* Keep mode 0's rounded-ns conversion unchanged. The new modes use
++	 * exact sensor clock ticks, avoiding a truncated 17777-ns line time.
++	 */
++	if (s_data->mode == IMX676_MODE_FULL_10FPS) {
++		scale = 1000000000ULL;
++		line_ticks = IMX676_LINE_TIME_NS;
++	} else {
++		scale = IMX676_INCK_HZ;
++		line_ticks = mode->hmax;
++	}
++	if (check_mul_overflow((u64)val, scale, &exposure_ticks) ||
++	    check_mul_overflow((u64)ctrl->exposure_factor, line_ticks, &divisor))
++		return -ERANGE;
++	if (!divisor)
+ 		return -EINVAL;
+-	lines = div64_u64((u64)val * 1000000000ULL,
+-			 (u64)ctrl->exposure_factor * IMX676_LINE_TIME_NS);
++	lines = div64_u64(exposure_ticks, divisor);
+ 	lines = clamp_t(u64, lines, IMX676_MIN_INTEGRATION,
+ 			priv->frame_length - IMX676_MIN_SHR0);
+ 	return imx676_write_buffered(s_data, SHR0_LOW, 3,
+@@ -150,16 +219,20 @@ static int imx676_set_frame_rate(struct tegracam_device *tc_dev, s64 val)
+ {
+ 	struct imx676 *priv = tegracam_get_privdata(tc_dev);
+ 	struct camera_common_data *s_data = tc_dev->s_data;
+-	const struct sensor_control_properties *ctrl =
+-		&s_data->sensor_props.sensor_modes[s_data->mode].control_properties;
++	const struct imx676_mode *mode = imx676_get_mode(s_data);
++	const struct sensor_control_properties *ctrl;
+ 	int err;
+ 
+-	/* Only the qualified 10 FPS native mode is advertised. */
+-	if (val != 10ULL * ctrl->framerate_factor)
++	if (!mode || val <= 0)
++		return -EINVAL;
++	ctrl = &s_data->sensor_props.sensor_modes[s_data->mode].control_properties;
++	/* Each mode has one fixed rate; changing rate requires a mode switch. */
++	if (!ctrl->framerate_factor ||
++	    val != (s64)mode->framerate * ctrl->framerate_factor)
+ 		return -EINVAL;
+-	err = imx676_write_buffered(s_data, VMAX_LOW, 3, IMX676_DEFAULT_VMAX);
++	err = imx676_write_buffered(s_data, VMAX_LOW, 3, mode->vmax);
+ 	if (!err)
+-		priv->frame_length = IMX676_DEFAULT_VMAX;
++		priv->frame_length = mode->vmax;
+ 	return err;
+ }
+ 
+@@ -258,6 +331,7 @@ static int imx676_set_mode(struct tegracam_device *tc_dev)
+ {
+ 	struct imx676 *priv = tegracam_get_privdata(tc_dev);
+ 	struct camera_common_data *s_data = tc_dev->s_data;
++	const struct imx676_mode *mode = imx676_get_mode(s_data);
+ 	static const imx676_reg native_raw12[] = {
+ 		{ DATARATE_SEL, IMX676_DATA_RATE_720 },
+ 		{ EXTMODE, 0 },
+@@ -268,7 +342,7 @@ static int imx676_set_mode(struct tegracam_device *tc_dev)
+ 	};
+ 	int err;
+ 
+-	if (s_data->mode != 0 || s_data->numlanes != 4 ||
++	if (!mode || s_data->numlanes != 4 || !s_data->colorfmt ||
+ 	    s_data->colorfmt->code != MEDIA_BUS_FMT_SRGGB12_1X12)
+ 		return -EINVAL;
+ 	err = imx676_set_group_hold(tc_dev, false);
+@@ -277,17 +351,17 @@ static int imx676_set_mode(struct tegracam_device *tc_dev)
+ 	if (!err)
+ 		err = imx676_write_table(priv, imx676_12bit_mode);
+ 	if (!err)
+-		err = imx676_write_table(priv, mode_3552x3556);
++		err = imx676_write_table(priv, mode->window);
+ 	if (!err)
+ 		err = imx676_write_table(priv, native_raw12);
+ 	if (!err)
+ 		err = imx676_write_table(priv, mode_disable_pattern_generator);
+ 	if (!err)
+-		err = imx676_write_buffered(s_data, HMAX_LOW, 2, IMX676_HMAX);
++		err = imx676_write_buffered(s_data, HMAX_LOW, 2, mode->hmax);
+ 	if (!err)
+-		err = imx676_write_buffered(s_data, VMAX_LOW, 3, IMX676_DEFAULT_VMAX);
++		err = imx676_write_buffered(s_data, VMAX_LOW, 3, mode->vmax);
+ 	if (!err) {
+-		priv->frame_length = IMX676_DEFAULT_VMAX;
++		priv->frame_length = mode->vmax;
+ 		s_data->override_enable = true;
+ 	}
+ 	return err;
+@@ -321,7 +395,10 @@ static int imx676_stop_streaming(struct tegracam_device *tc_dev)
+ static int imx676_get_frame_desc(struct v4l2_subdev *sd, unsigned int pad,
+ 			       struct v4l2_mbus_frame_desc *fd)
+ {
+-	if (pad != 0)
++	struct camera_common_data *s_data = to_camera_common_data(sd->dev);
++	const struct imx676_mode *mode = imx676_get_mode(s_data);
++
++	if (pad != 0 || !mode)
+ 		return -EINVAL;
+ 
+ 	memset(fd, 0, sizeof(*fd));
+@@ -330,7 +407,7 @@ static int imx676_get_frame_desc(struct v4l2_subdev *sd, unsigned int pad,
+ 	fd->entry[0].flags = V4L2_MBUS_FRAME_DESC_FL_LEN_MAX;
+ 	fd->entry[0].stream = 0;
+ 	fd->entry[0].pixelcode = MEDIA_BUS_FMT_SRGGB12_1X12;
+-	fd->entry[0].length = 3552 * 3556 * 12 / 8;
++	fd->entry[0].length = mode->width * mode->height * 12 / 8;
+ 	fd->entry[0].bus.csi2.vc = 0;
+ 	fd->entry[0].bus.csi2.dt = MIPI_CSI2_DT_RAW12;
+ 	return 0;
+@@ -406,6 +483,15 @@ static int imx676_probe(struct i2c_client *client, const struct i2c_device_id *i
+ 		return dev_err_probe(dev, err, "tegracam registration failed\n");
+ 	tegracam_set_privdata(tc_dev, priv);
+ 
++	/* numfmts belongs to this camera; never shorten the shared sensor ops. */
++	tc_dev->s_data->numfmts = min_t(unsigned int,
++					ARRAY_SIZE(imx676_modes),
++					tc_dev->s_data->sensor_props.num_modes);
++	if (!tc_dev->s_data->numfmts) {
++		err = -EINVAL;
++		goto unregister;
++	}
++
+ 	err = imx676_power_on(tc_dev->s_data);
+ 	if (err)
+ 		goto unregister;
+@@ -418,7 +504,8 @@ static int imx676_probe(struct i2c_client *client, const struct i2c_device_id *i
+ 	err = tegracam_v4l2subdev_register(tc_dev, true);
+ 	if (err)
+ 		goto unregister;
+-	dev_info(dev, "FRAMOS IMX676: 3552x3556 RAW12 at 10 FPS\n");
++	dev_info(dev, "FRAMOS IMX676: %d RAW12 modes; default 3552x3556 at 10 FPS\n",
++		 tc_dev->s_data->numfmts);
+ 	return 0;
+ 
+ unregister:
+diff --git a/drivers/media/i2c/edgedes-sensors/framos/fr_imx676_mode_tbls.h b/drivers/media/i2c/edgedes-sensors/framos/fr_imx676_mode_tbls.h
+index 3bcaec6..b717553 100644
+--- a/drivers/media/i2c/edgedes-sensors/framos/fr_imx676_mode_tbls.h
++++ b/drivers/media/i2c/edgedes-sensors/framos/fr_imx676_mode_tbls.h
+@@ -21,7 +21,15 @@
+ #define HMAX_LOW 0x302c
+ #define FDG_SEL0 0x3030
+ #define FDG_SEL1 0x3031
++#define PIX_HST_LOW 0x303c
++#define PIX_HST_HIGH 0x303d
++#define PIX_HWIDTH_LOW 0x303e
++#define PIX_HWIDTH_HIGH 0x303f
+ #define LANEMODE 0x3040
++#define PIX_VST_LOW 0x3044
++#define PIX_VST_HIGH 0x3045
++#define PIX_VWIDTH_LOW 0x3046
++#define PIX_VWIDTH_HIGH 0x3047
+ #define SHR0_LOW 0x3050
+ #define GAIN_LOW 0x3070
+ #define XVS_XHS_DRV 0x30a6
+@@ -232,14 +240,60 @@ static const imx676_reg mode_disable_pattern_generator[] = {
+ 	{IMX676_TABLE_END, 0x0000}
+ };
+ 
++/* FRAMOS linear (non-binned) crop; preserve the native mode table above. */
++static const imx676_reg mode_crop_3552x2160[] = {
++	{ WINMODE, 0x04 },
++	{ ADDMODE, 0x00 },
++	{ WDMODE, 0x00 },
++	{ VCMODE, 0x01 },
++	{ 0x4498, 0x4c },
++	{ 0x449a, 0x4b },
++	{ 0x449c, 0x4b },
++	{ 0x449e, 0x49 },
++	{ 0x48a7, 0x01 },
++	{ 0x4ee8, 0x00 },
++	{ PIX_HST_LOW, 0x00 },
++	{ PIX_HST_HIGH, 0x00 },
++	{ PIX_HWIDTH_LOW, 0xe0 },
++	{ PIX_HWIDTH_HIGH, 0x0d },
++	{ PIX_VST_HIGH, 0x02 },
++	{ PIX_VST_LOW, 0xba },
++	{ PIX_VWIDTH_HIGH, 0x08 },
++	{ PIX_VWIDTH_LOW, 0x70 },
++	{ IMX676_TABLE_WAIT_MS, IMX676_WAIT_MS },
++	{ IMX676_TABLE_END, 0x00 },
++};
++
++enum {
++	IMX676_MODE_FULL_10FPS,
++	IMX676_MODE_FULL_15FPS,
++	IMX676_MODE_CROP_3552X2160_25FPS,
++};
++
+ static const int imx676_10fps[] = { 10 };
++static const int imx676_15fps[] = { 15 };
++static const int imx676_25fps[] = { 25 };
+ static const struct camera_common_frmfmt imx676_frmfmt[] = {
+ 	{
+ 		.size = { IMX676_DEFAULT_WIDTH, IMX676_DEFAULT_HEIGHT },
+ 		.framerates = imx676_10fps,
+ 		.num_framerates = ARRAY_SIZE(imx676_10fps),
+ 		.hdr_en = false,
+-		.mode = 0,
++		.mode = IMX676_MODE_FULL_10FPS,
++	},
++	{
++		.size = { IMX676_DEFAULT_WIDTH, IMX676_DEFAULT_HEIGHT },
++		.framerates = imx676_15fps,
++		.num_framerates = ARRAY_SIZE(imx676_15fps),
++		.hdr_en = false,
++		.mode = IMX676_MODE_FULL_15FPS,
++	},
++	{
++		.size = { 3552, 2160 },
++		.framerates = imx676_25fps,
++		.num_framerates = ARRAY_SIZE(imx676_25fps),
++		.hdr_en = false,
++		.mode = IMX676_MODE_CROP_3552X2160_25FPS,
+ 	},
+ };
+ 
+

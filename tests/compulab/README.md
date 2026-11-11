@@ -93,12 +93,12 @@ The inherited generic raw QSPI blob is not a validated CompuLab QSPI image.
 Carrier-specific capsules are configured and their inputs validated, but their
 production binaries and hardware application could not be tested here.
 
-## Linux 6.18 carrier update
+## Linux 6.18 carrier and camera update
 
-The current branch enables the shared Linux 6.18 carrier features for both
-EdgeAI-ORN families.
+The current branch enables the shared Linux 6.18 carrier features, ADI v18
+GMSL2/3 stack and TEVS/Framos integration for both EdgeAI-ORN families.
 `validate-metadata.py` checks the additional kernel and NVIDIA patch queues,
-DTBO installation and fixed USB-role variants.
+camera-module package lists, DTBO installation and per-SKU camera recipes.
 `validate-bsp.py` checks C7/C9 PHY routing, disabled C10, the third XUSB PHY,
 all 20 normal/Super/fixed-role DTBs, five peripheral overlays and their
 application to all five module bases.
@@ -107,20 +107,29 @@ Run the scripts from this layer's `tests/compulab` directory by absolute path
 when the layer is checked out separately from the Balena repository. The
 metadata script finds BitBake through the initialized environment's PATH.
 The task script confines generated files to the supplied metadata build root.
-It checks 20 staged boot DTBs and automatic selection of fixed USB roles
-for each supported module SKU, including invalid-profile rejection and
-preservation of user settings.
+It checks 20 staged boot DTBs and automatic selection of fixed USB roles,
+Framos/TEVS profiles and the neutral GMSL base for each supported module SKU,
+including invalid-profile rejection and preservation of user settings.
+
+The `edgedes-adi-v18-devicetree` compile task itself validates all 81
+empty/IMX676/IMX678 port combinations against the fallback and each actual
+module base in the family. Run this task in both NX and Nano builds to check
+all four supported modules. Complete camera DTBs preserve the selected
+module's carrier model and compatibility strings.
 
 Validation on 2026-11-11 used a private checkout of the pinned Linux 6.18.48
 revision and the checksum-verified L4T 39.2.0 public sources:
 
 | Check | Result |
 | --- | --- |
-| Family metadata, local inputs and kernel package selection | PASS for both families |
+| NX and Nano full available metadata scan | 3051 parsed, 301 skipped, Docker-dependent recipe explicitly excluded |
+| Family metadata, local inputs and kernel/camera package selection | PASS for both families |
 | Kernel Image and all modules, ARM64 defconfig plus Tegra and carrier fragments | PASS |
 | NVIDIA HWPM and complete nvidia-oot module builds | PASS |
-| RK628, PAL, RS-485 and watchdog modules | Matching 6.18.48 vermagic and resolved imports |
+| GMSL, RK628, PAL, RS-485, watchdog, TEVS, Framos and tegra-camera modules | 14 key modules have matching 6.18.48 vermagic and resolved imports |
 | Carrier DTBs, fixed USB roles and peripheral overlays | 20 DTBs, five overlays, 25 compositions pass |
+| Camera compile task and module identities | Both families pass; all four module SKUs preserve model/compatible |
+| Mixed Framos overlay combinations | All 81 combinations pass against each family SKU base |
 | Boot package installation, runtime SKU/profile selection and regression fixtures | PASS for both families |
 
 The standalone compilation used the host ARM64 GCC 12 cross compiler; it is

@@ -1,0 +1,96 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Valentin Raevsky <valentin@compulab.co.il>
+Date: Tue, 13 Oct 2026 00:00:00 +0000
+Subject: [PATCH] media: tegra: skip unconfigured optional media sinks
+
+The VI upstream graph parser accepts unconfigured optional GMSL inputs
+after patch 0104, but media link construction still resolves every remote
+endpoint before checking whether the local pad is a sink. The modular
+transport overlay intentionally omits remote-endpoint on inputs without
+a camera leaf. Parsing these placeholders fails, and an error from the
+last endpoint can unregister an otherwise valid sparse capture channel.
+
+For Maxim deserializers opting into compulab,allow-missing-links, classify
+the local endpoint before remote resolution. Validate its port against
+the actual media entity pad count, then skip only sink endpoints with no
+remote-endpoint property. Configured inputs still require a resolvable
+remote, including properties that are present but malformed or dangling.
+Source/output endpoints retain their strict remote requirement.
+
+Do not let a later endpoint overwrite a configured-link parsing failure
+on an optional bridge. Return its error immediately and release the
+iterator's endpoint reference on these new error exits. Ordinary graphs,
+required Maxim graphs, serializer links and routing stay unchanged.
+
+Prepared against NVIDIA Jetson Linux 39.2.1 after the ADI patches
+0100 through 0104. No device-tree or sensor-mode changes are required.
+
+Upstream-Status: Inappropriate [CompuLab Tegra optional camera discovery]
+Signed-off-by: Valentin Raevsky <valentin@compulab.co.il>
+---
+ drivers/media/platform/tegra/camera/vi/graph.c | 30 +++++++++++++++++++++
+ 1 file changed, 30 insertions(+)
+
+diff --git a/drivers/media/platform/tegra/camera/vi/graph.c b/drivers/media/platform/tegra/camera/vi/graph.c
+--- a/drivers/media/platform/tegra/camera/vi/graph.c
++++ b/drivers/media/platform/tegra/camera/vi/graph.c
+@@ -61,6 +61,7 @@ static int tegra_vi_graph_build_one(struct tegra_channel *chan,
+ 	struct v4l2_fwnode_link link;
+ 	struct device_node *ep = NULL;
+ 	struct device_node *next;
++	bool optional_maxim;
+ 	int ret = 0;
+ 
+ 	if (!entity->subdev) {
+@@ -70,6 +71,9 @@ static int tegra_vi_graph_build_one(struct tegra_channel *chan,
+ 	}
+ 
+ 	local = entity->entity;
++	optional_maxim = tegra_vi_graph_is_maxim_deserializer(entity->node) &&
++		of_property_read_bool(entity->node,
++				      "compulab,allow-missing-links");
+ 	dev_dbg(chan->vi->dev, "creating links for entity %s\n", local->name);
+ 
+ 	do {
+@@ -82,6 +86,27 @@ static int tegra_vi_graph_build_one(struct tegra_channel *chan,
+ 
+ 		dev_dbg(chan->vi->dev, "processing endpoint %pOF\n",
+ 				ep);
++		if (optional_maxim) {
++			struct of_endpoint endpoint;
++
++			ret = of_graph_parse_endpoint(ep, &endpoint);
++			if (ret) {
++				of_node_put(ep);
++				return ret;
++			}
++			if (endpoint.port >= local->num_pads) {
++				dev_err(chan->vi->dev,
++					"invalid port number %u for %pOF\n",
++					endpoint.port, entity->node);
++				of_node_put(ep);
++				return -EINVAL;
++			}
++
++			/* A camera leaf configures only its optional input. */
++			if ((local->pads[endpoint.port].flags & MEDIA_PAD_FL_SINK) &&
++			    !of_find_property(ep, "remote-endpoint", NULL))
++				continue;
++		}
+ #if defined(CONFIG_V4L2_FWNODE)
+ 		ret = v4l2_fwnode_parse_link(of_fwnode_handle(ep), &link);
+ #else
+@@ -91,6 +116,11 @@ static int tegra_vi_graph_build_one(struct tegra_channel *chan,
+ 		if (ret < 0) {
+ 			dev_err(chan->vi->dev,
+ 			"failed to parse link for %pOF\n", ep);
++			/* A configured optional input or any output stays strict. */
++			if (optional_maxim) {
++				of_node_put(ep);
++				return ret;
++			}
+ 			continue;
+ 		}
+ 
+-- 
+2.34.1

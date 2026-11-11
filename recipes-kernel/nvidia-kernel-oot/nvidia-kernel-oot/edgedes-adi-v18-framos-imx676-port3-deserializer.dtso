@@ -1,0 +1,82 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// SPDX-FileCopyrightText: Copyright (c) 2026 CompuLab Ltd.
+
+/dts-v1/;
+/plugin/;
+
+#include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/gpio/tegra234-gpio.h>
+#include <dt-bindings/media/video-interfaces.h>
+
+/*
+ * Initial ADI v18 transport profile for F-CON_08 v2.0rA + ISB_IMX676_SG11.
+ * Use instead of the TEVS profile; only EDGEDES coax port 3 is enabled.
+ *
+ * Preserve the qualified R39 eb-edgedes-framos-imx676-overlay.dts sensor
+ * mode and lane ordering: MAX96724 PHY2 -> Edge-AI CSI-C (port-index 2),
+ * identity four-lane map, VC0, 2.5 Gb/s per output lane. RAW12 capture is
+ * qualified with ADI v18 in pixel mode; it does not use the old TN pipe
+ * properties (DBL12/soft-bpp/alt-mem-map12). Cold-power startup is not qualified.
+ *
+ * FRAMOS support's corrected F-CON_08 pinout identifies MFP0=XCLR,
+ * MFP4=INCK, MFP6=TENABLE, MFP8=PW_EN_0, MFP9=SDA and MFP10=SCL.
+ * Serializer i2c@0 below is ADI's logical downstream ATR adapter, not a
+ * claim about the physical MFP I2C channel numbering. The qualified vendor
+ * profile also leaves the serializer control-I2C pin routing at defaults.
+ */
+
+/ {
+	overlay-name = "CompuLab EDGEDES ADI v18 FRAMOS IMX676 port 3 deserializer";
+	compatible = "compulab,edgeai-orn", "nvidia,tegra234";
+
+	fragment@0 {
+		target = <&cam_i2c>;
+		__overlay__ {
+			status = "okay";
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			edgedes_adi_framos_des: deserializer@27 {
+				compatible = "maxim,max96724";
+				reg = <0x27>;
+				/* Edge-AI EDGEDES PWDN/reset: physical low asserts reset. */
+				enable-gpios = <&gpio TEGRA234_MAIN_GPIO(Y, 4) GPIO_ACTIVE_HIGH>;
+				maxim,control-channel-port = <0>;
+				/* Link-local DT address 0x40 is exposed upstream at alias 0x34. */
+				i2c-alias-pool = <0x34>;
+
+				ports {
+					#address-cells = <1>;
+					#size-cells = <0>;
+					port@3 {
+						reg = <3>;
+						edgedes_adi_framos_gmsl3_in: endpoint {
+						};
+					};
+					/* ADI source pad 6 = four GMSL inputs + hardware PHY2. */
+					port@6 {
+						reg = <6>;
+						edgedes_adi_framos_phy2_out: endpoint {
+							bus-type = <MEDIA_BUS_TYPE_CSI2_DPHY>;
+							clock-lanes = <0>;
+							data-lanes = <1 2 3 4>;
+							lane-polarities = <0 0 0 0 0>;
+							link-frequencies = /bits/ 64 <1250000000>;
+						};
+					};
+				};
+
+				i2c-atr {
+					#address-cells = <1>;
+					#size-cells = <0>;
+					edgedes_adi_framos_i2c3: i2c@3 {
+						reg = <3>;
+						#address-cells = <1>;
+						#size-cells = <0>;
+
+					};
+				};
+			};
+		};
+	};
+};
