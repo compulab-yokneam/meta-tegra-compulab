@@ -1,3 +1,5 @@
+require edgeai-orn-dtb-packaging.inc
+
 # Fixed USB-role variants use the same split signing as the default DTBs.
 do_sign_dtbs:append:edgeai-orn() {
     for dtb in ${EDGE_AI_USB_ROLE_DTBS}; do

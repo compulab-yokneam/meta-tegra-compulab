@@ -5,6 +5,8 @@ PR = "r10"
 
 inherit tegra-devicetree
 
+require edgeai-orn-dtb-packaging.inc
+
 # Keep each sensor's advertised modes and per-mode NITO selection synchronized.
 # IMX676 enables the tested extended set; set it to 0 for the native baseline.
 # IMX678 remains opt-in and needs its own matching extended NITO profile.
@@ -176,10 +178,9 @@ python do_compile:append() {
     bb.note("Validated all 81 modular EDGEDES camera configurations")
 }
 
-# Keep the normal /boot/devicetree output from tegra-devicetree, and also put
-# the complete, directly bootable EDGEDES profiles in the requested rootfs
-# location. The neutral, symbol-enabled base is now selectable for OVERLAYS;
-# reusable overlays remain separately owned here under /boot/devicetree.
+# Keep complete, directly bootable EDGEDES profiles in /boot/dtb, including
+# the neutral, symbol-enabled base used with OVERLAYS. Reusable overlays remain
+# under /boot/devicetree; avoid installing complete profiles in both locations.
 do_sign_dtbs:append() {
     for dtbf in ${B}/*.dtb ${B}/*.dtbo; do
         [ -f "$dtbf" ] || continue
@@ -194,12 +195,15 @@ do_install:append() {
         if ${TEGRA_UEFI_USE_SIGNED_FILES}; then
             install -m 0644 ${B}/$dtb.sig ${D}/boot/dtb/
         fi
+        rm -f ${D}/boot/devicetree/$dtb ${D}/boot/devicetree/$dtb.sig
     done
     # Detached signatures are what L4TLauncher expects for rootfs artifacts.
     # Do not accidentally package stale signatures from an unsigned build.
     if ${TEGRA_UEFI_USE_SIGNED_FILES}; then
         for signature in ${B}/*.dtb.sig ${B}/*.dtbo.sig; do
             [ -f "$signature" ] || continue
+            artifact=$(basename "$signature" .sig)
+            [ ! -f "${D}/boot/dtb/$artifact" ] || continue
             install -m 0644 "$signature" ${D}/boot/devicetree/
         done
     fi

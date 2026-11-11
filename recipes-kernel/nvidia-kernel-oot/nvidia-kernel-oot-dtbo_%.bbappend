@@ -1,3 +1,5 @@
+require edgeai-orn-dtb-packaging.inc
+
 # FDT_OVERLAYS uses detached signatures next to /boot/devicetree/*.dtbo.
 do_sign_dtbs:append:edgeai-orn() {
     for overlay in ${B}/*.dtbo; do
