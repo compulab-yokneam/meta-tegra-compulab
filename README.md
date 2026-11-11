@@ -47,10 +47,10 @@ See [validation instructions and results](tests/compulab/README.md).
 
 ## Linux 6.18 carrier support
 
-The default Linux 6.18.48 integration includes dedicated Tegra RS-485,
-expansion-board GPIO/RTC and the external GPIO watchdog driver.
-Peripheral device trees are supplied separately so unfitted hardware
-remains unselected.
+The default Linux 6.18.48 integration includes RK628 HDMI capture,
+ADV7280-M PAL capture, dedicated Tegra RS-485, expansion-board GPIO/RTC,
+and the external GPIO watchdog driver. Peripheral device trees are supplied
+separately so unfitted hardware remains unselected.
 
 The carrier DTS initializes the third USB SuperSpeed host PHY and matches
 C7/C9 PCIe lane assignments to `gbe-uphy-config-9`, with C10 disabled.

@@ -3,8 +3,10 @@ FILESEXTRAPATHS:prepend := "${THISDIR}/files:"
 
 # Carrier peripherals are available on the default Linux 6.18 kernel.
 SRC_URI:append:edgeai-orn = " \
+    file://edge-ai-peripherals-6.18/0001-media-Port-RK628-CSI-bridge-to-Linux-6.18.patch \
     file://edge-ai-peripherals-6.18/0002-serial-Port-dedicated-Tegra-RS485-driver-to-6.18.patch \
     file://edge-ai-peripherals-6.18/0003-watchdog-Add-separate-enable-and-ping-GPIO-watchdog.patch \
+    file://edge-ai-peripherals-6.18/0004-media-Select-ADV7280-for-the-Edge-AI-PAL-adapter.patch \
     file://edge-ai-peripherals-6.18/peripherals.cfg \
 "
 

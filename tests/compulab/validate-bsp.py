@@ -81,6 +81,7 @@ with tempfile.TemporaryDirectory(prefix='bsp-', dir=args.output) as scratch:
     # Compile both fixed-role DTBs per SKU and apply every optional overlay
     # against each module base, so unavailable labels or endpoints fail here.
     overlay_names = ('tegra234-edge-ai-eb-edgerpi4', 'tegra234-edge-ai-rs485',
+                     'tegra234-camera-HDMI-rk628', 'tegra234-camera-PAL-adv280-m',
                      'tegra234-edge-ai-watchdog-template')
     for name in overlay_names:
         source = nv/'t23x/nv-public/overlay'/(name+'.dts')
@@ -111,7 +112,7 @@ with tempfile.TemporaryDirectory(prefix='bsp-', dir=args.output) as scratch:
             composed = dtbs/(base+'-'+overlay+'.dtb')
             run(['fdtoverlay', '-i', str(dtbs/(base+'.dtb')), '-o',
                  str(composed), str(dtbs/(overlay+'.dtbo'))])
-    print('20 DTBs, three overlays and 15 overlay compositions: PASS', flush=True)
+    print('20 DTBs, five overlays and 25 overlay compositions: PASS', flush=True)
 
     if args.bsp_dir:
         original = args.bsp_dir.resolve()

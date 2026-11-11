@@ -1,0 +1,19 @@
+Subject: [PATCH] media: select ADV7280 for the EdgeAI PAL adapter
+
+Upstream-Status: Inappropriate [CompuLab EdgeAI-ORN integration]
+
+diff --git a/drivers/media/i2c/Kconfig b/drivers/media/i2c/Kconfig
+--- a/drivers/media/i2c/Kconfig
++++ b/drivers/media/i2c/Kconfig
+@@ -1688,6 +1688,11 @@
+ 
+ endmenu
+ 
++config VIDEO_EDGE_AI_PAL
++	tristate "CompuLab EdgeAI PAL capture adapter"
++	depends on I2C
++	select VIDEO_ADV7180
++
+ endif # VIDEO_DEV
+ 
+ source "drivers/media/i2c/rk628/Kconfig"

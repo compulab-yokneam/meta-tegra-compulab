@@ -28,6 +28,8 @@ the new Linux drivers.
 
 | Hardware | Kernel support |
 | --- | --- |
+| RK628 HDMI-to-CSI | Receiver, CSI bridge and HDMI receiver class modules; CSI port 2, four lanes |
+| ADV7280-M PAL-to-CSI | Standard ADV7180-family driver; CSI port 0, one lane |
 | Expansion board | PCA9555 GPIO expander at I2C `0x20`, ISL1219 RTC at `0x6f` on `hdr40_i2c1` |
 | RS-485 | Dedicated Tegra194 UART driver, `ttyTHSRS485<n>`, standard `TIOCSRS485` controls |
 | External watchdog | `gpio_wdt_ext`, separate enable and ping GPIOs |
@@ -74,11 +76,15 @@ The following files are installed under `/boot/devicetree`:
 | --- | --- |
 | `tegra234-edge-ai-eb-edgerpi4.dtbo` | Expansion-board GPIO and RTC |
 | `tegra234-edge-ai-rs485.dtbo` | UART `3110000`, alias `serial3`, dedicated RS-485 compatible |
+| `tegra234-camera-HDMI-rk628.dtbo` | RK628 HDMI capture |
+| `tegra234-camera-PAL-adv280-m.dtbo` | ADV7280-M PAL capture; reference filename retained |
 | `tegra234-edge-ai-watchdog-template.dtbo` | Disabled watchdog template without GPIO assignments |
 
 Integrate these into a custom DTB based on the fitted module, using
 `fdtoverlay` or the image's device-tree build. The predefined selector
-profiles do not automatically apply these peripheral overlays.
+profiles do not automatically apply these peripheral overlays. HDMI and PAL
+use the same VI channel and cannot be combined without separately validated
+routing.
 
 The watchdog GPIOs in the reference patch series are explicitly draft.
 Confirm the board's `enable-gpios` and `ping-gpios` before enabling the
@@ -103,6 +109,6 @@ not prove downstream USB 3 enumeration.
 The branch's validation scripts check family metadata, local source inputs,
 boot staging, carrier device trees, profile selection and overlay composition.
 Driver compilation checks use the pinned Linux 6.18.48 source and the pinned
-L4T 39.2.0 NVIDIA sources. RS-485 direction timing,
+L4T 39.2.0 NVIDIA sources. Hardware capture, RS-485 direction timing,
 watchdog pins and operation, USB enumeration, PCIe links and Balena A/B
 updates still need testing on the corresponding hardware.

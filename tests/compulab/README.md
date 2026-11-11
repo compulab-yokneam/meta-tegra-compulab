@@ -100,7 +100,7 @@ EdgeAI-ORN families.
 `validate-metadata.py` checks the additional kernel and NVIDIA patch queues,
 DTBO installation and fixed USB-role variants.
 `validate-bsp.py` checks C7/C9 PHY routing, disabled C10, the third XUSB PHY,
-all 20 normal/Super/fixed-role DTBs, three peripheral overlays and their
+all 20 normal/Super/fixed-role DTBs, five peripheral overlays and their
 application to all five module bases.
 
 Run the scripts from this layer's `tests/compulab` directory by absolute path
@@ -119,8 +119,8 @@ revision and the checksum-verified L4T 39.2.0 public sources:
 | Family metadata, local inputs and kernel package selection | PASS for both families |
 | Kernel Image and all modules, ARM64 defconfig plus Tegra and carrier fragments | PASS |
 | NVIDIA HWPM and complete nvidia-oot module builds | PASS |
-| RS-485 and watchdog modules | Matching 6.18.48 vermagic and resolved imports |
-| Carrier DTBs, fixed USB roles and peripheral overlays | 20 DTBs, three overlays, 15 compositions pass |
+| RK628, PAL, RS-485 and watchdog modules | Matching 6.18.48 vermagic and resolved imports |
+| Carrier DTBs, fixed USB roles and peripheral overlays | 20 DTBs, five overlays, 25 compositions pass |
 | Boot package installation, runtime SKU/profile selection and regression fixtures | PASS for both families |
 
 The standalone compilation used the host ARM64 GCC 12 cross compiler; it is
