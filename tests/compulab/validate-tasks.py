@@ -13,7 +13,7 @@ import subprocess
 import sys
 import tempfile
 
-root = Path(__file__).resolve().parents[4]
+build_root = Path(sys.argv[1]).resolve().parent
 metadata = {p.stem: json.loads(p.read_text()) for p in Path(sys.argv[1]).glob('*.json')}
 dtbs = Path(sys.argv[2]).resolve()
 family = metadata['balena-image']['MACHINE'].removeprefix('edgeai-orn-')
@@ -28,7 +28,7 @@ for pn in ('edgeai-orn-platform-selector', 'tegra-nv-boot-control-config', 'setu
     data = metadata[pn]
     for key in ('UNPACKDIR', 'B', 'D'):
         path = Path(data[key]).resolve()
-        assert path.is_relative_to(root) and any(part.startswith('build') for part in path.relative_to(root).parts), path
+        assert path.is_relative_to(build_root), path
         path.mkdir(parents=True, exist_ok=True)
     patches = []
     for uri in data['SRC_URI'].split():
@@ -66,7 +66,7 @@ flashvars = (Path(metadata['tegra-flashvars']['B'])/'flashvars').read_text()
 for expected in ('ODMDATA="gbe-uphy-config-9,hsstp-lane-map-3,hsio-uphy-config-0"', 'PINMUX_CONFIG="tegra234-edgeai-orn-pinmux.dtsi"', 'MB2BCT_CFG="tegra234-edgeai-orn-mb2-bct-misc-p3767-0000.dts"'):
     assert expected in flashvars, expected
 boot = Path(metadata['jetson-dtbs']['D'])/'boot'
-assert len(list(boot.glob('*.dtb'))) == 10
+assert len(list(boot.glob('*.dtb'))) == 20
 for path in boot.glob('*.dtb'):
     assert path.read_bytes() == (dtbs/path.name).read_bytes()
 qspi = (Path(metadata['jetson-qspi-manager']['D'])/'usr/libexec/jetson-qspi-helpers').read_text()
@@ -113,6 +113,21 @@ with tempfile.TemporaryDirectory(prefix='edgeai-runtime-') as temp:
         select(sku)
         assert envfile.stat().st_mtime_ns == stamp  # no rewrite on subsequent boots
         assert target.stat().st_mtime_ns == target_stamp
+    for sku in skus:
+        for profile in ('host', 'device'):
+            dtb = f'tegra234-p3768-0000+p3767-{sku}-nv-super-{profile}.dtb'
+            source = root_boot/dtb
+            source.write_bytes((dtbs/dtb).read_bytes())
+            envfile.write_text(f'user_setting=keep\nedgeai_fdt_profile={profile}\ncustom_fdt_file=old.dtb\n')
+            select(sku)
+            assert (boot/'boot'/dtb).read_bytes() == source.read_bytes()
+            assert envfile.read_text() == f'user_setting=keep\nedgeai_fdt_profile={profile}\ncustom_fdt_file={dtb}\n'
+        envfile.write_text('user_setting=keep\nedgeai_fdt_profile=invalid\ncustom_fdt_file=old.dtb\n')
+        before = envfile.read_bytes()
+        select(sku, expected=1)
+        assert envfile.read_bytes() == before
+    envfile.write_text('user_setting=keep\n')
+    select(skus[-1])
     previous = envfile.read_bytes()
     select('0000' if family == 'nano' else '0003')
     select('9999')

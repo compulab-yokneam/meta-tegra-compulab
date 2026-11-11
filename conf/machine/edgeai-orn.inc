@@ -33,6 +33,7 @@ CORE_IMAGE_EXTRA_INSTALL:append = " \
     nvidia-kernel-oot-display \
     nvidia-kernel-oot-alsa \
     nvidia-kernel-oot-dtb \
+    nvidia-kernel-oot-dtbo \
     kernel-modules \
 "
 
@@ -44,3 +45,10 @@ CORE_IMAGE_EXTRA_INSTALL:append = " \
 EDGE_AI_DEFAULT_DTB:edgeai-orn-nano = "tegra234-p3768-0000+p3767-0004-nv-super.dtb"
 EDGE_AI_DEFAULT_DTB:edgeai-orn-nx = "tegra234-p3768-0000+p3767-0001-nv-super.dtb"
 KERNEL_DEVICETREE = "${EDGE_AI_DEFAULT_DTB} ${EDGE_AI_DTBS}"
+
+# Also install these selectable variants through Balena jetson-dtbs.
+EDGE_AI_USB_ROLE_DTBS = " \
+    ${@' '.join('tegra234-p3768-0000+p3767-%s-nv-super-%s.dtb' % (sku, role) for sku in ('0000', '0001', '0003', '0004', '0005') for role in ('host', 'device'))} \
+"
+
+KERNEL_ARGS:append:edgeai-orn = " iomem=relaxed pci=realloc pcie_aspm=off"

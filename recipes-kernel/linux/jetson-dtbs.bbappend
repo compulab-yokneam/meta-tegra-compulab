@@ -34,3 +34,13 @@ EDGE_AI_DTB_FILES = " \
 
 FILES:${PN}:edgeai-orn-nx += "${EDGE_AI_DTB_FILES}"
 FILES:${PN}:edgeai-orn-nano += "${EDGE_AI_DTB_FILES}"
+
+# The platform selector stages /boot/<name> onto resin-boot. Keep all fixed
+# USB-role variants available in that same rootfs boot directory.
+do_install:append:edgeai-orn() {
+    for dtb in ${EDGE_AI_USB_ROLE_DTBS}; do
+        install -m 0644 ${DEPLOY_DIR_IMAGE}/devicetree/$dtb ${D}/boot/$dtb
+    done
+}
+
+FILES:${PN}:append:edgeai-orn = " ${@' '.join('/boot/' + name for name in (d.getVar('EDGE_AI_USB_ROLE_DTBS') or '').split())}"

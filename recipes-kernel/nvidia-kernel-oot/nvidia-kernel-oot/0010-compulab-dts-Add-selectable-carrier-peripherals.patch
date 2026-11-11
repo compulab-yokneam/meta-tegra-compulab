@@ -1,0 +1,261 @@
+Subject: [PATCH] compulab: dts: Add selectable carrier peripheral support
+
+Port the USB role variants, EB-EdgeRPI4 GPIO/RTC devices and RS-485
+UART from edge-ai-linux. Keep optional peripherals in overlays rather
+than enabling unfitted hardware in every base DTB. Include the matching
+Super base to retain each module's identity and existing carrier fixes.
+
+The watchdog reference marks its GPIO assignments as draft. Supply a
+compiled disabled template without guessing pins or changing the model.
+Use only the dedicated RS-485 compatible to prevent competing drivers.
+
+Upstream-Status: Inappropriate [CompuLab Edge-AI carrier configuration]
+
+diff --git a/hardware/nvidia/t23x/nv-public/nv-platform/Makefile b/hardware/nvidia/t23x/nv-public/nv-platform/Makefile
+--- a/hardware/nvidia/t23x/nv-public/nv-platform/Makefile
++++ b/hardware/nvidia/t23x/nv-public/nv-platform/Makefile
+@@ -32,6 +32,17 @@
+ dtb-y += tegra234-p3971-0000+p3701-0008-nv.dtb
+ dtb-y += tegra234-p3971-0000+p3701-0008-nv-safety.dtb
+ 
++dtb-y += tegra234-p3768-0000+p3767-0000-nv-super-host.dtb
++dtb-y += tegra234-p3768-0000+p3767-0000-nv-super-device.dtb
++dtb-y += tegra234-p3768-0000+p3767-0001-nv-super-host.dtb
++dtb-y += tegra234-p3768-0000+p3767-0001-nv-super-device.dtb
++dtb-y += tegra234-p3768-0000+p3767-0003-nv-super-host.dtb
++dtb-y += tegra234-p3768-0000+p3767-0003-nv-super-device.dtb
++dtb-y += tegra234-p3768-0000+p3767-0004-nv-super-host.dtb
++dtb-y += tegra234-p3768-0000+p3767-0004-nv-super-device.dtb
++dtb-y += tegra234-p3768-0000+p3767-0005-nv-super-host.dtb
++dtb-y += tegra234-p3768-0000+p3767-0005-nv-super-device.dtb
++
+ ifneq ($(dtb-y),)
+ dtb-y := $(addprefix $(makefile-path)/,$(dtb-y))
+ endif
+diff --git a/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0000-nv-super-device.dts b/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0000-nv-super-device.dts
+new file mode 100644
+--- /dev/null
++++ b/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0000-nv-super-device.dts
+@@ -0,0 +1,6 @@
++// SPDX-License-Identifier: GPL-2.0-only
++#include "tegra234-p3768-0000+p3767-0000-nv-super.dts"
++
++&usb_recovery {
++	mode = "device";
++};
+diff --git a/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0000-nv-super-host.dts b/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0000-nv-super-host.dts
+new file mode 100644
+--- /dev/null
++++ b/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0000-nv-super-host.dts
+@@ -0,0 +1,11 @@
++// SPDX-License-Identifier: GPL-2.0-only
++#include "tegra234-p3768-0000+p3767-0000-nv-super.dts"
++
++&usb_recovery {
++	mode = "host";
++	/delete-property/ usb-role-switch;
++};
++
++&{/bus@0/usb@3550000} {
++	status = "disabled";
++};
+diff --git a/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0001-nv-super-device.dts b/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0001-nv-super-device.dts
+new file mode 100644
+--- /dev/null
++++ b/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0001-nv-super-device.dts
+@@ -0,0 +1,6 @@
++// SPDX-License-Identifier: GPL-2.0-only
++#include "tegra234-p3768-0000+p3767-0001-nv-super.dts"
++
++&usb_recovery {
++	mode = "device";
++};
+diff --git a/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0001-nv-super-host.dts b/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0001-nv-super-host.dts
+new file mode 100644
+--- /dev/null
++++ b/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0001-nv-super-host.dts
+@@ -0,0 +1,11 @@
++// SPDX-License-Identifier: GPL-2.0-only
++#include "tegra234-p3768-0000+p3767-0001-nv-super.dts"
++
++&usb_recovery {
++	mode = "host";
++	/delete-property/ usb-role-switch;
++};
++
++&{/bus@0/usb@3550000} {
++	status = "disabled";
++};
+diff --git a/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0003-nv-super-device.dts b/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0003-nv-super-device.dts
+new file mode 100644
+--- /dev/null
++++ b/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0003-nv-super-device.dts
+@@ -0,0 +1,6 @@
++// SPDX-License-Identifier: GPL-2.0-only
++#include "tegra234-p3768-0000+p3767-0003-nv-super.dts"
++
++&usb_recovery {
++	mode = "device";
++};
+diff --git a/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0003-nv-super-host.dts b/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0003-nv-super-host.dts
+new file mode 100644
+--- /dev/null
++++ b/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0003-nv-super-host.dts
+@@ -0,0 +1,11 @@
++// SPDX-License-Identifier: GPL-2.0-only
++#include "tegra234-p3768-0000+p3767-0003-nv-super.dts"
++
++&usb_recovery {
++	mode = "host";
++	/delete-property/ usb-role-switch;
++};
++
++&{/bus@0/usb@3550000} {
++	status = "disabled";
++};
+diff --git a/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0004-nv-super-device.dts b/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0004-nv-super-device.dts
+new file mode 100644
+--- /dev/null
++++ b/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0004-nv-super-device.dts
+@@ -0,0 +1,6 @@
++// SPDX-License-Identifier: GPL-2.0-only
++#include "tegra234-p3768-0000+p3767-0004-nv-super.dts"
++
++&usb_recovery {
++	mode = "device";
++};
+diff --git a/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0004-nv-super-host.dts b/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0004-nv-super-host.dts
+new file mode 100644
+--- /dev/null
++++ b/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0004-nv-super-host.dts
+@@ -0,0 +1,11 @@
++// SPDX-License-Identifier: GPL-2.0-only
++#include "tegra234-p3768-0000+p3767-0004-nv-super.dts"
++
++&usb_recovery {
++	mode = "host";
++	/delete-property/ usb-role-switch;
++};
++
++&{/bus@0/usb@3550000} {
++	status = "disabled";
++};
+diff --git a/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0005-nv-super-device.dts b/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0005-nv-super-device.dts
+new file mode 100644
+--- /dev/null
++++ b/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0005-nv-super-device.dts
+@@ -0,0 +1,6 @@
++// SPDX-License-Identifier: GPL-2.0-only
++#include "tegra234-p3768-0000+p3767-0005-nv-super.dts"
++
++&usb_recovery {
++	mode = "device";
++};
+diff --git a/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0005-nv-super-host.dts b/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0005-nv-super-host.dts
+new file mode 100644
+--- /dev/null
++++ b/hardware/nvidia/t23x/nv-public/nv-platform/tegra234-p3768-0000+p3767-0005-nv-super-host.dts
+@@ -0,0 +1,11 @@
++// SPDX-License-Identifier: GPL-2.0-only
++#include "tegra234-p3768-0000+p3767-0005-nv-super.dts"
++
++&usb_recovery {
++	mode = "host";
++	/delete-property/ usb-role-switch;
++};
++
++&{/bus@0/usb@3550000} {
++	status = "disabled";
++};
+diff --git a/hardware/nvidia/t23x/nv-public/overlay/Makefile b/hardware/nvidia/t23x/nv-public/overlay/Makefile
+--- a/hardware/nvidia/t23x/nv-public/overlay/Makefile
++++ b/hardware/nvidia/t23x/nv-public/overlay/Makefile
+@@ -79,6 +79,10 @@
+ ifneq ($(dtb-y),)
+ dtb-y := $(addprefix $(makefile-path)/,$(dtb-y))
+ endif
++dtbo-y += tegra234-edge-ai-eb-edgerpi4.dtbo
++dtbo-y += tegra234-edge-ai-rs485.dtbo
++dtbo-y += tegra234-edge-ai-watchdog-template.dtbo
++
+ ifneq ($(dtbo-y),)
+ dtbo-y := $(addprefix $(makefile-path)/,$(dtbo-y))
+ endif
+diff --git a/hardware/nvidia/t23x/nv-public/overlay/tegra234-edge-ai-eb-edgerpi4.dts b/hardware/nvidia/t23x/nv-public/overlay/tegra234-edge-ai-eb-edgerpi4.dts
+new file mode 100644
+--- /dev/null
++++ b/hardware/nvidia/t23x/nv-public/overlay/tegra234-edge-ai-eb-edgerpi4.dts
+@@ -0,0 +1,26 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/dts-v1/;
++/plugin/;
++
++/ {
++	overlay-name = "CompuLab EB-EdgeRPI4 GPIO expander and RTC";
++	compatible = "nvidia,tegra234";
++};
++
++&hdr40_i2c1 {
++	status = "okay";
++	#address-cells = <1>;
++	#size-cells = <0>;
++	edge_ai_pca9555: gpio@20 {
++		compatible = "nxp,pca9555";
++		reg = <0x20>;
++		gpio-controller;
++		#gpio-cells = <2>;
++		status = "okay";
++	};
++	edge_ai_rtc: rtc@6f {
++		compatible = "isil,isl1219";
++		reg = <0x6f>;
++		status = "okay";
++	};
++};
+diff --git a/hardware/nvidia/t23x/nv-public/overlay/tegra234-edge-ai-rs485.dts b/hardware/nvidia/t23x/nv-public/overlay/tegra234-edge-ai-rs485.dts
+new file mode 100644
+--- /dev/null
++++ b/hardware/nvidia/t23x/nv-public/overlay/tegra234-edge-ai-rs485.dts
+@@ -0,0 +1,19 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/dts-v1/;
++/plugin/;
++
++/ {
++	overlay-name = "CompuLab dedicated RS-485 UART";
++	compatible = "nvidia,tegra234";
++};
++
++&{/aliases} {
++	serial3 = "/bus@0/serial@3110000";
++};
++
++&{/bus@0/serial@3110000} {
++	/* Avoid competing with the ordinary serial-tegra driver. */
++	compatible = "nvidia,tegra194-hsuart-rs485";
++	reset-names = "serial";
++	status = "okay";
++};
+diff --git a/hardware/nvidia/t23x/nv-public/overlay/tegra234-edge-ai-watchdog-template.dts b/hardware/nvidia/t23x/nv-public/overlay/tegra234-edge-ai-watchdog-template.dts
+new file mode 100644
+--- /dev/null
++++ b/hardware/nvidia/t23x/nv-public/overlay/tegra234-edge-ai-watchdog-template.dts
+@@ -0,0 +1,18 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/dts-v1/;
++/plugin/;
++
++/ {
++	overlay-name = "CompuLab external watchdog template (disabled)";
++	compatible = "nvidia,tegra234";
++};
++
++&{/} {
++	watchdog-ext {
++		compatible = "linux,wdt-gpio-ext";
++		hw_algo = "toggle";
++		hw_margin_ms = <1600>;
++		/* Add confirmed ping-gpios and enable-gpios before enabling. */
++		status = "disabled";
++	};
++};

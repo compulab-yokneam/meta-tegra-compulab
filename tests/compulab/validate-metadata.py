@@ -5,10 +5,13 @@ Writes resolved metadata and task bodies under the current build's metadata/.
 --all-recipes parses all available recipes; --skip-docker-disk explicitly
 excludes the recipe whose anonymous function requires a working Docker daemon.
 """
-import os, sys, logging
+import os, sys, logging, shutil
 from pathlib import Path
 root=Path(__file__).resolve().parents[2]
-sys.path[:0]=[str(root/'layers/bitbake/lib')]
+layer = root if (root/'conf/layer.conf').is_file() else root/'layers/meta-tegra-compulab'
+bitbake = shutil.which('bitbake')
+assert bitbake, 'Initialize oe-init-build-env first'
+sys.path[:0]=[str(Path(bitbake).resolve().parents[1]/'lib')]
 import bb, bb.cookerdata, bb.parse, bb.codeparser
 logging.basicConfig(level=logging.INFO)
 bb.utils.check_system_locale()
@@ -16,6 +19,11 @@ config=bb.cookerdata.CookerConfiguration()
 config.env=dict(os.environ)
 builder=bb.cookerdata.CookerDataBuilder(config, worker=True)
 builder.parseBaseConfiguration(worker=True)
+# Standalone parsing also needs layer helper modules used by event handlers.
+for layerdir in builder.data.getVar('BBLAYERS').split():
+    libdir = Path(layerdir)/'lib'
+    if libdir.is_dir():
+        sys.path.insert(0, str(libdir))
 print('MACHINE',builder.data.getVar('MACHINE'))
 print('OVERRIDES',builder.data.getVar('MACHINEOVERRIDES'))
 print('KERNEL',builder.data.getVar('PREFERRED_PROVIDER_virtual/kernel'))
@@ -32,7 +40,7 @@ masks=[re.compile(mask) for mask in (builder.data.getVar('BBMASK') or '').split(
 files=[f for f in files if not any(mask.search(f) for mask in masks)]
 appends=sorted((f for f in files if f.endswith('.bbappend')),key=lambda f:(priority(f),f))
 recipes=sorted(f for f in files if f.endswith('.bb'))
-selected={'balena-image','balena-image-flasher','balena-image-initramfs','packagegroup-resin-flasher','nvidia-kernel-oot','nvidia-kernel-oot-dtb','jetson-dtbs','linux-yocto','l4t-launcher-extlinux','edk2-firmware-tegra','uefi-capsule-container','tegra-bootfiles','tegra-flashvars','tegra-flash-dry','tegra-nv-boot-control-config','setup-nv-boot-control','edgeai-orn-platform-selector','hostapp-update-hooks','jetson-qspi-manager','os-power-mode'}
+selected={'balena-image','balena-image-flasher','balena-image-initramfs','packagegroup-resin-flasher','nvidia-kernel-oot','nvidia-kernel-oot-dtb','nvidia-kernel-oot-dtbo','jetson-dtbs','linux-yocto','l4t-launcher-extlinux','edk2-firmware-tegra','uefi-capsule-container','tegra-bootfiles','tegra-flashvars','tegra-flash-dry','tegra-nv-boot-control-config','setup-nv-boot-control','edgeai-orn-platform-selector','hostapp-update-hooks','jetson-qspi-manager','os-power-mode'}
 for recipe in recipes:
     pn=Path(recipe).name.split('_')[0].removesuffix('.bb')
     if Path(recipe).name.endswith("_git.bb"): continue
@@ -45,7 +53,7 @@ for recipe in recipes:
     if data.getVar('__SKIPPED'): continue
     out=Path('metadata')
     out.mkdir(exist_ok=True)
-    values={v:data.getVar(v) for v in ('PN','PV','MACHINE','PACKAGE_ARCH','SSTATE_PKGARCH','OVERRIDES','SRC_URI','FILESPATH','S','UNPACKDIR','WORKDIR','B','D','DEPLOY_DIR_IMAGE','DEFAULT_DTB','KERNEL_DEVICETREE','TNSPEC_MACHINE','TEGRA_BOARDSKU','TEGRA_FLASHVAR_ODMDATA','EDGE_AI_PLATFORM_SKUS','EDGE_AI_CAPSULE_DTBS','JETSON_BOARD_SPEC','UEFI_CAPSULE','HOSTAPP_HOOKS','IMAGE_INSTALL','PART_SPEC_FILE','PACKAGES','RDEPENDS','DEVICE_SPECIFIC_SPACE','BALENA_BOOT_SIZE','BALENA_STATE_SIZE','IMAGE_ROOTFS_SIZE','COMPAT_SPEC_NAME','do_configure','do_compile','do_install','do_patch','do_deploy','install_edge_ai_dtbs','do_deploy_clab_logo','base_do_configure')}
+    values={v:data.getVar(v) for v in ('PN','PV','MACHINE','PACKAGE_ARCH','SSTATE_PKGARCH','OVERRIDES','SRC_URI','FILESPATH','S','UNPACKDIR','WORKDIR','B','D','DEPLOY_DIR_IMAGE','DEFAULT_DTB','KERNEL_DEVICETREE','EDGE_AI_USB_ROLE_DTBS','TNSPEC_MACHINE','TEGRA_BOARDSKU','TEGRA_FLASHVAR_ODMDATA','EDGE_AI_PLATFORM_SKUS','EDGE_AI_CAPSULE_DTBS','JETSON_BOARD_SPEC','UEFI_CAPSULE','HOSTAPP_HOOKS','IMAGE_INSTALL','PART_SPEC_FILE','PACKAGES','RDEPENDS','DEVICE_SPECIFIC_SPACE','BALENA_BOOT_SIZE','BALENA_STATE_SIZE','IMAGE_ROOTFS_SIZE','COMPAT_SPEC_NAME','do_configure','do_compile','do_install','do_patch','do_deploy','install_edge_ai_dtbs','do_deploy_clab_logo','base_do_configure')}
     values['PACKAGE_RDEPENDS']=data.getVar('RDEPENDS:'+values['PN'])
     for task in ('do_configure','do_compile','do_install','do_patch','do_deploy','install_edge_ai_dtbs','do_deploy_clab_logo','base_do_configure'):
         values[task+'_flags']=data.getVarFlags(task)
@@ -57,7 +65,7 @@ for recipe in recipes:
     (out/(pn+'.json')).write_text(json.dumps(values,indent=2,default=str))
     print('PARSED',pn,values['PV'],len(matching),'appends',flush=True)
 
-for append in (root/'layers/meta-tegra-compulab').rglob('*.bbappend'):
+for append in layer.rglob('*.bbappend'):
     pattern=append.name.removesuffix('append').replace('%','*')
     assert any(fnmatch.fnmatch(Path(r).name,pattern) for r in recipes), f"Dangling append: {append}"
 machine=builder.data.getVar('MACHINE')
@@ -68,6 +76,11 @@ if machine in ('edgeai-orn-nano','edgeai-orn-nx'):
     dtb=f'tegra234-p3768-0000+p3767-{fallback}-nv-super.dtb'
     assert builder.data.getVar('PREFERRED_PROVIDER_virtual/kernel')=='linux-yocto'
     assert metadata['jetson-dtbs']['KERNEL_DEVICETREE'].split()[0]==dtb
+    assert len(metadata['jetson-dtbs']['EDGE_AI_USB_ROLE_DTBS'].split()) == 10
+    assert 'nvidia-kernel-oot-dtbo' in metadata['balena-image']['IMAGE_INSTALL'].split()
+    assert 'file://edge-ai-peripherals-6.18/' in metadata['linux-yocto']['SRC_URI']
+    for patch in ('0008-compulab', '0009-compulab', '0010-compulab'):
+        assert patch in metadata['nvidia-kernel-oot']['SRC_URI']
     assert metadata['edk2-firmware-tegra']['DEFAULT_DTB']==dtb
     assert metadata['linux-yocto']['KERNEL_DEVICETREE']==''
     assert 'linux-yocto-extlinux' in metadata['linux-yocto']['PACKAGES'].split()

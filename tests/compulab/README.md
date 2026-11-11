@@ -82,8 +82,8 @@ python3 tests/compulab/validate-tasks.py \
 
 ## Remaining validation
 
-A complete BitBake dependency/task run, kernel and UEFI compilation, Docker
-capsule generation, rootfs/flasher image builds, and boot/OTA tests on all four
+A complete BitBake dependency/task run, production UEFI and GPU/display builds,
+Docker capsule generation, rootfs/flasher image builds, and boot/OTA tests on all four
 module SKUs remain unverified. Run `bitbake balena-image-flasher` for each machine
 on an unrestricted build host, then check first and subsequent boots, network,
 NVMe, USB, UART, TPM, display, power modes, provisioning, and A/B update/rollback
@@ -92,3 +92,39 @@ from the source repository's L4T 36.5.0 image.
 The inherited generic raw QSPI blob is not a validated CompuLab QSPI image.
 Carrier-specific capsules are configured and their inputs validated, but their
 production binaries and hardware application could not be tested here.
+
+## Linux 6.18 carrier update
+
+The current branch enables the shared Linux 6.18 carrier features for both
+EdgeAI-ORN families.
+`validate-metadata.py` checks the additional kernel and NVIDIA patch queues,
+DTBO installation and fixed USB-role variants.
+`validate-bsp.py` checks C7/C9 PHY routing, disabled C10, the third XUSB PHY,
+all 20 normal/Super/fixed-role DTBs, three peripheral overlays and their
+application to all five module bases.
+
+Run the scripts from this layer's `tests/compulab` directory by absolute path
+when the layer is checked out separately from the Balena repository. The
+metadata script finds BitBake through the initialized environment's PATH.
+The task script confines generated files to the supplied metadata build root.
+It checks 20 staged boot DTBs and automatic selection of fixed USB roles
+for each supported module SKU, including invalid-profile rejection and
+preservation of user settings.
+
+Validation on 2026-11-11 used a private checkout of the pinned Linux 6.18.48
+revision and the checksum-verified L4T 39.2.0 public sources:
+
+| Check | Result |
+| --- | --- |
+| Family metadata, local inputs and kernel package selection | PASS for both families |
+| Kernel Image and all modules, ARM64 defconfig plus Tegra and carrier fragments | PASS |
+| NVIDIA HWPM and complete nvidia-oot module builds | PASS |
+| RS-485 and watchdog modules | Matching 6.18.48 vermagic and resolved imports |
+| Carrier DTBs, fixed USB roles and peripheral overlays | 20 DTBs, three overlays, 15 compositions pass |
+| Boot package installation, runtime SKU/profile selection and regression fixtures | PASS for both families |
+
+The standalone compilation used the host ARM64 GCC 12 cross compiler; it is
+not a substitute for a complete production BitBake image build with its
+configured compiler and Balena kernel fragments. No device was flashed or
+rebooted, and hardware capture, PCIe/USB enumeration, watchdog operation and
+A/B update behavior remain untested by these checks.

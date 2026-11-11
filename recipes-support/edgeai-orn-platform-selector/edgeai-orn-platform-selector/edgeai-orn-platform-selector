@@ -42,7 +42,23 @@ case "${board_sku}" in
         ;;
 esac
 
-source_dtb="${root_boot}/${dtb}"
+# Optional profiles retain automatic module detection and A/B boot staging.
+profile=default
+if [[ -f "${uenv_file}" ]]; then
+    requested_profile=$(sed -n 's/^edgeai_fdt_profile=//p' "${uenv_file}" | tail -n 1)
+    profile=${requested_profile:-default}
+fi
+case "${profile}" in
+    default) source_dtb="${root_boot}/${dtb}" ;;
+    host|device)
+        dtb="${dtb%.dtb}-${profile}.dtb"
+        source_dtb="${root_boot}/${dtb}"
+        ;;
+    *)
+        echo "Edge-AI: unsupported edgeai_fdt_profile '${profile}'; keeping the current boot selection" >&2
+        exit 1
+        ;;
+esac
 target_dir="${boot_mount}/boot"
 target_dtb="${target_dir}/${dtb}"
 

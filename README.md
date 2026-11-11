@@ -44,3 +44,20 @@ Raw QSPI provisioning and the upgrade from JP6 must be tested on hardware before
 release; JP7 upgrades require an L4T 36.5.0 starting point.
 
 See [validation instructions and results](tests/compulab/README.md).
+
+## Linux 6.18 carrier support
+
+The default Linux 6.18.48 integration includes dedicated Tegra RS-485,
+expansion-board GPIO/RTC and the external GPIO watchdog driver.
+Peripheral device trees are supplied separately so unfitted hardware
+remains unselected.
+
+The carrier DTS initializes the third USB SuperSpeed host PHY and matches
+C7/C9 PCIe lane assignments to `gbe-uphy-config-9`, with C10 disabled.
+Both NX and Nano family images include fixed USB-role DTBs.
+`edgeai-orn-platform-selector` stages the selected profile on `resin-boot`
+while preserving other `extra_uEnv.txt` settings.
+
+See [carrier configuration](CARRIER-FEATURES.md) for the available
+profiles, build commands, and validation scope. This branch retains its
+Balena image, boot staging, firmware capsule and A/B update integration.

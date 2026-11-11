@@ -14,7 +14,7 @@ import subprocess
 import tempfile
 
 root = Path(__file__).resolve().parents[2]
-layer = root/'layers/meta-tegra-compulab'
+layer = root if (root/'conf/layer.conf').is_file() else root/'layers/meta-tegra-compulab'
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('public_sources', type=Path)
 parser.add_argument('output', type=Path)
@@ -45,8 +45,10 @@ with tempfile.TemporaryDirectory(prefix='bsp-', dir=args.output) as scratch:
         subprocess.run(['tar', '-xjf', str(args.public_sources.resolve()), '-O', 'Linux_for_Tegra/source/kernel_oot_modules_src.tbz2'], stdout=output, check=True)
     run(['tar', '-xjf', str(nested), '-C', str(scratch), 'hardware'])
     for patch in sorted((layer/'recipes-kernel/nvidia-kernel-oot/nvidia-kernel-oot').glob('*.patch')):
+        if patch.name[:4] >= '0100':
+            continue  # The camera driver queue is checked with nvidia-oot sources.
         result = run(['patch', '-d', str(scratch), '-p1', '--batch', '--fuzz=0'], input=patch.read_bytes())
-        assert b'offset' not in result.stdout and b'fuzz' not in result.stdout
+        assert b'offset' not in result.stdout and b'fuzz' not in result.stdout, (patch.name, result.stdout.decode())
     nv = scratch/'hardware/nvidia'
     includes = [nv/'tegra/nv-public/include/kernel', nv/'tegra/nv-public/include/nvidia-oot', nv/'tegra/nv-public', nv/'t23x/nv-public/include/nvidia-oot', nv/'t23x/nv-public/include/platforms', nv/'t23x/nv-public', nv/'t23x/nv-public/nv-platform']
     for sku in ('0000', '0001', '0003', '0004', '0005'):
@@ -61,8 +63,13 @@ with tempfile.TemporaryDirectory(prefix='bsp-', dir=args.output) as scratch:
                 expected_model = 'NVIDIA Jetson Orin '+('NX' if sku in ('0000', '0001') else 'Nano')+' EdgeAI-ORN'
                 assert prop(path, '/', 'model') == expected_model
                 assert prop(path, '/', 'compatible').startswith('compulab,edgeai-orn ')
-                for node in ('/bus@0/pcie@140c0000', '/bus@0/pcie@140e0000', '/bus@0/serial@3110000'):
+                for node in ('/bus@0/pcie@140c0000', '/bus@0/pcie@141e0000', '/bus@0/serial@3110000'):
                     assert prop(path, node, 'status') == 'okay'
+                assert prop(path, '/bus@0/pcie@140e0000', 'status') == 'disabled'
+                for node in ('/bus@0/pcie@140c0000', '/bus@0/pcie@141e0000'):
+                    assert prop(path, node, 'num-lanes', 'i') == '1'
+                    assert prop(path, node, 'phy-names') == 'p2u-0'
+                assert 'usb3-2' in prop(path, '/bus@0/usb@3610000', 'phy-names').split()
                 assert prop(path, '/bus@0/spi@3210000/spi@0', 'compatible') == 'infineon,slb9670'
                 assert prop(path, '/bus@0/spi@3210000/spi@0', 'spi-max-frequency', 'i') == '5000000'
                 assert prop(path, '/bus@0/padctl@3520000/ports/usb3-1', 'nvidia,usb2-companion', 'i') == '1'
@@ -70,6 +77,41 @@ with tempfile.TemporaryDirectory(prefix='bsp-', dir=args.output) as scratch:
                 assert prop(path, '/display@13800000', 'os_gpio_hotplug_a', 'i').split()[-1] == '1'
                 assert subprocess.run(['fdtget', str(path), '/bus@0/i2c@c240000/fusb301@25', 'compatible'], capture_output=True).returncode != 0
             print('DTB PASS:', name, flush=True)
+
+    # Compile both fixed-role DTBs per SKU and apply every optional overlay
+    # against each module base, so unavailable labels or endpoints fail here.
+    overlay_names = ('tegra234-edge-ai-eb-edgerpi4', 'tegra234-edge-ai-rs485',
+                     'tegra234-edge-ai-watchdog-template')
+    for name in overlay_names:
+        source = nv/'t23x/nv-public/overlay'/(name+'.dts')
+        pp = run(['cpp', '-nostdinc', '-undef', '-D__DTS__', '-x',
+                  'assembler-with-cpp', '-DLINUX_VERSION=600',
+                  '-DTEGRA_HOST1X_DT_VERSION=2', '-DOS_LINUX',
+                  *[f'-I{x}' for x in includes], str(source)]).stdout
+        result = run(['dtc', '-I', 'dts', '-O', 'dtb', '-@', '-o',
+                      str(dtbs/(name+'.dtbo'))], input=pp)
+        (dtbs/(name+'.log')).write_bytes(result.stderr)
+    for sku in ('0000', '0001', '0003', '0004', '0005'):
+        base = f'tegra234-p3768-0000+p3767-{sku}-nv-super'
+        for role in ('host', 'device'):
+            name = base+'-'+role
+            pp = run(['cpp', '-nostdinc', '-undef', '-D__DTS__', '-x',
+                      'assembler-with-cpp', '-DLINUX_VERSION=600',
+                      '-DTEGRA_HOST1X_DT_VERSION=2', '-DOS_LINUX',
+                      *[f'-I{x}' for x in includes],
+                      str(includes[-1]/(name+'.dts'))]).stdout
+            path = dtbs/(name+'.dtb')
+            result = run(['dtc', '-I', 'dts', '-O', 'dtb', '-@', '-o', str(path)], input=pp)
+            (dtbs/(name+'.log')).write_bytes(result.stderr)
+            assert prop(path, '/', 'model') == prop(dtbs/(base+'.dtb'), '/', 'model')
+            assert prop(path, '/bus@0/padctl@3520000/ports/usb2-0', 'mode') == role
+            if role == 'host':
+                assert prop(path, '/bus@0/usb@3550000', 'status') == 'disabled'
+        for overlay in overlay_names:
+            composed = dtbs/(base+'-'+overlay+'.dtb')
+            run(['fdtoverlay', '-i', str(dtbs/(base+'.dtb')), '-o',
+                 str(composed), str(dtbs/(overlay+'.dtbo'))])
+    print('20 DTBs, three overlays and 15 overlay compositions: PASS', flush=True)
 
     if args.bsp_dir:
         original = args.bsp_dir.resolve()

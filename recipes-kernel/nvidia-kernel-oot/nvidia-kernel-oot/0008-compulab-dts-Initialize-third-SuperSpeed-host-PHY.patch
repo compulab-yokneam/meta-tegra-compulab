@@ -1,0 +1,31 @@
+Subject: [PATCH] compulab: dts: Initialize third SuperSpeed host PHY
+
+The Edge-AI USB port patch enables the usb3-2 padctl port and lane, but
+the host controller still references only usb3-0 and usb3-1. The Tegra
+XUSB driver acquires PHYs by name and treats missing PHYs as optional,
+so it can register the SuperSpeed root hub without initializing usb3-2.
+
+Add usb3-2 to both host PHY properties so Linux initializes the third
+SuperSpeed lane instead of depending on firmware initialization.
+
+Upstream-Status: Inappropriate [CompuLab Edge-AI carrier configuration]
+---
+ .../nvidia/t23x/nv-public/tegra234-p3768-0000+p3767.dtsi | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/hardware/nvidia/t23x/nv-public/tegra234-p3768-0000+p3767.dtsi b/hardware/nvidia/t23x/nv-public/tegra234-p3768-0000+p3767.dtsi
+--- a/hardware/nvidia/t23x/nv-public/tegra234-p3768-0000+p3767.dtsi
++++ b/hardware/nvidia/t23x/nv-public/tegra234-p3768-0000+p3767.dtsi
+@@ -152,9 +152,10 @@
+ 			       <&{/bus@0/padctl@3520000/pads/usb2/lanes/usb2-1}>,
+ 			       <&{/bus@0/padctl@3520000/pads/usb2/lanes/usb2-2}>,
+ 			       <&{/bus@0/padctl@3520000/pads/usb3/lanes/usb3-0}>,
+-			       <&{/bus@0/padctl@3520000/pads/usb3/lanes/usb3-1}>;
++			       <&{/bus@0/padctl@3520000/pads/usb3/lanes/usb3-1}>,
++			       <&{/bus@0/padctl@3520000/pads/usb3/lanes/usb3-2}>;
+ 			phy-names = "usb2-0", "usb2-1", "usb2-2", "usb3-0",
+-				    "usb3-1";
++				    "usb3-1", "usb3-2";
+ 		};
+ 
+ 		/* C8 - Ethernet */
